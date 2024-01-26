@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.CompilerServices;
 
-namespace CameraServer
+namespace CameraServer.StreamHelpers
 {
     static class StreamExtention
     {

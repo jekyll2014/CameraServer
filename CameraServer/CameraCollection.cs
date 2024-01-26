@@ -9,12 +9,21 @@ namespace CameraServer
 {
     public class CamerasCollection
     {
+        private const string CustomCameraSection = "CustomCameras";
+        private readonly IConfiguration _configuration;
         public IEnumerable<ICamera> Cameras => _cameras.Keys;
 
         private readonly Dictionary<ICamera, Dictionary<string, ConcurrentQueue<Bitmap>>> _cameras = new Dictionary<ICamera, Dictionary<string, ConcurrentQueue<Bitmap>>>();
 
-        public CamerasCollection()
+        public CamerasCollection(IConfiguration configuration)
         {
+            _configuration = configuration;
+            var customCameras = _configuration.GetSection(CustomCameraSection).Get<List<CustomCamera>>() ?? new List<CustomCamera>();
+            foreach (var c in customCameras)
+            {
+                _cameras.Add(new IpCamera(c.Url, c.Name), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+            }
+
             foreach (var c in UsbCamera.DiscoverUsbCameras())
             {
                 _cameras.Add(new UsbCamera(c.Id), new Dictionary<string, ConcurrentQueue<Bitmap>>());
@@ -28,6 +37,12 @@ namespace CameraServer
 
         public async Task RefreshCamerasCollection()
         {
+            var customCameras = _configuration.GetSection(CustomCameraSection).Get<List<CustomCamera>>() ?? new List<CustomCamera>();
+            foreach (var c in customCameras)
+            {
+                _cameras.Add(new IpCamera(c.Url, c.Name), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+            }
+
             var usbCameras = UsbCamera.DiscoverUsbCameras();
             foreach (var c in usbCameras)
             {

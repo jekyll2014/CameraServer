@@ -1,5 +1,7 @@
-﻿using CameraServer.Streaming;
+﻿
+using CameraServer.StreamHelpers;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -12,7 +14,7 @@ using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
 namespace CameraServer.Controllers
 {
-    //[Authorize]
+    [Authorize]
     [ApiController]
     [Route("[controller]")]
     public class CameraController : ControllerBase

@@ -8,7 +8,7 @@ using System.Text;
 // Date         : April 2012
 // -------------------------------------------------
 
-namespace CameraServer.Streaming
+namespace CameraServer.StreamHelpers
 {
     /// <summary>
     ///     Provides a stream writer that can be used to write images as MJPEG
