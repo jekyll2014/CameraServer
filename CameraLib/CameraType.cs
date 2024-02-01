@@ -4,6 +4,7 @@
     {
         Unknown,
         USB,
-        IP
+        IP,
+        USB_FlashCap,
     }
 }

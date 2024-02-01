@@ -1,4 +1,4 @@
-﻿
+﻿using CameraServer.Models;
 using CameraServer.StreamHelpers;
 
 using Microsoft.AspNetCore.Authorization;
@@ -36,7 +36,7 @@ namespace CameraServer.Controllers
         }
 
         [HttpGet]
-        [Route("GetCameras")]
+        [Route("GetCameraList")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(Dictionary<int, string>))]
         public IActionResult GetCameras()
         {
@@ -45,12 +45,20 @@ namespace CameraServer.Controllers
         }
 
         [HttpGet]
+        [Route("GetCameraDetails")]
+        [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(CameraDescriptionDto))]
+        public IActionResult GetCameraDetails(int cameraNumber)
+        {
+            return Ok(new CameraDescriptionDto(_collection.Cameras.ToArray()[cameraNumber].Description));
+        }
+
+        [HttpGet]
         [Route("GetVideoContent")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
         public async Task<IActionResult> GetVideoContent(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
         {
             var imageQueue = new ConcurrentQueue<Bitmap>();
-            var id = _collection.Cameras.ToArray()[cameraNumber].Id;
+            var id = _collection.Cameras.ToArray()[cameraNumber].Path;
             if (string.IsNullOrEmpty(id))
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
 
@@ -82,7 +90,7 @@ namespace CameraServer.Controllers
 
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
-            return Ok();
+            return Empty;
         }
     }
 }

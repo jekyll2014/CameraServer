@@ -5,28 +5,24 @@ namespace CameraLib
 {
     public class CameraDescription
     {
-        public readonly CameraType Type;
-        public readonly string Id;
+        public CameraType Type { get; }
+
+        public string Path { get; private set; }
+
         public string Name
         {
-            get
-            {
-                if (!string.IsNullOrEmpty(_cameraName))
-                    return _cameraName;
-
-                return Id;
-            }
+            get => _cameraName;
             set => _cameraName = value;
         }
 
-        public readonly IEnumerable<FrameFormat> FrameFormats;
+        public IEnumerable<FrameFormat> FrameFormats { get; }
 
         private string _cameraName = string.Empty;
 
-        public CameraDescription(CameraType type, string id, string name = "", IEnumerable<FrameFormat>? frameFormats = null)
+        public CameraDescription(CameraType type, string path, string name = "", IEnumerable<FrameFormat>? frameFormats = null)
         {
             Type = type;
-            Id = id;
+            Path = path;
             Name = name;
 
             FrameFormats = frameFormats ?? Array.Empty<FrameFormat>();

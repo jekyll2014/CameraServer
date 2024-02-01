@@ -21,12 +21,12 @@ namespace CameraLib.FlashCap
                 if (!string.IsNullOrEmpty(_usbCameraName))
                     return _usbCameraName;
 
-                return Id;
+                return Path;
             }
             set => _usbCameraName = value;
         }
-        public string Id { get; }
-        public List<FrameFormat> Capabilities { get; }
+        public string Path { get; }
+        public CameraDescription Description { get; set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -35,23 +35,24 @@ namespace CameraLib.FlashCap
         private CaptureDevice? _captureDevice;
         private string _usbCameraName = string.Empty;
         private Image? _image = null;
-        private readonly object _lockImageChange = new object();
         private volatile bool imageGrabbed = false;
         private readonly object _getPictureThreadLock = new object();
 
-        public UsbCameraFC(string id)
+        public UsbCameraFC(string path)
         {
-            Id = id;
+            Path = path;
 
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
                 .Where(d => d.Characteristics.Length >= 1);             // One or more valid video characteristics.
 
-            _cameraDescriptor = descriptors.FirstOrDefault(n => n.Identity?.ToString() == id);
+            _cameraDescriptor = descriptors.FirstOrDefault(n => n.Identity?.ToString() == path);
 
             if (_cameraDescriptor == null)
-                throw new ArgumentException("Can not find camera", nameof(id));
+                throw new ArgumentException("Can not find camera", nameof(path));
+
+            Description = new CameraDescription(CameraType.USB_FlashCap, Path, Name, new List<FrameFormat>());
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -126,7 +127,7 @@ namespace CameraLib.FlashCap
             bufferScope.ReleaseNow();
 
             // Convert to Stream (using FlashCap.Utilities)
-            lock (_lockImageChange)
+            lock (_getPictureThreadLock)
             {
                 // Decode image data to a bitmap:
                 _image?.Dispose();
@@ -171,7 +172,7 @@ namespace CameraLib.FlashCap
                     await Task.Delay(100, token);
 
                 imageGrabbed = false;
-                lock (_lockImageChange)
+                lock (_getPictureThreadLock)
                 {
                     yield return _image;
                 }

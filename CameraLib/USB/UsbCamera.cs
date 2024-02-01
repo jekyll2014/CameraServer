@@ -24,12 +24,16 @@ namespace CameraLib.USB
                 if (!string.IsNullOrEmpty(_usbCameraName))
                     return _usbCameraName;
 
-                return Id;
+                return Path;
             }
-            set => _usbCameraName = value;
+            set
+            {
+                _usbCameraName = value;
+                Description.Name = value;
+            }
         }
-        public string Id { get; }
-        public List<FrameFormat> Capabilities { get; }
+        public string Path { get; }
+        public CameraDescription Description { get; set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -42,22 +46,22 @@ namespace CameraLib.USB
         private Image? _image;
         private bool _disposedValue;
 
-        public UsbCamera(string id, string name = "")
+        public UsbCamera(string path, string name = "")
         {
-            Id = id;
+            Path = path;
             _usbCameraName = name;
             var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice) ?? Array.Empty<DsDevice>();
-            _usbCamera = devices.FirstOrDefault(n => n.DevicePath == id);
+            _usbCamera = devices.FirstOrDefault(n => n.DevicePath == path);
 
             if (_usbCamera == null)
-                throw new ArgumentException("Can not find camera", nameof(id));
+                throw new ArgumentException("Can not find camera", nameof(path));
 
             if (string.IsNullOrEmpty(_usbCameraName))
                 _usbCameraName = _usbCamera.Name;
             if (string.IsNullOrEmpty(_usbCameraName))
-                _usbCameraName = id;
+                _usbCameraName = path;
 
-            Capabilities = GetAllAvailableResolution(_usbCamera);
+            Description = new CameraDescription(CameraType.USB, Path, _usbCameraName, GetAllAvailableResolution(_usbCamera));
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -128,7 +132,7 @@ namespace CameraLib.USB
                             header.Width,
                             header.Height,
                             format ?? "",
-                            1.0 / v.AvgTimePerFrame));
+                            v.AvgTimePerFrame / 10000.0));
                     }
 
                     mediaTypeEnum.Next(1, mediaTypes, fetched);

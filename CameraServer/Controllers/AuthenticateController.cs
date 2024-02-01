@@ -1,5 +1,5 @@
 ﻿using CameraServer.Auth;
-using CameraServer.Auth.JwtAuth;
+using CameraServer.Models;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -10,8 +10,6 @@ using System.Security.Claims;
 
 namespace CameraServer.Controllers;
 
-// comment for JWT auth
-[ApiExplorerSettings(IgnoreApi = true)]
 [ApiController]
 [Route("[controller]")]
 public class AuthenticateController : ControllerBase
@@ -42,8 +40,6 @@ public class AuthenticateController : ControllerBase
             {
                 authClaims.Add(new Claim(ClaimTypes.Role, userRole));
             }
-
-            var token = _manager.GetToken(authClaims);
 
             var authProperties = new AuthenticationProperties
             {
@@ -77,13 +73,18 @@ public class AuthenticateController : ControllerBase
                 new ClaimsPrincipal(claimsIdentity),
                 authProperties);
 
-            return Ok(new
-            {
-                token = new JwtSecurityTokenHandler().WriteToken(token),
-                expiration = token.ValidTo
-            });
+            return Ok();
         }
 
         return Unauthorized();
+    }
+
+    [HttpPost]
+    [Route("Logout")]
+    public async Task<IActionResult> Logout()
+    {
+        await HttpContext.SignOutAsync();
+
+        return Ok();
     }
 }

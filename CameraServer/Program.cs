@@ -1,7 +1,6 @@
 using CameraServer.Auth;
-using CameraServer.Auth.BasicAuth;
 
-using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.OpenApi.Models;
 
 namespace CameraServer
@@ -11,22 +10,16 @@ namespace CameraServer
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
-            // uncomment for JWT auth
-            //ConfigurationManager configuration = builder.Configuration;
-
             // Add services to the container.
             builder.Services.AddTransient<IUserManager, UserManager>();
             builder.Services.AddSingleton<CamerasCollection, CamerasCollection>();
             builder.Services.AddSwaggerGenNewtonsoftSupport();
 
-            builder.Services.AddAuthentication("BasicAuthentication")
-                .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>
-                    ("BasicAuthentication", null)
+            builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>
                 {
-                    options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
+                    options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
                     options.SlidingExpiration = true;
-                    //options.AccessDeniedPath = "/Forbidden/";
                 });
 
             builder.Services.AddHttpContextAccessor();
@@ -76,7 +69,6 @@ namespace CameraServer
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
-
 
             app.Run();
         }

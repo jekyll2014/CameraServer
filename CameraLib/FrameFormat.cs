@@ -4,10 +4,10 @@ namespace CameraLib
 {
     public class FrameFormat
     {
-        public int Width;
-        public int Heigth;
-        public string Format;
-        public double Fps;
+        public int Width { get; }
+        public int Heigth { get; }
+        public string Format { get; }
+        public double Fps { get; }
 
         public FrameFormat(int width, int heigth, string format = "", double fps = -1)
         {

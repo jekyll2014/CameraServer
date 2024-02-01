@@ -27,4 +27,8 @@
     <ProjectReference Include="..\CameraLib\CameraLib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Auth\JwtAuth\" />
+  </ItemGroup>
+
 </Project>

@@ -10,10 +10,12 @@ namespace CameraLib
     {
         public bool IsRunning { get; }
         public string Name { get; set; }
-        public string Id { get; }
-        public List<FrameFormat> Capabilities { get; }
+        public string Path { get; }
+        public CameraDescription Description { get; set; }
+
         public delegate void ImageCapturedEventHandler(ICamera camera, Bitmap image);
         public event ImageCapturedEventHandler? ImageCapturedEvent;
+
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token);
         public Task<bool> Start(int x, int y, string format, CancellationToken token);
         public void Stop(CancellationToken token);

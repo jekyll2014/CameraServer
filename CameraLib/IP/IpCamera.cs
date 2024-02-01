@@ -28,13 +28,17 @@ namespace CameraLib.IP
                 if (!string.IsNullOrEmpty(_ipCameraName))
                     return _ipCameraName;
 
-                return Id;
+                return Path;
             }
-            set => _ipCameraName = value;
+            set
+            {
+                _ipCameraName = value;
+                Description.Name = value;
+            }
         }
-        public string Id { get; }
 
-        public List<FrameFormat> Capabilities { get; }
+        public string Path { get; }
+        public CameraDescription Description { get; set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -44,12 +48,12 @@ namespace CameraLib.IP
         private readonly Mat _frame = new Mat();
         private bool _disposedValue;
 
-        public IpCamera(string ipCameraId, string name = "")
+        public IpCamera(string path, string name = "")
         {
-            Id = ipCameraId;
-            _ipCameraName = string.IsNullOrEmpty(name) ? Dns.GetHostAddresses(new Uri(Id).Host).FirstOrDefault()?.ToString() ?? Id : name;
+            Path = path;
+            _ipCameraName = string.IsNullOrEmpty(name) ? Dns.GetHostAddresses(new Uri(Path).Host).FirstOrDefault()?.ToString() ?? Path : name;
 
-            Capabilities = new List<FrameFormat>();
+            Description = new CameraDescription(CameraType.IP, Path, _ipCameraName, new List<FrameFormat>());
         }
 
         public static async Task<List<CameraDescription>> DiscoverOnvifCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -93,7 +97,7 @@ namespace CameraLib.IP
 
                                 if (ipAddress.Any())
                                     result.Add(new CameraDescription(CameraType.IP,
-                                    $"rtsp://{ipAddress.FirstOrDefault()}:554/user=admin_password=_channel=1_stream=0.sdp?real_stream",
+                                        $"rtsp://{ipAddress.FirstOrDefault()?.ToString() ?? ""}:554/user=admin_password=_channel=1_stream=0.sdp?real_stream",
                                     ipAddress.FirstOrDefault()?.ToString() ?? ""));
                             }
                             else
@@ -249,7 +253,7 @@ namespace CameraLib.IP
 
         private async Task<VideoCapture?> GetCaptureDevice(CancellationToken token)
         {
-            return await Task.Run(() => new VideoCapture(Id), token);
+            return await Task.Run(() => new VideoCapture(Path), token);
         }
 
         protected virtual void Dispose(bool disposing)

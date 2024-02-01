@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace CameraServer.Auth.JwtAuth
+namespace CameraServer.Models
 {
     public class LoginModel
     {

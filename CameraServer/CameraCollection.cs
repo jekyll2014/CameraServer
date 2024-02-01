@@ -26,12 +26,12 @@ namespace CameraServer
 
             foreach (var c in UsbCamera.DiscoverUsbCameras())
             {
-                _cameras.Add(new UsbCamera(c.Id), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+                _cameras.Add(new UsbCamera(c.Path), new Dictionary<string, ConcurrentQueue<Bitmap>>());
             }
 
             foreach (var c in IpCamera.DiscoverOnvifCamerasAsync(1000, CancellationToken.None).Result)
             {
-                _cameras.Add(new IpCamera(c.Id), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+                _cameras.Add(new IpCamera(c.Path), new Dictionary<string, ConcurrentQueue<Bitmap>>());
             }
         }
 
@@ -46,36 +46,36 @@ namespace CameraServer
             var usbCameras = UsbCamera.DiscoverUsbCameras();
             foreach (var c in usbCameras)
             {
-                if (!_cameras.Any(n => n.Key.Id == c.Id))
-                    _cameras.Add(new UsbCamera(c.Id), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+                if (!_cameras.Any(n => n.Key.Path == c.Path))
+                    _cameras.Add(new UsbCamera(c.Path), new Dictionary<string, ConcurrentQueue<Bitmap>>());
             }
 
             foreach (var c in _cameras.Where(n => n.Key is UsbCamera))
             {
-                if (!usbCameras.Any(n => n.Id == c.Key.Id))
+                if (!usbCameras.Any(n => n.Path == c.Key.Path))
                     _cameras.Remove(c.Key);
             }
 
             var ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(1000, CancellationToken.None);
             foreach (var c in ipCameras)
             {
-                if (!_cameras.Any(n => n.Key.Id == c.Id))
-                    _cameras.Add(new IpCamera(c.Id), new Dictionary<string, ConcurrentQueue<Bitmap>>());
+                if (!_cameras.Any(n => n.Key.Path == c.Path))
+                    _cameras.Add(new IpCamera(c.Path), new Dictionary<string, ConcurrentQueue<Bitmap>>());
             }
 
             foreach (var c in _cameras.Where(n => n.Key is IpCamera))
             {
-                if (!ipCameras.Any(n => n.Id == c.Key.Id))
+                if (!ipCameras.Any(n => n.Path == c.Key.Path))
                     _cameras.Remove(c.Key);
             }
         }
 
         public bool HookCamera(string cameraId, string userId, ConcurrentQueue<Bitmap> srcImageQueue, int xResolution = 0, int yResolution = 0, string format = "")
         {
-            if (!_cameras.Any(n => n.Key.Id == cameraId))
+            if (!_cameras.Any(n => n.Key.Path == cameraId))
                 return false;
 
-            var camera = _cameras.FirstOrDefault(n => n.Key.Id == cameraId);
+            var camera = _cameras.FirstOrDefault(n => n.Key.Path == cameraId);
             if (!camera.Value.TryAdd(cameraId + userId, srcImageQueue))
                 return false;
 
@@ -90,10 +90,10 @@ namespace CameraServer
 
         public bool UnHookCamera(string cameraId, string userId, ConcurrentQueue<Bitmap> srcImageQueue)
         {
-            if (!_cameras.Any(n => n.Key.Id == cameraId))
+            if (!_cameras.Any(n => n.Key.Path == cameraId))
                 return false;
 
-            var camera = _cameras.FirstOrDefault(n => n.Key.Id == cameraId);
+            var camera = _cameras.FirstOrDefault(n => n.Key.Path == cameraId);
             camera.Value.Remove(cameraId + userId);
             if (camera.Value.Count <= 0)
             {
