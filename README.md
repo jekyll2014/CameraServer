@@ -50,7 +50,9 @@ Add trusted users to the "AutorizedUsers" list:
 
 You can find Telegram IDs in the console log by trying to message your bot with software running or simply use 
 Add certain roles for the user to give him camera access.
+
 "DefaultRoles" parameter sets the role for the unlisted/unauthorised users to give access to certain cameras for every user.
+
 The default setting is:
 ```json
 "DefaultRoles": [ "Guest" ]
@@ -105,7 +107,9 @@ The "MaxFrameBuffer" setting sets the maximum number of frames to keep for each 
 
 ### System settings
 The last is the system settings:
+
 "Urls": "http://0.0.0.0:808" - change the IP port to the one you like. Don't change the IP address unless you are sure you know exactly what you are doing.
+
 "CookieExpireTimeMinutes": 60 - authentication cookie expiry time. Just note that a very long cookie can compromise your system in case your cookies are stolen.
 
 ## Planned features:
