@@ -47,8 +47,8 @@ Add trusted users to the "AutorizedUsers" list:
   }
 ]
 ```
+You can find Telegram IDs in the console log by trying to message your bot with software running or simply use common Telegram @userinfobot.
 
-You can find Telegram IDs in the console log by trying to message your bot with software running or simply use 
 Add certain roles for the user to give him camera access.
 
 "DefaultRoles" parameter sets the role for the unlisted/unauthorised users to give access to certain cameras for every user.
@@ -57,7 +57,6 @@ The default setting is:
 ```json
 "DefaultRoles": [ "Guest" ]
 ```
-
 But you may want to empty it to restrict unauthorized access to all your cameras.
 
 ### Camera definitions
@@ -84,7 +83,6 @@ Every camera can be set up to allow certain roles to see the image. This can be 
   },
 ]
 ```
-
 There are 2 basic camera types now:
 - USB
 - IP
