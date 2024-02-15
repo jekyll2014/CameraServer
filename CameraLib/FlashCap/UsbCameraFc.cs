@@ -11,9 +11,8 @@ using System.Threading.Tasks;
 
 namespace CameraLib.FlashCap
 {
-    public class UsbCameraFC : ICamera
+    public class UsbCameraFc : ICamera, IDisposable
     {
-        public bool IsRunning { get; private set; }
         public string Name
         {
             get
@@ -27,8 +26,12 @@ namespace CameraLib.FlashCap
         }
         public string Path { get; }
         public CameraDescription Description { get; set; }
+        public bool IsRunning { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
+        public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+
+        private CancellationTokenSource _cancellationTokenSource;
 
         private readonly CaptureDeviceDescriptor _cameraDescriptor;
         private VideoCharacteristics? _cameraCharacteristics;
@@ -38,10 +41,9 @@ namespace CameraLib.FlashCap
         private volatile bool imageGrabbed = false;
         private readonly object _getPictureThreadLock = new object();
 
-        public UsbCameraFC(string path)
+        public UsbCameraFc(string path, string name = "")
         {
             Path = path;
-
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
@@ -57,10 +59,10 @@ namespace CameraLib.FlashCap
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return DiscoverUsbCamerasAsync(discoveryTimeout, token);
+            return DiscoverUsbCameras();
         }
 
-        public static List<CameraDescription> DiscoverUsbCamerasAsync(int discoveryTimeout = 0, CancellationToken? token = null)
+        public static List<CameraDescription> DiscoverUsbCameras()
         {
             var devices = new CaptureDevices();
             var descriptors = devices
@@ -103,6 +105,8 @@ namespace CameraLib.FlashCap
 
             _captureDevice = await _cameraDescriptor.OpenAsync(_cameraCharacteristics, OnPixelBufferArrived, token);
             await _captureDevice.StartAsync(token);
+
+            _cancellationTokenSource = new CancellationTokenSource();
             IsRunning = true;
 
             return true;
@@ -118,6 +122,7 @@ namespace CameraLib.FlashCap
             _captureDevice?.StopAsync(token);
             _captureDevice?.Dispose();
             _captureDevice = null;
+            _cancellationTokenSource.Cancel();
             IsRunning = false;
         }
 
@@ -164,10 +169,6 @@ namespace CameraLib.FlashCap
         {
             while (!token.IsCancellationRequested)
             {
-                /*var image = await GrabFrame(token);
-                if (image == null)
-                    yield break;*/
-
                 while (!imageGrabbed && !token.IsCancellationRequested)
                     await Task.Delay(100, token);
 
@@ -177,6 +178,11 @@ namespace CameraLib.FlashCap
                     yield return _image;
                 }
             }
+        }
+
+        public void Dispose()
+        {
+            throw new NotImplementedException();
         }
     }
 }

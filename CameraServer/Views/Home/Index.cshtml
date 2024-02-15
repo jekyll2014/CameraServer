@@ -1,0 +1,52 @@
+﻿@using CameraServer.Auth
+@using CameraServer.Services.CameraHub
+@inject IUserManager UserManager
+@inject CameraHubService CamerasCollection
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<h1>Home Page</h1>
+
+<div style="padding: 5px 8px">
+    @if (User.Identity?.IsAuthenticated ?? false)
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Camera name</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var scheme = Context.Request.Scheme;
+                    var host = Context.Request.Host;
+                    var userRoles = UserManager.GetUserInfo(User.Identity?.Name ?? "").Roles;
+                    for (var i = 0; i < CamerasCollection.Cameras.Count(); i++)
+                    {
+                        var camera = CamerasCollection.Cameras.ToArray()[i];
+                        if (!camera.AllowedRoles.Intersect(userRoles).Any())
+                            continue;
+
+                        var resolution = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
+                        <tr>
+                            <td>@i</td>
+                            <td><a href="@($"{scheme}://{host}/Camera/GetVideoContent?cameraNumber={i}&xResolution={resolution?.Width??0}&yResolution={resolution?.Heigth??0}")" target="_blank">@($"{camera.Camera.Name} [{resolution?.Width ?? 0}x{resolution?.Heigth ?? 0}]")</a></td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity?.Name ?? "")))
+        {
+            <input type="button" value="Refresh camera list" onclick="location.href='@Url.Action("RefreshCameraList", "Home")'" />
+        }
+    }
+    else
+    {
+        <h2>Not authorised</h2>
+    }
+</div>

@@ -17,9 +17,8 @@ using System.Xml.XPath;
 
 namespace CameraLib.IP
 {
-    public class IpCamera : ICamera
+    public class IpCamera : ICamera, IDisposable
     {
-        public bool IsRunning { get; private set; } = false;
 
         public string Name
         {
@@ -39,20 +38,30 @@ namespace CameraLib.IP
 
         public string Path { get; }
         public CameraDescription Description { get; set; }
+        public bool IsRunning { get; private set; } = false;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
+
+        public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+
+        private CancellationTokenSource _cancellationTokenSource;
 
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
         private string _ipCameraName;
         private readonly Mat _frame = new Mat();
+        private Image? _image;
+
         private bool _disposedValue;
 
         public IpCamera(string path, string name = "")
         {
             Path = path;
-            _ipCameraName = string.IsNullOrEmpty(name) ? Dns.GetHostAddresses(new Uri(Path).Host).FirstOrDefault()?.ToString() ?? Path : name;
+            _ipCameraName = string.IsNullOrEmpty(name)
+                ? Dns.GetHostAddresses(new Uri(Path).Host).FirstOrDefault()?.ToString() ?? Path
+                : name;
 
+            _cancellationTokenSource = new CancellationTokenSource();
             Description = new CameraDescription(CameraType.IP, Path, _ipCameraName, new List<FrameFormat>());
         }
 
@@ -136,6 +145,7 @@ namespace CameraLib.IP
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _captureDevice.Start();
 
+                _cancellationTokenSource = new CancellationTokenSource();
                 IsRunning = true;
             }
 
@@ -183,6 +193,7 @@ namespace CameraLib.IP
             if (!IsRunning)
                 return;
 
+            _cancellationTokenSource.Cancel();
             _captureDevice?.Stop();
             _captureDevice?.Dispose();
             IsRunning = false;
@@ -190,17 +201,36 @@ namespace CameraLib.IP
 
         public async Task<Image?> GrabFrame(CancellationToken token)
         {
-            Image image = null;
-            await Task.Run(() =>
+            _image?.Dispose();
+            await Task.Run(async () =>
             {
+                if (IsRunning)
+                    _captureDevice?.Stop();
+                else
+                {
+                    _captureDevice = await GetCaptureDevice(token);
+                    if (_captureDevice == null)
+                        return;
+                }
+
                 if (_captureDevice?.Grab() ?? false)
                     if (_captureDevice.Retrieve(_frame))
                     {
-                        image = _frame.ToBitmap();
+                        _image = _frame.ToBitmap();
                     }
+
+                if (IsRunning)
+                {
+                    _captureDevice?.Start();
+                }
+                else
+                {
+                    _captureDevice?.Stop();
+                    _captureDevice?.Dispose();
+                }
             }, token);
 
-            return image;
+            return _image;
         }
 
         public async IAsyncEnumerable<Image> GrabFrames([EnumeratorCancellation] CancellationToken token)
@@ -262,8 +292,8 @@ namespace CameraLib.IP
             {
                 if (disposing)
                 {
-                    // TODO: dispose managed state (managed objects)
                     Stop();
+                    _cancellationTokenSource.Dispose();
                     _frame.Dispose();
                 }
 
@@ -272,13 +302,6 @@ namespace CameraLib.IP
                 _disposedValue = true;
             }
         }
-
-        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        // ~CameraVideoSource()
-        // {
-        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        //     Dispose(disposing: false);
-        // }
 
         public void Dispose()
         {

@@ -1,4 +1,6 @@
-﻿using CameraServer.Models;
+﻿using CameraServer.Auth;
+using CameraServer.Models;
+using CameraServer.Services.CameraHub;
 using CameraServer.StreamHelpers;
 
 using Microsoft.AspNetCore.Authorization;
@@ -19,29 +21,39 @@ namespace CameraServer.Controllers
     [Route("[controller]")]
     public class CameraController : ControllerBase
     {
-        //private string BOUNDARY = "frame"; //"--boundary"
         private const string Boundary = "--boundary";
-        private readonly CamerasCollection _collection;
+        private readonly IUserManager _manager;
+        private readonly CameraHubService _collection;
 
-        public CameraController(CamerasCollection collection)
+        public CameraController(IUserManager manager, CameraHubService collection)
         {
+            _manager = manager;
             _collection = collection;
         }
 
         [HttpPost]
-        [Route("RefreshCamerasList")]
-        public async Task RefreshCamerasList()
+        [Route("RefreshCameraList")]
+        public async Task<IActionResult> RefreshCameraList()
         {
-            await _collection.RefreshCamerasCollection();
+            var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "");
+            if (_manager.HasAdminRole(user))
+                return BadRequest("Only allowed for Admin");
+
+            await _collection.RefreshCameraCollection();
+            return Ok();
         }
 
         [HttpGet]
         [Route("GetCameraList")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(Dictionary<int, string>))]
-        public IActionResult GetCameras()
+        public IActionResult GetCameraList()
         {
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var cameras = _collection.Cameras
+                .Where(n => n.AllowedRoles.Intersect(userRoles).Any());
+
             var i = 0;
-            return Ok(_collection.Cameras.Select(n => new Dictionary<int, string>() { { i++, n.Name } }));
+            return Ok(cameras.Select(n => new Dictionary<int, string>() { { i++, n.Camera.Name } }));
         }
 
         [HttpGet]
@@ -49,7 +61,15 @@ namespace CameraServer.Controllers
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(CameraDescriptionDto))]
         public IActionResult GetCameraDetails(int cameraNumber)
         {
-            return Ok(new CameraDescriptionDto(_collection.Cameras.ToArray()[cameraNumber].Description));
+            if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
+                return BadRequest("No such camera");
+
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var cam = _collection.Cameras.ToArray()[cameraNumber];
+            if (!cam.AllowedRoles.Intersect(userRoles).Any())
+                return BadRequest("No such camera");
+
+            return Ok(new CameraDescriptionDto(cam.Camera.Description));
         }
 
         [HttpGet]
@@ -57,18 +77,31 @@ namespace CameraServer.Controllers
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
         public async Task<IActionResult> GetVideoContent(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
         {
+            if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
+                return BadRequest("No such camera");
+
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
             var imageQueue = new ConcurrentQueue<Bitmap>();
-            var id = _collection.Cameras.ToArray()[cameraNumber].Path;
+            var cam = _collection.Cameras.ToArray()[cameraNumber];
+            if (!cam.AllowedRoles.Intersect(userRoles).Any())
+                return BadRequest("No such camera");
+
+            var id = _collection.Cameras.ToArray()[cameraNumber].Camera.Path;
             if (string.IsNullOrEmpty(id))
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
 
-            if (!_collection.HookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue, xResolution, yResolution, format))
+            var cameraCancellationToken = _collection.HookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue,
+                xResolution, yResolution, format);
+            if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
 
             Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
             using (var wr = new MjpegWriter(Response.Body))
             {
-                while (!Response.HttpContext.RequestAborted.IsCancellationRequested)
+                while (!Request.HttpContext.RequestAborted.IsCancellationRequested
+                       && !Response.HttpContext.RequestAborted.IsCancellationRequested
+                       && !HttpContext.RequestAborted.IsCancellationRequested
+                       && !cameraCancellationToken.IsCancellationRequested)
                 {
                     if (imageQueue.TryDequeue(out var image))
                     {
@@ -76,11 +109,11 @@ namespace CameraServer.Controllers
                         image.Dispose();
                     }
 
-                    await Task.Delay(10);
+                    await Task.Delay(10, Response.HttpContext.RequestAborted);
                 }
             }
 
-            _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue);
+            _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier);
             while (imageQueue.TryDequeue(out var image))
             {
                 image.Dispose();

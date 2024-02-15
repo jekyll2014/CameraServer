@@ -1,4 +1,6 @@
 using CameraServer.Auth;
+using CameraServer.Services.CameraHub;
+using CameraServer.Services.Telegram;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.OpenApi.Models;
@@ -7,18 +9,23 @@ namespace CameraServer
 {
     public class Program
     {
+        public const string ExpireTimeSection = "CookieExpireTimeMinutes";
+
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
+            var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
             // Add services to the container.
             builder.Services.AddTransient<IUserManager, UserManager>();
-            builder.Services.AddSingleton<CamerasCollection, CamerasCollection>();
-            builder.Services.AddSwaggerGenNewtonsoftSupport();
-
+            builder.Services.AddSingleton<CameraHubService, CameraHubService>();
+            builder.Services.AddHostedService<TelegramService>();
+            builder.Services.AddControllersWithViews().AddControllersAsServices();
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>
                 {
-                    options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+                    //options.LoginPath = "/Authenticate/login";
+                    //options.LogoutPath = "/Authenticate/logout";
+                    options.ExpireTimeSpan = TimeSpan.FromMinutes(expireTime);
                     options.SlidingExpiration = true;
                 });
 
@@ -32,9 +39,9 @@ namespace CameraServer
             builder.Services.AddSwaggerGen(options =>
             {
                 options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
-                options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
+                /*options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
                 {
-                    Name = "Authorization",
+                    Login = "Authorization",
                     Type = SecuritySchemeType.Http,
                     Scheme = "basic",
                     In = ParameterLocation.Header,
@@ -53,13 +60,17 @@ namespace CameraServer
                         },
                         new string[] {}
                     }
-                });
+                });*/
             });
 
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
             //app.UseHttpsRedirection();
+
+            app.UseStaticFiles();
+
+            app.UseRouting();
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
@@ -69,6 +80,14 @@ namespace CameraServer
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllerRoute(
+                    name: "default",
+                    pattern: "{controller=Home}/{action=Index}/{id?}"
+                );
+            });
 
             app.Run();
         }

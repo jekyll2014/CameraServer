@@ -1,11 +1,10 @@
 ﻿using CameraServer.Auth;
-using CameraServer.Models;
+using CameraServer.Views.Account;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace CameraServer.Controllers;
@@ -14,53 +13,54 @@ namespace CameraServer.Controllers;
 [Route("[controller]")]
 public class AuthenticateController : ControllerBase
 {
-    private IUserManager _manager;
 
-    public AuthenticateController(IUserManager manager)
+    private readonly IConfiguration _configuration;
+    private readonly IUserManager _manager;
+
+    public AuthenticateController(IConfiguration configuration, IUserManager manager)
     {
+        _configuration = configuration;
         _manager = manager;
     }
 
     [HttpPost]
     [Route("Login")]
-    public async Task<IActionResult> Login([FromBody] LoginModel model)
+    public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
     {
-        var user = _manager.GetUser(model.Username ?? "");
-        if (user != null && user.Password == model.Password)
+        var user = _manager.GetUser(loginModel.Login ?? "", loginModel.Password ?? "");
+        if (user != null)
         {
-            var userRoles = _manager.GetRoles(user);
-
             var authClaims = new List<Claim>
             {
-                new Claim(ClaimTypes.Name, user.Name),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new(ClaimTypes.Name, user.Login),
             };
 
-            foreach (var userRole in userRoles)
+            foreach (var userRole in user.Roles)
             {
-                authClaims.Add(new Claim(ClaimTypes.Role, userRole));
+                authClaims.Add(new Claim(ClaimTypes.Role, userRole.ToString()));
             }
 
+            var expireTime = _configuration.GetValue<int>(Program.ExpireTimeSection, 60);
             var authProperties = new AuthenticationProperties
             {
                 AllowRefresh = true,
                 // Refreshing the authentication session should be allowed.
 
-                //ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10),
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(expireTime),
                 // The time at which the authentication ticket expires. A 
                 // value set here overrides the ExpireTimeSpan option of 
                 // CookieAuthenticationOptions set with AddCookie.
 
-                IsPersistent = true,
+                IsPersistent = loginModel.RememberLogin,
                 // Whether the authentication session is persisted across 
                 // multiple requests. When used with cookies, controls
                 // whether the cookie's lifetime is absolute (matching the
                 // lifetime of the authentication ticket) or session-based.
 
-                //IssuedUtc = <DateTimeOffset>,
+                IssuedUtc = DateTimeOffset.Now,
                 // The time at which the authentication ticket was issued.
 
-                //RedirectUri = <string>
+                RedirectUri = loginModel.ReturnUrl
                 // The full path or absolute URI to be used as an http 
                 // redirect response value.
             };

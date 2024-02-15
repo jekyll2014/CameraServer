@@ -14,9 +14,8 @@ using System.Threading.Tasks;
 
 namespace CameraLib.USB
 {
-    public class UsbCamera : ICamera
+    public class UsbCamera : ICamera, IDisposable
     {
-        public bool IsRunning { get; private set; }
         public string Name
         {
             get
@@ -34,16 +33,22 @@ namespace CameraLib.USB
         }
         public string Path { get; }
         public CameraDescription Description { get; set; }
+        public bool IsRunning { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
+        public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
+
+        private CancellationTokenSource? _cancellationTokenSource;
 
         private const VideoCapture.API CaptureSource = VideoCapture.API.DShow;
+        private readonly DsDevice? _usbCamera;
+
         private readonly object _getPictureThreadLock = new object();
-        private readonly DsDevice _usbCamera;
         private VideoCapture? _captureDevice;
-        private readonly Mat _frame = new Mat();
         private string _usbCameraName;
+        private readonly Mat _frame = new Mat();
         private Image? _image;
+
         private bool _disposedValue;
 
         public UsbCamera(string path, string name = "")
@@ -160,6 +165,9 @@ namespace CameraLib.USB
                     return false;
                 }
 
+                if (_usbCamera == null)
+                    return false;
+
                 if (x > 0 && y > 0)
                 {
                     var res = GetAllAvailableResolution(_usbCamera);
@@ -180,6 +188,7 @@ namespace CameraLib.USB
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _captureDevice.Start();
 
+                _cancellationTokenSource = new CancellationTokenSource();
                 IsRunning = true;
             }
 
@@ -219,15 +228,8 @@ namespace CameraLib.USB
 
         private VideoCapture? GetCaptureDevice()
         {
-            var camNumber = 0;
             var cameras = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice) ?? Array.Empty<DsDevice>();
-            foreach (var cam in cameras)
-            {
-                if (_usbCamera.DevicePath == cam.DevicePath)
-                    break;
-
-                camNumber++;
-            }
+            var camNumber = cameras.TakeWhile(cam => _usbCamera?.DevicePath != cam.DevicePath).Count();
 
             if (cameras.Length == 0 || camNumber >= cameras.Length)
                 return null;
@@ -243,6 +245,7 @@ namespace CameraLib.USB
             _captureDevice?.Stop();
             _captureDevice?.Dispose();
             _captureDevice = null;
+            _cancellationTokenSource?.Cancel();
             IsRunning = false;
         }
 
@@ -253,18 +256,33 @@ namespace CameraLib.USB
 
         public async Task<Image?> GrabFrame(CancellationToken token)
         {
+            _image?.Dispose();
             await Task.Run(() =>
-           {
-               if (_captureDevice?.Grab() ?? false)
-                   if (_captureDevice.Retrieve(_frame))
-                   {
-                       _image?.Dispose();
-                       _image = _frame.ToBitmap();
-                       return _image;
-                   }
+            {
+                if (IsRunning)
+                    _captureDevice?.Stop();
+                else
+                {
+                    _captureDevice = GetCaptureDevice();
+                    if (_captureDevice == null)
+                        return;
+                }
 
-               return null;
-           }, token);
+                if ((_captureDevice?.Grab() ?? false) && _captureDevice.Retrieve(_frame))
+                {
+                    _image = _frame.ToBitmap();
+                }
+
+                if (IsRunning)
+                {
+                    _captureDevice?.Start();
+                }
+                else
+                {
+                    _captureDevice?.Stop();
+                    _captureDevice?.Dispose();
+                }
+            }, token);
 
             return _image;
         }
@@ -277,10 +295,11 @@ namespace CameraLib.USB
                 if (image == null)
                 {
                     await Task.Delay(100, token);
-                    // yield break;
                 }
-
-                yield return image;
+                else
+                {
+                    yield return image;
+                }
             }
         }
 
@@ -290,24 +309,16 @@ namespace CameraLib.USB
             {
                 if (disposing)
                 {
-                    // TODO: dispose managed state (managed objects)
                     Stop();
+                    _cancellationTokenSource?.Dispose();
                     _frame.Dispose();
-                    _usbCamera.Dispose();
+                    _captureDevice?.Dispose();
+                    _usbCamera?.Dispose();
                 }
 
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
                 _disposedValue = true;
             }
         }
-
-        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        // ~CameraVideoSource()
-        // {
-        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        //     Dispose(disposing: false);
-        // }
 
         public void Dispose()
         {

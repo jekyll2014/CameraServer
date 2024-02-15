@@ -9,15 +9,9 @@ namespace CameraLib
 
         public string Path { get; private set; }
 
-        public string Name
-        {
-            get => _cameraName;
-            set => _cameraName = value;
-        }
+        public string Name { get; set; }
 
         public IEnumerable<FrameFormat> FrameFormats { get; }
-
-        private string _cameraName = string.Empty;
 
         public CameraDescription(CameraType type, string path, string name = "", IEnumerable<FrameFormat>? frameFormats = null)
         {

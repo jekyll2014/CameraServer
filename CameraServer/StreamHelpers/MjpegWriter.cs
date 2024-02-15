@@ -16,9 +16,9 @@ namespace CameraServer.StreamHelpers
     /// </summary>
     public class MjpegWriter : IDisposable
     {
-        public string Boundary { get; }
-        public Stream Stream { get; private set; }
-        public const string DefaultBoundaryValue = "--boundary";
+        private string Boundary { get; }
+        private Stream Stream { get; set; }
+        private const string DefaultBoundaryValue = "--boundary";
 
         public MjpegWriter(Stream stream, string boundary = DefaultBoundaryValue)
         {
@@ -89,7 +89,7 @@ namespace CameraServer.StreamHelpers
             var data = new byte[length];
             var count = await Stream.ReadAsync(data, 0, data.Length);
 
-            return count != 0 ? Encoding.ASCII.GetString(data, 0, count) : null;
+            return count != 0 ? Encoding.ASCII.GetString(data, 0, count) : string.Empty;
         }
 
         #region IDisposable Members
@@ -98,12 +98,11 @@ namespace CameraServer.StreamHelpers
         {
             try
             {
-                if (Stream != null)
-                    Stream.Dispose();
+                Stream?.Dispose();
             }
             finally
             {
-                Stream = null;
+                GC.SuppressFinalize(this);
             }
         }
 

@@ -1,27 +1,8 @@
-﻿using CameraServer.Models;
-using Microsoft.IdentityModel.Tokens;
-
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-
-namespace CameraServer.Auth;
-
-public interface IUserManager
-{
-    public User? GetUser(string name);
-    public IEnumerable<User> GetUsers();
-    public IEnumerable<string> GetRoles(User user);
-    public bool HasAdminRole(IEnumerable<string> userRoles);
-    public bool HasUserRole(IEnumerable<string> userRoles);
-    public JwtSecurityToken GetToken(IEnumerable<Claim> authClaims);
-}
+﻿namespace CameraServer.Auth;
 
 public class UserManager : IUserManager
 {
-    private const string Admin = "admin";
-    private const string User = "user";
-    private const string UsersConfigSection = "Users";
+    private const string UsersConfigSection = "WebUsers";
     private readonly IConfiguration _configuration;
 
     public UserManager(IConfiguration configuration)
@@ -29,46 +10,32 @@ public class UserManager : IUserManager
         _configuration = configuration;
     }
 
-    public User? GetUser(string name)
+    public WebUser? GetUser(string name, string password)
     {
-        return GetUsers().FirstOrDefault(n => n.Name == name);
+        return GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
     }
 
-    public IEnumerable<User> GetUsers()
+    public UserDto GetUserInfo(string name)
     {
-        return _configuration.GetSection(UsersConfigSection).Get<List<User>>();
+        var user = GetUsers()?.FirstOrDefault(n => n.Login == name);
+        if (user == null)
+            return new UserDto();
+
+        return new UserDto() { Login = user.Login, Roles = user.Roles };
     }
 
-    public IEnumerable<string> GetRoles(User user)
+    public IEnumerable<WebUser>? GetUsers()
     {
-        return user.Roles.FindAll(n => n == Admin || n == User);
+        return _configuration.GetSection(UsersConfigSection).Get<List<WebUser>>();
     }
 
-    public bool HasAdminRole(IEnumerable<string> userRoles)
+    public bool HasAdminRole(ICameraUser webUser)
     {
-        return userRoles.Any(x => x == UserManager.Admin);
+        return webUser.Roles.Contains(Roles.Admin);
     }
 
-    public bool HasUserRole(IEnumerable<string> userRoles)
+    public bool HasRole(ICameraUser webUser, Roles role)
     {
-        return userRoles.Any(x => x == UserManager.User);
-    }
-
-    public JwtSecurityToken GetToken(IEnumerable<Claim> authClaims)
-    {
-        var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JWT:Secret"]));
-
-        var tokenExpireHours = 24;
-        int.TryParse(_configuration["JWT:ExpireHours"], out tokenExpireHours);
-
-        var token = new JwtSecurityToken(
-            issuer: _configuration["JWT:ValidIssuer"],
-            audience: _configuration["JWT:ValidAudience"],
-            expires: DateTime.Now.AddHours(tokenExpireHours),
-            claims: authClaims,
-            signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-        );
-
-        return token;
+        return webUser.Roles.Contains(role);
     }
 }
