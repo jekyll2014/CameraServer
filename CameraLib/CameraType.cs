@@ -5,6 +5,6 @@
         Unknown,
         USB,
         USB_FC,
-        IP,
+        IP
     }
 }

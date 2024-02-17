@@ -88,7 +88,7 @@ namespace CameraServer.Services.CameraHub
             {
                 var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
                 foreach (var c in usbFcCameras)
-                    Console.WriteLine($"USB-Camera: {c.Name} - [{c.Path}]");
+                    Console.WriteLine($"USB_FC-Camera: {c.Name} - [{c.Path}]");
 
                 // add newly discovered cameras
                 foreach (var c in usbFcCameras
@@ -134,7 +134,7 @@ namespace CameraServer.Services.CameraHub
             }
         }
 
-        public CancellationToken HookCamera(
+        public async Task<CancellationToken> HookCamera(
             string cameraId,
             string userId,
             ConcurrentQueue<Bitmap> srcImageQueue,
@@ -152,13 +152,14 @@ namespace CameraServer.Services.CameraHub
             if (camera.Value.Count == 1)
             {
                 camera.Key.Camera.ImageCapturedEvent += GetImageFromCamera;
-                camera.Key.Camera.Start(xResolution, yResolution, format, CancellationToken.None);
+                if (!await camera.Key.Camera.Start(xResolution, yResolution, format, CancellationToken.None))
+                    return CancellationToken.None;
             }
 
             return camera.Key.Camera.CancellationToken;
         }
 
-        public bool UnHookCamera(string cameraId, string userId)
+        public async Task<bool> UnHookCamera(string cameraId, string userId)
         {
             if (_cameras.All(n => n.Key.Camera.Path != cameraId))
                 return false;
@@ -168,7 +169,7 @@ namespace CameraServer.Services.CameraHub
             if (camera.Value.Count <= 0)
             {
                 camera.Key.Camera.ImageCapturedEvent -= GetImageFromCamera;
-                camera.Key.Camera.Stop(CancellationToken.None);
+                await camera.Key.Camera.Stop(CancellationToken.None);
             }
 
             return true;

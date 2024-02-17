@@ -155,7 +155,17 @@ namespace CameraLib.IP
         {
             if (!IsRunning)
             {
-                _captureDevice = await GetCaptureDevice(token);
+                try
+                {
+                    _captureDevice = await GetCaptureDevice(token);
+
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    return false;
+                }
+
                 if (_captureDevice == null)
                 {
                     IsRunning = false;
@@ -173,7 +183,7 @@ namespace CameraLib.IP
             return true;
         }
 
-        private void ImageCaptured(object sender, EventArgs args)
+        private void ImageCaptured(object? sender, EventArgs args)
         {
             if (Monitor.IsEntered(_getPictureThreadLock))
             {
@@ -204,11 +214,6 @@ namespace CameraLib.IP
             }
         }
 
-        public async Task Stop(CancellationToken token)
-        {
-            Stop();
-        }
-
         public void Stop()
         {
             if (!IsRunning)
@@ -217,8 +222,14 @@ namespace CameraLib.IP
             _cancellationTokenSource?.Cancel();
             _captureDevice?.Stop();
             _captureDevice?.Dispose();
+            _captureDevice = null;
             _image?.Dispose();
             IsRunning = false;
+        }
+
+        public async Task Stop(CancellationToken token)
+        {
+            Stop();
         }
 
         public async Task<Bitmap?> GrabFrame(CancellationToken token)

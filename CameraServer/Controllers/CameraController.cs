@@ -90,7 +90,7 @@ namespace CameraServer.Controllers
             if (string.IsNullOrEmpty(id))
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
 
-            var cameraCancellationToken = _collection.HookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue,
+            var cameraCancellationToken = await _collection.HookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue,
                 xResolution, yResolution, format);
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
@@ -119,7 +119,7 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier);
+            await _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier);
             while (imageQueue.TryDequeue(out var image))
             {
                 image.Dispose();

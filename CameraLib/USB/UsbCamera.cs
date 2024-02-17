@@ -204,7 +204,7 @@ namespace CameraLib.USB
             return new VideoCapture(camNumber, CaptureSource);
         }
 
-        private void ImageCaptured(object sender, EventArgs args)
+        private void ImageCaptured(object? sender, EventArgs args)
         {
             if (Monitor.IsEntered(_getPictureThreadLock))
             {
@@ -219,7 +219,7 @@ namespace CameraLib.USB
                     if (!(_captureDevice?.Grab() ?? false))
                         return;
 
-                    if (!_captureDevice.Retrieve(_frame))
+                    if (!(_captureDevice?.Retrieve(_frame) ?? false))
                         return;
 
                     _image = _frame.ToBitmap();
@@ -240,10 +240,10 @@ namespace CameraLib.USB
             if (!IsRunning)
                 return;
 
+            _cancellationTokenSource?.Cancel();
             _captureDevice?.Stop();
             _captureDevice?.Dispose();
             _captureDevice = null;
-            _cancellationTokenSource?.Cancel();
             _image?.Dispose();
             IsRunning = false;
         }
@@ -258,6 +258,7 @@ namespace CameraLib.USB
             if (IsRunning)
             {
                 while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+
                 lock (_getPictureThreadLock)
                 {
                     return (Bitmap?)_image?.Clone();
