@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
@@ -13,6 +13,8 @@
     <PackageReference Include="Emgu.CV.runtime.ubuntu-x64" Version="4.8.1.5350" />
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.8.1.5350" />
     <PackageReference Include="FlashCap" Version="1.9.0" />
+    <PackageReference Include="QuickNV.Onvif" Version="1.0.1" />
+    <PackageReference Include="QuickNV.Onvif.Discovery" Version="1.0.2" />
   </ItemGroup>
 
 </Project>

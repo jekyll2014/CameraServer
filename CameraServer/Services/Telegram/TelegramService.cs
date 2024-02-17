@@ -107,125 +107,129 @@ namespace CameraServer.Services.Telegram
                 text: $"Requested: \"{messageText}\"",
                 cancellationToken: cancellationToken);
 
-            // return cameras list as virtual keyboard
-            if (messageText == ListCommand)
+            Task.Run(async () =>
             {
-                var buttons = new List<InlineKeyboardButton[]>();
-                var buttonsRow = new List<InlineKeyboardButton>();
-                var n = 0;
-                var column = 0;
-                foreach (var camera in _collection.Cameras
-                             .Where(n => n.AllowedRoles
-                                 .Intersect(currentTelegramUser.Roles)
-                                 .Any()))
+                // return cameras list as virtual keyboard
+                if (messageText == ListCommand)
                 {
-                    buttonsRow.Add(new InlineKeyboardButton(camera.Camera.Name)
+                    var buttons = new List<InlineKeyboardButton[]>();
+                    var buttonsRow = new List<InlineKeyboardButton>();
+                    var n = 0;
+                    var column = 0;
+                    foreach (var camera in _collection.Cameras
+                                 .Where(m => m.AllowedRoles
+                                     .Intersect(currentTelegramUser.Roles)
+                                     .Any()))
                     {
-                        CallbackData = n.ToString()
-                    });
+                        buttonsRow.Add(new InlineKeyboardButton(camera.Camera.Name)
+                        {
+                            CallbackData = n.ToString()
+                        });
 
-                    n++;
-                    column++;
+                        n++;
+                        column++;
 
-                    if (column > 1)
-                    {
-                        buttons.Add(buttonsRow.ToArray());
-                        buttonsRow = [];
-                        column = 0;
+                        if (column > 1)
+                        {
+                            buttons.Add(buttonsRow.ToArray());
+                            buttonsRow = [];
+                            column = 0;
+                        }
                     }
-                }
-                if (buttonsRow.Count != 0)
-                    buttons.Add(buttonsRow.ToArray());
+                    if (buttonsRow.Count != 0)
+                        buttons.Add(buttonsRow.ToArray());
 
 
-                if (currentTelegramUser.Roles.Contains(Roles.Admin))
-                {
-                    buttons.Add([new InlineKeyboardButton("Referesh")
+                    if (currentTelegramUser.Roles.Contains(Roles.Admin))
+                    {
+                        buttons.Add([new InlineKeyboardButton("Referesh")
                     {
                         CallbackData = RefreshCommand
                     }]);
+                    }
+
+                    var inline = new InlineKeyboardMarkup(buttons);
+
+                    _botClient?.SendTextMessageAsync(chatId, "Camera list", null, parseMode: ParseMode.Html,
+                        replyMarkup: inline, cancellationToken: cancellationToken);
+
+                    return;
                 }
 
-                var inline = new InlineKeyboardMarkup(buttons);
+                // search for the available cameras
+                if (messageText == RefreshCommand && currentTelegramUser.Roles.Contains(Roles.Admin))
+                {
+                    await _collection.RefreshCameraCollection(cancellationToken);
 
-                _botClient?.SendTextMessageAsync(chatId, "Camera list", null, parseMode: ParseMode.Html,
-                    replyMarkup: inline, cancellationToken: cancellationToken);
+                    return;
+                }
 
-                return;
-            }
-
-            // search for the available cameras
-            if (messageText == RefreshCommand && currentTelegramUser.Roles.Contains(Roles.Admin))
-            {
-                await _collection.RefreshCameraCollection();
-
-                return;
-            }
-
-            if (!messageText.All(n => char.IsDigit(n) || _separator.Contains(n)))
-            {
-                await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: $"Usage tips:\r\n\t\"{ListCommand}\" - camera list\r\n\t\"{RefreshCommand}\" - refresh camera list on the server\r\n\t\"n\" - get image from camera[n]\r\n\t\"n,m\" - get images from cameras[n] and [m]\r\n\t\"n m\" - get images from cameras [n] and[m]\r\n",
-                    cancellationToken: cancellationToken);
-
-                return;
-            }
-
-            // return snapshots of the requested cameras
-            var cameraNumbers = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
-            while (cameraNumbers.Count != 0)
-            {
-                var cameraNumber = cameraNumbers[0];
-                cameraNumbers.RemoveAt(0);
-                if (!int.TryParse(cameraNumber, out var n))
-                    continue;
-
-                if (n < 0 || n >= _collection.Cameras.Count())
+                if (!messageText.All(n => char.IsDigit(n) || _separator.Contains(n)))
                 {
                     await botClient.SendTextMessageAsync(
-                       chatId: chatId,
-                       text: $"No camera available: \"{n}\"",
-                       cancellationToken: cancellationToken);
+                        chatId: chatId,
+                        text: $"Usage tips:\r\n\t\"{ListCommand}\" - camera list\r\n\t\"{RefreshCommand}\" - refresh camera list on the server\r\n\t\"n\" - get image from camera[n]\r\n\t\"n,m\" - get images from cameras[n] and [m]\r\n\t\"n m\" - get images from cameras [n] and[m]\r\n",
+                        cancellationToken: cancellationToken);
 
-                    continue;
+                    return;
                 }
 
-                var camera = _collection.Cameras.ToArray()[n];
-                if (!camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+                // return snapshots of the requested cameras
+                var cameraNumbers = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
+                while (cameraNumbers.Count != 0)
                 {
-                    await botClient.SendTextMessageAsync(
-                       chatId: chatId,
-                       text: $"No camera available: \"{n}\"",
-                       cancellationToken: cancellationToken);
+                    var cameraNumber = cameraNumbers[0];
+                    cameraNumbers.RemoveAt(0);
+                    if (!int.TryParse(cameraNumber, out var n))
+                        continue;
 
-                    continue;
-                }
-
-                var image = await camera.Camera.GrabFrame(cancellationToken);
-                if (image != null)
-                {
-                    using (var ms = new MemoryStream())
+                    if (n < 0 || n >= _collection.Cameras.Count())
                     {
-                        image.Save(ms, ImageFormat.Jpeg);
-                        ms.Position = 0;
-                        var pic = InputFile.FromStream(ms);
-
-                        await botClient.SendPhotoAsync(
+                        await botClient.SendTextMessageAsync(
                            chatId: chatId,
-                           photo: pic,
-                           caption: $"Camera[{n}]: {camera.Camera.Name}",
+                           text: $"No camera available: \"{n}\"",
                            cancellationToken: cancellationToken);
+
+                        continue;
+                    }
+
+                    var camera = _collection.Cameras.ToArray()[n];
+                    if (!camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+                    {
+                        await botClient.SendTextMessageAsync(
+                           chatId: chatId,
+                           text: $"No camera available: \"{n}\"",
+                           cancellationToken: cancellationToken);
+
+                        continue;
+                    }
+
+                    var image = await camera.Camera.GrabFrame(cancellationToken);
+                    if (image != null)
+                    {
+                        using (var ms = new MemoryStream())
+                        {
+                            image.Save(ms, ImageFormat.Jpeg);
+                            image.Dispose();
+                            ms.Position = 0;
+                            var pic = InputFile.FromStream(ms);
+
+                            await botClient.SendPhotoAsync(
+                               chatId: chatId,
+                               photo: pic,
+                               caption: $"Camera[{n}]: {camera.Camera.Name}",
+                               cancellationToken: cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        await botClient.SendTextMessageAsync(
+                          chatId: chatId,
+                          text: $"Can't get image from camera: \"{n}\"",
+                          cancellationToken: cancellationToken);
                     }
                 }
-                else
-                {
-                    await botClient.SendTextMessageAsync(
-                      chatId: chatId,
-                      text: $"Can't get image from camera: \"{n}\"",
-                      cancellationToken: cancellationToken);
-                }
-            }
+            });
         }
 
         private Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)

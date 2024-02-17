@@ -39,7 +39,7 @@ namespace CameraServer.Controllers
             if (_manager.HasAdminRole(user))
                 return BadRequest("Only allowed for Admin");
 
-            await _collection.RefreshCameraCollection();
+            await _collection.RefreshCameraCollection(CancellationToken.None);
             return Ok();
         }
 
@@ -94,23 +94,29 @@ namespace CameraServer.Controllers
                 xResolution, yResolution, format);
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
-
-            Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
-            using (var wr = new MjpegWriter(Response.Body))
+            try
             {
-                while (!Request.HttpContext.RequestAborted.IsCancellationRequested
-                       && !Response.HttpContext.RequestAborted.IsCancellationRequested
-                       && !HttpContext.RequestAborted.IsCancellationRequested
-                       && !cameraCancellationToken.IsCancellationRequested)
+                Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
+                using (var wr = new MjpegWriter(Response.Body))
                 {
-                    if (imageQueue.TryDequeue(out var image))
+                    while (!Request.HttpContext.RequestAborted.IsCancellationRequested
+                           && !Response.HttpContext.RequestAborted.IsCancellationRequested
+                           && !HttpContext.RequestAborted.IsCancellationRequested
+                           && !cameraCancellationToken.IsCancellationRequested)
                     {
-                        await wr.Write(image);
-                        image.Dispose();
-                    }
+                        if (imageQueue.TryDequeue(out var image))
+                        {
+                            await wr.Write(image);
+                            image.Dispose();
+                        }
 
-                    await Task.Delay(10, Response.HttpContext.RequestAborted);
+                        await Task.Delay(10, Response.HttpContext.RequestAborted);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
             }
 
             _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier);
@@ -121,7 +127,7 @@ namespace CameraServer.Controllers
 
             imageQueue.Clear();
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
 
             return Empty;
         }

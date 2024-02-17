@@ -1,10 +1,12 @@
-﻿namespace CameraServer.Auth;
+﻿using CameraServer.Settings;
+
+namespace CameraServer.Auth;
 
 public interface IUserManager
 {
-    public WebUser? GetUser(string name, string password);
+    public WebUserSettings? GetUser(string name, string password);
     public UserDto GetUserInfo(string name);
-    public IEnumerable<WebUser>? GetUsers();
+    public IEnumerable<WebUserSettings>? GetUsers();
     public bool HasAdminRole(ICameraUser webUser);
     public bool HasRole(ICameraUser webUser, Roles role);
 }

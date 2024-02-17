@@ -18,8 +18,8 @@ namespace CameraLib
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token);
         public Task<bool> Start(int x, int y, string format, CancellationToken token);
-        public void Stop(CancellationToken token);
-        public Task<Image?> GrabFrame(CancellationToken token);
-        public IAsyncEnumerable<Image> GrabFrames(CancellationToken token);
+        public Task Stop(CancellationToken token);
+        public Task<Bitmap?> GrabFrame(CancellationToken token);
+        public IAsyncEnumerable<Bitmap> GrabFrames(CancellationToken token);
     }
 }

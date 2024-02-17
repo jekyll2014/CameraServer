@@ -22,39 +22,49 @@ namespace CameraLib.FlashCap
 
                 return Path;
             }
-            set => _usbCameraName = value;
+            set
+            {
+                _usbCameraName = value;
+                Description.Name = value;
+            }
         }
         public string Path { get; }
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
-        public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+        public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
 
-        private CancellationTokenSource _cancellationTokenSource;
+        private CancellationTokenSource? _cancellationTokenSource;
 
-        private readonly CaptureDeviceDescriptor _cameraDescriptor;
+        private readonly CaptureDeviceDescriptor _usbCamera;
         private VideoCharacteristics? _cameraCharacteristics;
         private CaptureDevice? _captureDevice;
-        private string _usbCameraName = string.Empty;
-        private Image? _image = null;
-        private volatile bool imageGrabbed = false;
+        private string _usbCameraName;
+        private Bitmap? _image = null;
         private readonly object _getPictureThreadLock = new object();
+
+        private bool _disposedValue;
 
         public UsbCameraFc(string path, string name = "")
         {
             Path = path;
+            _usbCameraName = name;
+
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
                 .Where(d => d.Characteristics.Length >= 1);             // One or more valid video characteristics.
 
-            _cameraDescriptor = descriptors.FirstOrDefault(n => n.Identity?.ToString() == path);
+            _usbCamera = descriptors.FirstOrDefault(n => n.Identity?.ToString() == path)
+                         ?? throw new ArgumentException("Can not find camera", nameof(path));
 
-            if (_cameraDescriptor == null)
-                throw new ArgumentException("Can not find camera", nameof(path));
+            if (string.IsNullOrEmpty(_usbCameraName))
+                _usbCameraName = _usbCamera.Name;
+            if (string.IsNullOrEmpty(_usbCameraName))
+                _usbCameraName = path;
 
-            Description = new CameraDescription(CameraType.USB_FlashCap, Path, Name, new List<FrameFormat>());
+            Description = new CameraDescription(CameraType.USB_FC, Path, Name, GetAllAvailableResolution(_usbCamera));
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -67,19 +77,12 @@ namespace CameraLib.FlashCap
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
-                .Where(d => d.Characteristics.Length > 0);             // One or more valid video characteristics.
+                .Where(d => d.Characteristics.Length > 0 && d.DeviceType == DeviceTypes.DirectShow);             // One or more valid video characteristics.
 
             var result = new List<CameraDescription>();
             foreach (var camera in descriptors)
             {
-                var formats = new List<FrameFormat>();
-                foreach (var cameraCharacteristic in camera.Characteristics)
-                {
-                    formats.Add(new FrameFormat(cameraCharacteristic.Width,
-                        cameraCharacteristic.Height,
-                        cameraCharacteristic.PixelFormat.ToString(),
-                        (double)cameraCharacteristic.FramesPerSecond.Numerator / cameraCharacteristic.FramesPerSecond.Denominator));
-                }
+                var formats = GetAllAvailableResolution(camera);
 
                 result.Add(new CameraDescription(CameraType.USB, camera.Identity.ToString(), camera.Name, formats));
             }
@@ -87,102 +90,202 @@ namespace CameraLib.FlashCap
             return result;
         }
 
-        public async Task<bool> Start(int x, int y, string format, CancellationToken token)
+        private static IEnumerable<FrameFormat> GetAllAvailableResolution(CaptureDeviceDescriptor usbCamera)
         {
-            var characteristics = _cameraDescriptor.Characteristics.Where(n => n.PixelFormat != PixelFormats.Unknown).ToList();
-
-            if (!string.IsNullOrEmpty(format))
-                characteristics = _cameraDescriptor.Characteristics.Where(n => n.PixelFormat.ToString() == format).ToList();
-
-            if (x > 0 && y > 0)
+            var formats = new List<FrameFormat>();
+            foreach (var cameraCharacteristic in usbCamera.Characteristics)
             {
-                characteristics = characteristics.Where(n => n.Width == x && n.Height == y).ToList();
+                formats.Add(new FrameFormat(cameraCharacteristic.Width,
+                    cameraCharacteristic.Height,
+                    cameraCharacteristic.PixelFormat.ToString(),
+                    (double)cameraCharacteristic.FramesPerSecond.Numerator / cameraCharacteristic.FramesPerSecond.Denominator));
             }
 
-            _cameraCharacteristics = characteristics.FirstOrDefault();
-            if (_cameraCharacteristics == null)
-                return false;
+            return formats;
+        }
 
-            _captureDevice = await _cameraDescriptor.OpenAsync(_cameraCharacteristics, OnPixelBufferArrived, token);
-            await _captureDevice.StartAsync(token);
+        public async Task<bool> Start(int x, int y, string format, CancellationToken token)
+        {
+            if (!IsRunning)
+            {
+                _cameraCharacteristics = GetCaptureDevice(x, y, format);
+                if (_cameraCharacteristics == null)
+                    return false;
 
-            _cancellationTokenSource = new CancellationTokenSource();
-            IsRunning = true;
+                _captureDevice = await _usbCamera.OpenAsync(_cameraCharacteristics, OnPixelBufferArrived, token);
+                if (_captureDevice == null)
+                {
+                    IsRunning = false;
+
+                    return false;
+                }
+
+                _cancellationTokenSource = new CancellationTokenSource();
+                await _captureDevice.StartAsync(token);
+
+                IsRunning = true;
+            }
 
             return true;
         }
 
-        public void Stop()
+        private VideoCharacteristics? GetCaptureDevice(int x, int y, string format)
         {
-            Stop(CancellationToken.None);
-        }
+            var characteristics = _usbCamera.Characteristics
+                .Where(n => n.PixelFormat != PixelFormats.Unknown);
 
-        public void Stop(CancellationToken token)
-        {
-            _captureDevice?.StopAsync(token);
-            _captureDevice?.Dispose();
-            _captureDevice = null;
-            _cancellationTokenSource.Cancel();
-            IsRunning = false;
+            if (!string.IsNullOrEmpty(format))
+                characteristics = _usbCamera.Characteristics
+                    .Where(n => n.PixelFormat.ToString() == format);
+
+            if (x > 0 && y > 0)
+            {
+                characteristics = characteristics
+                    .Where(n => n.Width == x && n.Height == y).ToList();
+            }
+            else
+            {
+                characteristics = new List<VideoCharacteristics>(){
+                    characteristics.Aggregate((n, m) =>
+                    {
+                        if (n.Width * n.Height > m.Width * m.Height)
+                            return n;
+                        else
+                            return m;
+                    })};
+            }
+
+            return characteristics.FirstOrDefault();
         }
 
         private void OnPixelBufferArrived(PixelBufferScope bufferScope)
         {
-            var image = bufferScope.Buffer.CopyImage();
-            bufferScope.ReleaseNow();
+            if (Monitor.IsEntered(_getPictureThreadLock))
+            {
+                bufferScope.ReleaseNow();
 
-            // Convert to Stream (using FlashCap.Utilities)
+                return;
+            }
+
             lock (_getPictureThreadLock)
             {
-                // Decode image data to a bitmap:
                 _image?.Dispose();
-                var ms = new MemoryStream(image);
-                _image = Image.FromStream(ms);
-                if (_image != null)
-                    imageGrabbed = true;
+                try
+                {
+                    var image = bufferScope.Buffer.CopyImage();
+                    bufferScope.ReleaseNow();
+
+                    // Decode image data to a bitmap:
+                    using (var ms = new MemoryStream(image))
+                    {
+                        _image = new Bitmap(Image.FromStream(ms));
+                    }
+
+                    if (_image != null)
+                    {
+                        ImageCapturedEvent?.Invoke(this, _image);
+                    }
+                }
+                catch
+                {
+                    Stop();
+                }
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
             }
         }
 
-        public async Task<Image?> GrabFrame(CancellationToken token)
+        public async void Stop()
         {
-            while (_image == null && !token.IsCancellationRequested)
-                await Task.Delay(100, token);
-
-            return _image;
-
-            /*if (_cameraCharacteristics == null)
-                return null;
-
-            var imageData = await _cameraDescriptor.TakeOneShotAsync(
-                _cameraCharacteristics, token);
-
-            AnyBitmap image;
-            using (var ms = new MemoryStream(imageData))
-            {
-                image = new AnyBitmap(ms);
-            }
-
-            return image;*/
+            await Stop(CancellationToken.None);
         }
 
-        public async IAsyncEnumerable<Image> GrabFrames([EnumeratorCancellation] CancellationToken token)
+        public async Task Stop(CancellationToken token)
+        {
+            if (!IsRunning)
+                return;
+
+            if (_captureDevice != null)
+            {
+                await _captureDevice.StopAsync(token);
+                await _captureDevice.DisposeAsync();
+            }
+
+            _captureDevice = null;
+            if (_cancellationTokenSource != null)
+                await _cancellationTokenSource.CancelAsync();
+
+            _image?.Dispose();
+            IsRunning = false;
+        }
+
+        public async Task<Bitmap?> GrabFrame(CancellationToken token)
+        {
+            if (IsRunning)
+            {
+                while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+                lock (_getPictureThreadLock)
+                {
+                    return (Bitmap?)_image?.Clone();
+                }
+            }
+
+            Bitmap? image = null;
+            await Task.Run(async () =>
+            {
+                _cameraCharacteristics = GetCaptureDevice(0, 0, string.Empty);
+
+                if (_cameraCharacteristics == null)
+                    return;
+
+                var imageData = await _usbCamera.TakeOneShotAsync(_cameraCharacteristics, token);
+
+                using (var ms = new MemoryStream(imageData))
+                {
+                    image = new Bitmap(Image.FromStream(ms));
+                }
+
+            }, token);
+
+            return image;
+        }
+
+        public async IAsyncEnumerable<Bitmap> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                while (!imageGrabbed && !token.IsCancellationRequested)
-                    await Task.Delay(100, token);
-
-                imageGrabbed = false;
-                lock (_getPictureThreadLock)
+                var image = await GrabFrame(token);
+                if (image == null)
                 {
-                    yield return _image;
+                    await Task.Delay(100, token);
                 }
+                else
+                {
+                    yield return image;
+                }
+            }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (disposing)
+                {
+                    Stop();
+                    _cancellationTokenSource?.Dispose();
+                    _captureDevice?.Dispose();
+                    _image?.Dispose();
+                }
+
+                _disposedValue = true;
             }
         }
 
         public void Dispose()
         {
-            throw new NotImplementedException();
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            //GC.SuppressFinalize(this);
         }
     }
 }

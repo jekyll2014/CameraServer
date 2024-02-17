@@ -34,7 +34,7 @@
                             <li><a asp-controller="Home" asp-action="Index">Cameras</a></li>
                             @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity.Name??"")))
                             {
-                                <li><a asp-controller="Home" asp-action="ConfidentialData">WebUser data</a></li>
+                                <li><a asp-controller="Home" asp-action="ConfidentialData">WebUserSettings data</a></li>
                             }
                         }
                     </ul>

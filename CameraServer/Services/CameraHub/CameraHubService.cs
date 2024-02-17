@@ -1,4 +1,5 @@
 ﻿using CameraLib;
+using CameraLib.FlashCap;
 using CameraLib.IP;
 using CameraLib.USB;
 
@@ -7,8 +8,6 @@ using CameraServer.Settings;
 
 using System.Collections.Concurrent;
 using System.Drawing;
-
-using CameraType = CameraServer.Settings.CameraType;
 
 namespace CameraServer.Services.CameraHub
 {
@@ -25,11 +24,12 @@ namespace CameraServer.Services.CameraHub
         {
             _cameraSettings = configuration.GetSection(CameraSettingsSection).Get<CameraSettings>() ?? new CameraSettings();
             _maxBuffer = _cameraSettings.MaxFrameBuffer;
-            RefreshCameraCollection().Wait();
+            RefreshCameraCollection(CancellationToken.None).Wait();
         }
 
-        public async Task RefreshCameraCollection()
+        public async Task RefreshCameraCollection(CancellationToken cancellationToken)
         {
+            // remove predefined cameras from collection
             var cameras = _cameras.AsQueryable().ToArray();
             for (var i = 0; i < cameras.Length; i++)
             {
@@ -39,6 +39,11 @@ namespace CameraServer.Services.CameraHub
                 }
             }
 
+            List<CameraDescription> ipCameras = [];
+            if (_cameraSettings.AutoSearchIp)
+                ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_cameraSettings.DiscoveryTimeOut, cancellationToken);
+
+            // add custom cameras again
             foreach (var c in _cameraSettings.CustomCameras)
             {
                 ServerCamera serverCamera;
@@ -46,6 +51,8 @@ namespace CameraServer.Services.CameraHub
                     serverCamera = new ServerCamera(new IpCamera(c.Path, c.Name), c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB)
                     serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
+                else if (c.Type == CameraType.USB_FC)
+                    serverCamera = new ServerCamera(new UsbCameraFc(c.Path, c.Name), c.AllowedRoles, true);
                 else
                     continue;
 
@@ -58,6 +65,7 @@ namespace CameraServer.Services.CameraHub
                 foreach (var c in usbCameras)
                     Console.WriteLine($"USB-Camera: {c.Name} - [{c.Path}]");
 
+                // add newly discovered cameras
                 foreach (var c in usbCameras
                              .Where(c => _cameras
                                  .All(n => n.Key.Camera.Path != c.Path)))
@@ -66,6 +74,7 @@ namespace CameraServer.Services.CameraHub
                     _cameras.Add(serverCamera, []);
                 }
 
+                // remove cameras not found by search (to not lose connection if any clients are connected)
                 foreach (var c in _cameras
                              .Where(n => n.Key.Camera is UsbCamera && !n.Key.Custom)
                              .Where(c => !usbCameras
@@ -75,12 +84,37 @@ namespace CameraServer.Services.CameraHub
                 }
             }
 
+            if (_cameraSettings.AutoSearchUsbFC)
+            {
+                var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
+                foreach (var c in usbFcCameras)
+                    Console.WriteLine($"USB-Camera: {c.Name} - [{c.Path}]");
+
+                // add newly discovered cameras
+                foreach (var c in usbFcCameras
+                             .Where(c => _cameras
+                                 .All(n => n.Key.Camera.Path != c.Path)))
+                {
+                    var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
+                    _cameras.Add(serverCamera, []);
+                }
+
+                // remove cameras not found by search (to not lose connection if any clients are connected)
+                foreach (var c in _cameras
+                             .Where(n => n.Key.Camera is UsbCameraFc && !n.Key.Custom)
+                             .Where(c => !usbFcCameras
+                                 .Exists(n => n.Path == c.Key.Camera.Path)))
+                {
+                    _cameras.Remove(c.Key);
+                }
+            }
+
             if (_cameraSettings.AutoSearchIp)
             {
-                var ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(1000, CancellationToken.None);
                 foreach (var c in ipCameras)
                     Console.WriteLine($"IP-Camera: {c.Name} - [{c.Path}]");
 
+                // add newly discovered cameras
                 foreach (var c in ipCameras
                              .Where(c => _cameras
                                  .All(n => n.Key.Camera.Path != c.Path)))
@@ -89,6 +123,7 @@ namespace CameraServer.Services.CameraHub
                     _cameras.Add(serverCamera, []);
                 }
 
+                // remove cameras not found by search (to not lose connection if any clients are connected)
                 foreach (var c in _cameras
                              .Where(c => c.Key.Camera is IpCamera && !c.Key.Custom)
                              .Where(c => !ipCameras
@@ -99,9 +134,15 @@ namespace CameraServer.Services.CameraHub
             }
         }
 
-        public CancellationToken HookCamera(string cameraId, string userId, ConcurrentQueue<Bitmap> srcImageQueue, int xResolution = 0, int yResolution = 0, string format = "")
+        public CancellationToken HookCamera(
+            string cameraId,
+            string userId,
+            ConcurrentQueue<Bitmap> srcImageQueue,
+            int xResolution = 0,
+            int yResolution = 0,
+            string format = "")
         {
-            if (!_cameras.Any(n => n.Key.Camera.Path == cameraId))
+            if (_cameras.All(n => n.Key.Camera.Path != cameraId))
                 return CancellationToken.None;
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Path == cameraId);
@@ -119,7 +160,7 @@ namespace CameraServer.Services.CameraHub
 
         public bool UnHookCamera(string cameraId, string userId)
         {
-            if (!_cameras.Any(n => n.Key.Camera.Path == cameraId))
+            if (_cameras.All(n => n.Key.Camera.Path != cameraId))
                 return false;
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Path == cameraId);

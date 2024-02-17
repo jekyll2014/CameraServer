@@ -1,4 +1,6 @@
-﻿namespace CameraServer.Auth;
+﻿using CameraServer.Settings;
+
+namespace CameraServer.Auth;
 
 public class UserManager : IUserManager
 {
@@ -10,7 +12,7 @@ public class UserManager : IUserManager
         _configuration = configuration;
     }
 
-    public WebUser? GetUser(string name, string password)
+    public WebUserSettings? GetUser(string name, string password)
     {
         return GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
     }
@@ -24,9 +26,9 @@ public class UserManager : IUserManager
         return new UserDto() { Login = user.Login, Roles = user.Roles };
     }
 
-    public IEnumerable<WebUser>? GetUsers()
+    public IEnumerable<WebUserSettings>? GetUsers()
     {
-        return _configuration.GetSection(UsersConfigSection).Get<List<WebUser>>();
+        return _configuration.GetSection(UsersConfigSection).Get<List<WebUserSettings>>();
     }
 
     public bool HasAdminRole(ICameraUser webUser)

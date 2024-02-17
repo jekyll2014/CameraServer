@@ -47,7 +47,7 @@ namespace CameraLib.USB
         private VideoCapture? _captureDevice;
         private string _usbCameraName;
         private readonly Mat _frame = new Mat();
-        private Image? _image;
+        private Bitmap? _image;
 
         private bool _disposedValue;
 
@@ -56,10 +56,8 @@ namespace CameraLib.USB
             Path = path;
             _usbCameraName = name;
             var devices = DsDevice.GetDevicesOfCat(FilterCategory.VideoInputDevice) ?? Array.Empty<DsDevice>();
-            _usbCamera = devices.FirstOrDefault(n => n.DevicePath == path);
-
-            if (_usbCamera == null)
-                throw new ArgumentException("Can not find camera", nameof(path));
+            _usbCamera = devices.FirstOrDefault(n => n.DevicePath == path)
+                         ?? throw new ArgumentException("Can not find camera", nameof(path));
 
             if (string.IsNullOrEmpty(_usbCameraName))
                 _usbCameraName = _usbCamera.Name;
@@ -185,45 +183,14 @@ namespace CameraLib.USB
                     }
                 }
 
+                _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _captureDevice.Start();
 
-                _cancellationTokenSource = new CancellationTokenSource();
                 IsRunning = true;
             }
 
             return true;
-        }
-
-        private void ImageCaptured(object sender, EventArgs args)
-        {
-            if (Monitor.IsEntered(_getPictureThreadLock))
-            {
-                return;
-            }
-
-            lock (_getPictureThreadLock)
-            {
-                try
-                {
-                    if (!(_captureDevice?.Grab() ?? false))
-                        return;
-
-                    if (!_captureDevice.Retrieve(_frame))
-                        return;
-
-                    var bitmap = _frame.ToBitmap();
-                    if (bitmap != null)
-                    {
-                        ImageCapturedEvent?.Invoke(this, bitmap);
-                        bitmap.Dispose();
-                    }
-                }
-                catch
-                {
-                    Stop();
-                }
-            }
         }
 
         private VideoCapture? GetCaptureDevice()
@@ -237,6 +204,37 @@ namespace CameraLib.USB
             return new VideoCapture(camNumber, CaptureSource);
         }
 
+        private void ImageCaptured(object sender, EventArgs args)
+        {
+            if (Monitor.IsEntered(_getPictureThreadLock))
+            {
+                return;
+            }
+
+            lock (_getPictureThreadLock)
+            {
+                _image?.Dispose();
+                try
+                {
+                    if (!(_captureDevice?.Grab() ?? false))
+                        return;
+
+                    if (!_captureDevice.Retrieve(_frame))
+                        return;
+
+                    _image = _frame.ToBitmap();
+                    if (_image != null)
+                    {
+                        ImageCapturedEvent?.Invoke(this, _image);
+                    }
+                }
+                catch
+                {
+                    Stop();
+                }
+            }
+        }
+
         public void Stop()
         {
             if (!IsRunning)
@@ -246,48 +244,45 @@ namespace CameraLib.USB
             _captureDevice?.Dispose();
             _captureDevice = null;
             _cancellationTokenSource?.Cancel();
+            _image?.Dispose();
             IsRunning = false;
         }
 
-        public void Stop(CancellationToken token)
+        public async Task Stop(CancellationToken token)
         {
             Stop();
         }
 
-        public async Task<Image?> GrabFrame(CancellationToken token)
+        public async Task<Bitmap?> GrabFrame(CancellationToken token)
         {
-            _image?.Dispose();
-            await Task.Run(() =>
+            if (IsRunning)
             {
-                if (IsRunning)
-                    _captureDevice?.Stop();
-                else
+                while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+                lock (_getPictureThreadLock)
+                {
+                    return (Bitmap?)_image?.Clone();
+                }
+            }
+
+            Bitmap? image = null;
+            await Task.Run(() =>
                 {
                     _captureDevice = GetCaptureDevice();
                     if (_captureDevice == null)
                         return;
-                }
 
-                if ((_captureDevice?.Grab() ?? false) && _captureDevice.Retrieve(_frame))
-                {
-                    _image = _frame.ToBitmap();
-                }
+                    if (_captureDevice.Grab() && _captureDevice.Retrieve(_frame))
+                    {
+                        image = _frame.ToBitmap();
+                    }
+                    _captureDevice.Stop();
+                    _captureDevice.Dispose();
+                }, token);
 
-                if (IsRunning)
-                {
-                    _captureDevice?.Start();
-                }
-                else
-                {
-                    _captureDevice?.Stop();
-                    _captureDevice?.Dispose();
-                }
-            }, token);
-
-            return _image;
+            return image;
         }
 
-        public async IAsyncEnumerable<Image> GrabFrames([EnumeratorCancellation] CancellationToken token)
+        public async IAsyncEnumerable<Bitmap> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
@@ -310,10 +305,11 @@ namespace CameraLib.USB
                 if (disposing)
                 {
                     Stop();
+                    _usbCamera?.Dispose();
+                    _captureDevice?.Dispose();
                     _cancellationTokenSource?.Dispose();
                     _frame.Dispose();
-                    _captureDevice?.Dispose();
-                    _usbCamera?.Dispose();
+                    _image?.Dispose();
                 }
 
                 _disposedValue = true;
@@ -324,7 +320,7 @@ namespace CameraLib.USB
         {
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
             Dispose(disposing: true);
-            GC.SuppressFinalize(this);
+            //GC.SuppressFinalize(this);
         }
     }
 }

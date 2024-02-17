@@ -30,7 +30,7 @@ namespace CameraServer.Controllers
         public async Task<IActionResult> RefreshCameraList()
         {
             if (HttpContext.User.IsInRole(Roles.Admin.ToString()))
-                await _collection.RefreshCameraCollection();
+                await _collection.RefreshCameraCollection(CancellationToken.None);
 
             return RedirectToAction("Index");
         }
