@@ -6,7 +6,7 @@ Just unpack, adjust the configuration and run.
 
 ## Features:
  - USB cameras autodetect
- - IP (ONVIF) cameras basic autodetect
+ - IP (ONVIF) cameras autodetect
  - Role-based authorisation (Admin. User, Guest) and camera access limitation
  - Web-based UI to access video streams
  - Telegram bot integration to see camera snapshots
@@ -62,8 +62,9 @@ But you may want to empty it to restrict unauthorized access to all your cameras
 ### Camera definitions
 The basic idea is to find all the available cameras automatically. Just allow it with the following parameters in the "CameraSettings" section:
 ```json
-"AutoSearchIp": true
-"AutoSearchUsb": true
+"AutoSearchIp": true,
+"AutoSearchUsb": true,
+"AutoSearchUsbFC": true,
 ```
 
 You also need to set the default role to allow access to the cameras found:
@@ -83,24 +84,35 @@ Every camera can be set up to allow certain roles to see the image. This can be 
   },
 ]
 ```
-There are 2 basic camera types now:
+There are 3 basic camera types now:
 - USB
+- USB_FC
 - IP
+
+USB_FC and USB use the same USB cameras so it's not recommended to use them simultaneously. Try them one by one and leave the one you prefer (due to memory management, image quality, etc.).
 
 You can see the path to the USB camera in the console log of the program at the start-up. Look for the:
 ```
 USB-Camera: USB Camera - [@device:pnp:\\?\usb#vid_05a3&pid_9422&mi_00#8&4573432&0&0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\global]
-IP-Camera: 192.168.102.126 - [rtsp://192.168.102.126:554/user=admin_password=_channel=1_stream=0.sdp?real_stream]
 ```
 
-For the IP cameras you can also look at the console log or scan your network for ONVIF cameras, you can use [ONVIF Device Manager](https://sourceforge.net/projects/onvifdm/files/) which is much more capable.
-Just find your cameras and put the correct rtsp:// link into the appsettings.json
+For the IP cameras, you can also look at the console log:
+```
+IP-Camera: 192.168.102.126 - [rtsp://192.168.102.126:554/user=admin_password=_channel=1_stream=0.sdp?real_stream]
+```
+...or scan your network for ONVIF cameras using an external tool. Try [ONVIF Device Manager](https://sourceforge.net/projects/onvifdm/files/), which is much more capable.
+Just find your cameras and put the correct "rtsp://***" link into the appsettings.json
 
 Be careful setting the "AllowedRoles" for the cameras to not compromise your system.
 
 The "MaxFrameBuffer" setting sets the maximum number of frames to keep for each client. In case the client connection is too slow (or disconnected) the buffer will be full and the connection reset. The default setting is:
 ```json
 "MaxFrameBuffer": 10
+```
+
+The "DiscoveryTimeOut" settings define the IP camera query delay in ms.
+```json
+"DiscoveryTimeOut": 1000,
 ```
 
 ### System settings
