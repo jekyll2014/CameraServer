@@ -9,9 +9,12 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+
+using IPAddress = System.Net.IPAddress;
 
 namespace CameraLib.IP
 {
@@ -51,7 +54,7 @@ namespace CameraLib.IP
 
         private bool _disposedValue;
 
-        public IpCamera(string path, string name = "", int discoveryTimeout = 1000)
+        public IpCamera(string path, string name = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
             _discoveryTimeout = discoveryTimeout;
             Path = path;
@@ -63,15 +66,21 @@ namespace CameraLib.IP
                 _lastCamerasFound = DiscoverOnvifCamerasAsync(_discoveryTimeout, CancellationToken.None).Result;
 
             var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? [];
-            if (!frameFormats.Any())
+
+            if (frameFormats.Count == 0 || forceCameraConnect)
             {
-                var image = GrabFrame(CancellationToken.None).Result;
-                if (image != null)
+                var cameraUri = new Uri(Path);
+                if (PingAddress(cameraUri.Host).Result)
                 {
-                    frameFormats.Add(new FrameFormat(image.Width, image.Height, image.RawFormat.ToString()));
-                    image.Dispose();
+                    var image = GrabFrame(CancellationToken.None).Result;
+                    if (image != null)
+                    {
+                        frameFormats.Add(new FrameFormat(image.Width, image.Height, image.RawFormat.ToString()));
+                        image.Dispose();
+                    }
                 }
             }
+
             Description = new CameraDescription(CameraType.IP, Path, _ipCameraName, frameFormats);
         }
 
@@ -149,6 +158,20 @@ namespace CameraLib.IP
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
             return DiscoverOnvifCamerasAsync(discoveryTimeout, token).Result;
+        }
+
+        private async Task<bool> PingAddress(string host, int pingTimeout = 3000)
+        {
+            if (!IPAddress.TryParse(host, out var destIp))
+                return false;
+
+            PingReply pingResultTask;
+            using (var ping = new Ping())
+            {
+                pingResultTask = await ping.SendPingAsync(destIp, pingTimeout).ConfigureAwait(true);
+            }
+
+            return pingResultTask.Status == IPStatus.Success;
         }
 
         public async Task<bool> Start(int x, int y, string format, CancellationToken token)

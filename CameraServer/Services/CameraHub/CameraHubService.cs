@@ -48,7 +48,7 @@ namespace CameraServer.Services.CameraHub
             {
                 ServerCamera serverCamera;
                 if (c.Type == CameraType.IP)
-                    serverCamera = new ServerCamera(new IpCamera(c.Path, c.Name), c.AllowedRoles, true);
+                    serverCamera = new ServerCamera(new IpCamera(c.Path, c.Name, _cameraSettings.DiscoveryTimeOut, _cameraSettings.ForceCameraConnect), c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB)
                     serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB_FC)

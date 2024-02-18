@@ -109,6 +109,14 @@ namespace CameraServer.Services.Telegram
 
             Task.Run(async () =>
             {
+                // search for the available cameras
+                if (messageText == RefreshCommand && currentTelegramUser.Roles.Contains(Roles.Admin))
+                {
+                    await _collection.RefreshCameraCollection(cancellationToken);
+
+                    messageText = ListCommand;
+                }
+
                 // return cameras list as virtual keyboard
                 if (messageText == ListCommand)
                 {
@@ -152,14 +160,6 @@ namespace CameraServer.Services.Telegram
 
                     _botClient?.SendTextMessageAsync(chatId, "Camera list", null, parseMode: ParseMode.Html,
                         replyMarkup: inline, cancellationToken: cancellationToken);
-
-                    return;
-                }
-
-                // search for the available cameras
-                if (messageText == RefreshCommand && currentTelegramUser.Roles.Contains(Roles.Admin))
-                {
-                    await _collection.RefreshCameraCollection(cancellationToken);
 
                     return;
                 }
