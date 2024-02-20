@@ -158,8 +158,6 @@ namespace CameraLib.USB
 
                 if (_captureDevice == null)
                 {
-                    IsRunning = false;
-
                     return false;
                 }
 
@@ -211,11 +209,11 @@ namespace CameraLib.USB
                 return;
             }
 
-            lock (_getPictureThreadLock)
+            try
             {
-                _image?.Dispose();
-                try
+                lock (_getPictureThreadLock)
                 {
+                    _image?.Dispose();
                     if (!(_captureDevice?.Grab() ?? false))
                         return;
 
@@ -228,10 +226,10 @@ namespace CameraLib.USB
                         ImageCapturedEvent?.Invoke(this, _image);
                     }
                 }
-                catch
-                {
-                    Stop();
-                }
+            }
+            catch
+            {
+                Stop();
             }
         }
 
@@ -240,12 +238,15 @@ namespace CameraLib.USB
             if (!IsRunning)
                 return;
 
-            _cancellationTokenSource?.Cancel();
-            _captureDevice?.Stop();
-            _captureDevice?.Dispose();
-            _captureDevice = null;
-            _image?.Dispose();
-            IsRunning = false;
+            lock (_getPictureThreadLock)
+            {
+                _cancellationTokenSource?.Cancel();
+                _captureDevice?.Stop();
+                _captureDevice?.Dispose();
+                _captureDevice = null;
+                _image?.Dispose();
+                IsRunning = false;
+            }
         }
 
         public async Task Stop(CancellationToken token)
@@ -257,7 +258,8 @@ namespace CameraLib.USB
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                    await Task.Delay(10, token);
 
                 lock (_getPictureThreadLock)
                 {

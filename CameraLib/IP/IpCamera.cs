@@ -54,10 +54,14 @@ namespace CameraLib.IP
 
         private bool _disposedValue;
 
-        public IpCamera(string path, string name = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
+        public IpCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
             _discoveryTimeout = discoveryTimeout;
             Path = path;
+
+            if (authenicationType == AuthType.Plain)
+                Path = string.Format(Path, login, password);
+
             _ipCameraName = string.IsNullOrEmpty(name)
                 ? Dns.GetHostAddresses(new Uri(Path).Host).FirstOrDefault()?.ToString() ?? Path
                 : name;
@@ -94,7 +98,7 @@ namespace CameraLib.IP
 
             if (!devices.Any())
             {
-                Console.WriteLine("No cameras found");
+                //Console.WriteLine("No cameras found");
                 return result;
             }
             Console.WriteLine("Found {0} cameras", devices.Length);
@@ -186,13 +190,12 @@ namespace CameraLib.IP
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
+
                     return false;
                 }
 
                 if (_captureDevice == null)
                 {
-                    IsRunning = false;
-
                     return false;
                 }
 
@@ -213,11 +216,11 @@ namespace CameraLib.IP
                 return;
             }
 
-            lock (_getPictureThreadLock)
+            try
             {
-                _image?.Dispose();
-                try
+                lock (_getPictureThreadLock)
                 {
+                    _image?.Dispose();
                     if (!(_captureDevice?.Grab() ?? false))
                         return;
 
@@ -230,10 +233,10 @@ namespace CameraLib.IP
                         ImageCapturedEvent?.Invoke(this, _image);
                     }
                 }
-                catch
-                {
-                    Stop();
-                }
+            }
+            catch
+            {
+                Stop();
             }
         }
 
@@ -242,12 +245,15 @@ namespace CameraLib.IP
             if (!IsRunning)
                 return;
 
-            _cancellationTokenSource?.Cancel();
-            _captureDevice?.Stop();
-            _captureDevice?.Dispose();
-            _captureDevice = null;
-            _image?.Dispose();
-            IsRunning = false;
+            lock (_getPictureThreadLock)
+            {
+                _cancellationTokenSource?.Cancel();
+                _captureDevice?.Stop();
+                _captureDevice?.Dispose();
+                _captureDevice = null;
+                _image?.Dispose();
+                IsRunning = false;
+            }
         }
 
         public async Task Stop(CancellationToken token)
@@ -259,7 +265,8 @@ namespace CameraLib.IP
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                    await Task.Delay(10, token);
 
                 lock (_getPictureThreadLock)
                 {
@@ -274,10 +281,14 @@ namespace CameraLib.IP
                 if (_captureDevice == null)
                     return;
 
-                if (_captureDevice.Grab() && _captureDevice.Retrieve(_frame))
+                try
                 {
-                    image = _frame.ToBitmap();
+                    if (_captureDevice.Grab() && _captureDevice.Retrieve(_frame))
+                    {
+                        image = _frame.ToBitmap();
+                    }
                 }
+                catch { }
 
                 _captureDevice.Stop();
                 _captureDevice.Dispose();
@@ -311,7 +322,7 @@ namespace CameraLib.IP
                 if (disposing)
                 {
                     Stop();
-                    _cancellationTokenSource.Dispose();
+                    _cancellationTokenSource?.Dispose();
                     _frame.Dispose();
                     _image?.Dispose();
                 }

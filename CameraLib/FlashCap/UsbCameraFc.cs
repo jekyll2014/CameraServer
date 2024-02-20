@@ -222,7 +222,9 @@ namespace CameraLib.FlashCap
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested) ;
+                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                    await Task.Delay(10, token);
+
                 lock (_getPictureThreadLock)
                 {
                     return (Bitmap?)_image?.Clone();
