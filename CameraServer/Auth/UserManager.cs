@@ -12,7 +12,7 @@ public class UserManager : IUserManager
         _configuration = configuration;
     }
 
-    public WebUserSettings? GetUser(string name, string password)
+    public WebUser? GetUser(string name, string password)
     {
         return GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
     }
@@ -26,9 +26,9 @@ public class UserManager : IUserManager
         return new UserDto() { Login = user.Login, Roles = user.Roles };
     }
 
-    public IEnumerable<WebUserSettings>? GetUsers()
+    public IEnumerable<WebUser>? GetUsers()
     {
-        return _configuration.GetSection(UsersConfigSection).Get<List<WebUserSettings>>();
+        return _configuration.GetSection(UsersConfigSection).Get<List<WebUser>>();
     }
 
     public bool HasAdminRole(ICameraUser webUser)

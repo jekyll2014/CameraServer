@@ -1,4 +1,5 @@
 ﻿using CameraLib;
+using CameraLib.IP;
 
 using CameraServer.Auth;
 
@@ -10,4 +11,7 @@ public class CustomCamera
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public List<Roles> AllowedRoles { get; set; } = [];
+    public AuthType AuthenicationType { get; set; } = AuthType.None;
+    public string Login { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
 }

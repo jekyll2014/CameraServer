@@ -3,6 +3,7 @@ using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 using CameraServer.StreamHelpers;
 
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,7 +17,9 @@ using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
 namespace CameraServer.Controllers
 {
-    [Authorize]
+    //[Authorize]
+    [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = Program.BasicAuthenticationSchemeName)]
     [ApiController]
     [Route("[controller]")]
     public class CameraController : ControllerBase

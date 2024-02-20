@@ -1,15 +1,17 @@
 using CameraServer.Auth;
+using CameraServer.Auth.BasicAuth;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.Telegram;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.OpenApi.Models;
 
 namespace CameraServer
 {
     public class Program
     {
         public const string ExpireTimeSection = "CookieExpireTimeMinutes";
+        public const string BasicAuthenticationSchemeName = "BasicAuthentication";
 
         public static void Main(string[] args)
         {
@@ -20,6 +22,10 @@ namespace CameraServer
             builder.Services.AddSingleton<CameraHubService, CameraHubService>();
             builder.Services.AddHostedService<TelegramService>();
             builder.Services.AddControllersWithViews().AddControllersAsServices();
+
+            builder.Services.AddAuthentication(BasicAuthenticationSchemeName)
+                .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(BasicAuthenticationSchemeName, null);
+
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>
                 {
@@ -38,8 +44,8 @@ namespace CameraServer
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(options =>
             {
-                options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
-                /*options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
+                /*options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
+                options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
                 {
                     Login = "Authorization",
                     Type = SecuritySchemeType.Http,

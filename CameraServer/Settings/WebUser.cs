@@ -1,9 +1,10 @@
-﻿using System.ComponentModel.DataAnnotations;
-using CameraServer.Auth;
+﻿using CameraServer.Auth;
+
+using System.ComponentModel.DataAnnotations;
 
 namespace CameraServer.Settings
 {
-    public class WebUserSettings : ICameraUser
+    public class WebUser : ICameraUser
     {
         [Required]
         public List<Roles> Roles { get; set; } = [];

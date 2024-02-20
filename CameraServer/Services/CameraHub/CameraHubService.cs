@@ -48,7 +48,25 @@ namespace CameraServer.Services.CameraHub
             {
                 ServerCamera serverCamera;
                 if (c.Type == CameraType.IP)
-                    serverCamera = new ServerCamera(new IpCamera(c.Path, c.Name, _cameraSettings.DiscoveryTimeOut, _cameraSettings.ForceCameraConnect), c.AllowedRoles, true);
+                    serverCamera = new ServerCamera(new IpCamera(
+                            path: c.Path,
+                            name: c.Name,
+                            authenicationType: c.AuthenicationType,
+                            login: c.Login,
+                            password: c.Password,
+                            discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
+                            forceCameraConnect: _cameraSettings.ForceCameraConnect),
+                        c.AllowedRoles, true);
+                else if (c.Type == CameraType.MJPEG)
+                    serverCamera = new ServerCamera(new MjpegCamera(
+                            path: c.Path,
+                            name: c.Name,
+                            authenicationType: c.AuthenicationType,
+                            login: c.Login,
+                            password: c.Password,
+                            discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
+                            forceCameraConnect: _cameraSettings.ForceCameraConnect),
+                        c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB)
                     serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB_FC)
@@ -165,6 +183,7 @@ namespace CameraServer.Services.CameraHub
                 return false;
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Path == cameraId);
+
             camera.Value.Remove(cameraId + userId);
             if (camera.Value.Count <= 0)
             {

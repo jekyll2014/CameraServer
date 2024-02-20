@@ -90,6 +90,7 @@ namespace CameraServer.Controllers
             return View(loginModel);
         }
 
+        //[HttpPost]
         public async Task<IActionResult> LogOut()
         {
             await HttpContext.SignOutAsync();
