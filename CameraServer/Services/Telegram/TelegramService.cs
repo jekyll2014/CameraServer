@@ -31,7 +31,7 @@ namespace CameraServer.Services.Telegram
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            if (_settings == null)
+            if (_settings == null || string.IsNullOrEmpty(_settings.Token))
             {
                 return;
             }
@@ -41,8 +41,16 @@ namespace CameraServer.Services.Telegram
             // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
             ReceiverOptions receiverOptions = new()
             {
-                AllowedUpdates = [] // receive all update types except ChatMember related updates
+                AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery] // receive all update types except ChatMember related updates
             };
+
+            if (!await _botClient.TestApiAsync(cancellationToken))
+            {
+                Console.WriteLine($"Telegram connection failed.");
+                _botClient = null;
+
+                return;
+            }
 
             _botClient.StartReceiving(
                 updateHandler: HandleUpdateAsync,
@@ -51,8 +59,19 @@ namespace CameraServer.Services.Telegram
                 cancellationToken: _cts.Token
             );
 
-            var me = await _botClient.GetMeAsync(cancellationToken);
-            Console.WriteLine($"Start listening for @{me.Username}");
+            try
+            {
+                var me = await _botClient.GetMeAsync(cancellationToken);
+                Console.WriteLine($"Start listening for @{me.Username}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Telegram connection failed: {ex}");
+                if (ex is ApiRequestException apiEx && apiEx.ErrorCode == 401)
+                {
+                    Console.WriteLine("Check your \"Telegram\": { \"Token\" } .");
+                }
+            }
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
@@ -256,6 +275,7 @@ namespace CameraServer.Services.Telegram
                         _cts.Cancel();
 
                     _botClient?.CloseAsync();
+                    _botClient = null;
                     _cts?.Dispose();
                 }
 
