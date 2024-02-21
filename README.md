@@ -7,7 +7,9 @@ Just unpack, adjust the configuration and run.
 ## Features:
  - USB cameras autodetect
  - IP (ONVIF) cameras autodetect
+ - MJPEG camera source support (plain and basic authentication)
  - Role-based authorisation (Admin. User, Guest) and camera access limitation
+ - Basic authorisation option to enable integrating the streams into 3rd party systems
  - Web-based UI to access video streams
  - Telegram bot integration to see camera snapshots
  - Flexible configuration parameters via appsettings.json file
@@ -79,8 +81,20 @@ Every camera can be set up to allow certain roles to see the image. This can be 
   {
     "Type": "IP",
     "Name": "*VStarCam01",
-    "Path": "rtsp://admin:@192.168.1.50:10554/tcp/av0_0",
+    "Path": "rtsp://{0}:{1}@192.168.1.50:10554/tcp/av0_0",
+    "AuthenicationType": "Plain",
+    "Login": "admin",
+    "Password": "",
     "AllowedRoles": [ "Admin", "User", "Guest" ]
+  },
+  {
+    "Type": "MJPEG",
+    "Name": "*WebCamera-Local",
+    "Path": "http://localhost:808/Camera/GetVideoContent?cameraNumber=2&xResolution=1920&yResolution=1080",
+    "AuthenicationType": "Basic",
+    "Login": "Admin",
+    "Password": "",
+    "AllowedRoles": [ "User", "Admin", "Guest" ]
   },
 ]
 ```
@@ -88,6 +102,7 @@ There are 3 basic camera types now:
 - USB
 - USB_FC
 - IP
+- MJPEG
 
 USB_FC and USB use the same USB cameras so it's not recommended to use them simultaneously. Try them one by one and leave the one you prefer (due to memory management, image quality, etc.).
 
@@ -102,6 +117,13 @@ IP-Camera: 192.168.102.126 - [rtsp://192.168.102.126:554/user=admin_password=_ch
 ```
 ...or scan your network for ONVIF cameras using an external tool. Try [ONVIF Device Manager](https://sourceforge.net/projects/onvifdm/files/), which is much more capable.
 Just find your cameras and put the correct "rtsp://***" link into the appsettings.json
+
+For the MJPEG cameras, you should know exactly the path, authentication type and login/password. There is no reasonable way to detect it automatically.
+
+Implemented authorisation types:
+- None - login/password ignored even if there is anything.
+- Plain - login and password are inserted into the URL string. {0} stands for login. {1} stands for password
+- Basic - login and password are passed in the body of the request.
 
 Be careful setting the "AllowedRoles" for the cameras to not compromise your system.
 
@@ -122,8 +144,11 @@ The last is the system settings:
 
 "CookieExpireTimeMinutes": 60 - authentication cookie expiry time. Just note that a very long cookie can compromise your system in case your cookies are stolen.
 
+"AllowBasicAuthentication": true - allow "Basic" authentication for video streams. Note that it is only safe to use "Basic" authentication via https connection.
+
 ## Planned features:
 - security improvements (limit unsuccessful authentication retries)
+- plain authentication option
 - Serilog logging
 - Web-based configuration interface
 - Telegram video calls integration
