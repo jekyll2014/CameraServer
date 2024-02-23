@@ -76,9 +76,40 @@ namespace CameraServer.Controllers
         }
 
         [HttpGet]
+        [Route("GetVideoContentByName")]
+        [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
+        public async Task<IActionResult> GetVideoContentByName(string cameraName, int xResolution = 0, int yResolution = 0, string format = "")
+        {
+            if (string.IsNullOrEmpty(cameraName))
+                return BadRequest("Empty camera name");
+
+            var cameras = _collection.Cameras.ToArray();
+            var cameraNumber = -1;
+            for (var i = 0; i < cameras.Length; i++)
+            {
+                if (cameras[i].Camera.Name == cameraName)
+                {
+                    cameraNumber = i;
+                    break;
+                }
+            }
+
+            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
+
+            return Empty;
+        }
+
+        [HttpGet]
         [Route("GetVideoContent")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
         public async Task<IActionResult> GetVideoContent(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
+        {
+            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
+
+            return Empty;
+        }
+
+        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
         {
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");

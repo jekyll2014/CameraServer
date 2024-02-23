@@ -18,7 +18,7 @@ namespace CameraServer.Services.Telegram
         private const string RefreshCommand = "RefreshCameraList";
         private readonly char[] _separator = [' ', ','];
         private readonly CameraHub.CameraHubService _collection;
-        private readonly TelegeramSettings? _settings;
+        private readonly TelegeramSettings _settings;
         private CancellationTokenSource? _cts;
         private TelegramBotClient? _botClient;
         private bool _disposedValue;
@@ -26,7 +26,7 @@ namespace CameraServer.Services.Telegram
         public TelegramService(IConfiguration configuration, CameraHub.CameraHubService collection)
         {
             _collection = collection;
-            _settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>();
+            _settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>() ?? new TelegeramSettings();
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
@@ -142,30 +142,20 @@ namespace CameraServer.Services.Telegram
                     var buttons = new List<InlineKeyboardButton[]>();
                     var buttonsRow = new List<InlineKeyboardButton>();
                     var n = 0;
-                    var column = 0;
                     foreach (var camera in _collection.Cameras
                                  .Where(m => m.AllowedRoles
                                      .Intersect(currentTelegramUser.Roles)
                                      .Any()))
                     {
-                        buttonsRow.Add(new InlineKeyboardButton(camera.Camera.Name)
+                        var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
+                        buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
                         {
                             CallbackData = n.ToString()
                         });
-
-                        n++;
-                        column++;
-
-                        if (column > 1)
-                        {
-                            buttons.Add(buttonsRow.ToArray());
-                            buttonsRow = [];
-                            column = 0;
-                        }
-                    }
-                    if (buttonsRow.Count != 0)
                         buttons.Add(buttonsRow.ToArray());
-
+                        buttonsRow.Clear();
+                        n++;
+                    }
 
                     if (currentTelegramUser.Roles.Contains(Roles.Admin))
                     {
@@ -183,11 +173,19 @@ namespace CameraServer.Services.Telegram
                     return;
                 }
 
+                // return help message on unknown command
                 if (!messageText.All(n => char.IsDigit(n) || _separator.Contains(n)))
                 {
                     await botClient.SendTextMessageAsync(
                         chatId: chatId,
-                        text: $"Usage tips:\r\n\t\"{ListCommand}\" - camera list\r\n\t\"{RefreshCommand}\" - refresh camera list on the server\r\n\t\"n\" - get image from camera[n]\r\n\t\"n,m\" - get images from cameras[n] and [m]\r\n\t\"n m\" - get images from cameras [n] and[m]\r\n",
+                        text: $"""
+                               Usage tips:\r\n
+                               \t\"{ListCommand}\" - camera list\r\n
+                               \t\"{RefreshCommand}\" - refresh camera list on the server\r\n
+                               \t\"n\" - get image from camera[n]\r\n
+                               \t\"n,m\" - get images from cameras[n] and [m]\r\n
+                               \t\"n m\" - get images from cameras [n] and[m]\r\n
+                               """,
                         cancellationToken: cancellationToken);
 
                     return;

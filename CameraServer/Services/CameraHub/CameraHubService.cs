@@ -30,6 +30,7 @@ namespace CameraServer.Services.CameraHub
         public async Task RefreshCameraCollection(CancellationToken cancellationToken)
         {
             // remove predefined cameras from collection
+            Console.WriteLine("Adding predefined cameras...");
             var cameras = _cameras.AsQueryable().ToArray();
             for (var i = 0; i < cameras.Length; i++)
             {
@@ -79,6 +80,7 @@ namespace CameraServer.Services.CameraHub
 
             if (_cameraSettings.AutoSearchUsb)
             {
+                Console.WriteLine("Autodetecting USB cameras...");
                 var usbCameras = UsbCamera.DiscoverUsbCameras();
                 foreach (var c in usbCameras)
                     Console.WriteLine($"USB-Camera: {c.Name} - [{c.Path}]");
@@ -104,6 +106,7 @@ namespace CameraServer.Services.CameraHub
 
             if (_cameraSettings.AutoSearchUsbFC)
             {
+                Console.WriteLine("Autodetecting USB_FC cameras...");
                 var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
                 foreach (var c in usbFcCameras)
                     Console.WriteLine($"USB_FC-Camera: {c.Name} - [{c.Path}]");
@@ -129,6 +132,7 @@ namespace CameraServer.Services.CameraHub
 
             if (_cameraSettings.AutoSearchIp)
             {
+                Console.WriteLine("Autodetecting IP cameras...");
                 foreach (var c in ipCameras)
                     Console.WriteLine($"IP-Camera: {c.Name} - [{c.Path}]");
 
@@ -150,6 +154,8 @@ namespace CameraServer.Services.CameraHub
                     _cameras.Remove(c.Key);
                 }
             }
+
+            Console.WriteLine("Done.");
         }
 
         public async Task<CancellationToken> HookCamera(

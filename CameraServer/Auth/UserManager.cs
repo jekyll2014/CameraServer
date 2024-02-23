@@ -1,20 +1,36 @@
-﻿using CameraServer.Settings;
+﻿using CameraServer.Services.AntiBruteForce;
+using CameraServer.Settings;
+
+using System.Net;
+using System.Security.Authentication;
 
 namespace CameraServer.Auth;
 
 public class UserManager : IUserManager
 {
+    private const string TooManyAttemptsMessage = "Too many login attempts!";
     private const string UsersConfigSection = "WebUsers";
     private readonly IConfiguration _configuration;
+    private readonly IAntiBruteForceService? _antiBruteForceService;
 
-    public UserManager(IConfiguration configuration)
+    public UserManager(IConfiguration configuration, IAntiBruteForceService? antiBruteForceService)
     {
         _configuration = configuration;
+        _antiBruteForceService = antiBruteForceService;
     }
 
-    public WebUser? GetUser(string name, string password)
+    public WebUser? GetUser(string name, string password, IPAddress ipAddress)
     {
-        return GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
+        if (_antiBruteForceService?.CheckThreat(name, ipAddress) ?? false)
+            throw new AuthenticationException(TooManyAttemptsMessage);
+
+        var user = GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
+        if (user == null)
+            _antiBruteForceService?.AddFailedAttempt(name, ipAddress);
+        else
+            _antiBruteForceService?.ClearFailedAttempts(name, ipAddress);
+
+        return user;
     }
 
     public UserDto GetUserInfo(string name)

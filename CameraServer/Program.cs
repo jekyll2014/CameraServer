@@ -1,5 +1,6 @@
 using CameraServer.Auth;
 using CameraServer.Auth.BasicAuth;
+using CameraServer.Services.AntiBruteForce;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.Telegram;
 
@@ -18,6 +19,7 @@ namespace CameraServer
             var builder = WebApplication.CreateBuilder(args);
             var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
             // Add services to the container.
+            builder.Services.AddSingleton<IAntiBruteForceService, AntiBruteForceService>();
             builder.Services.AddTransient<IUserManager, UserManager>();
             builder.Services.AddSingleton<CameraHubService, CameraHubService>();
             builder.Services.AddHostedService<TelegramService>();
