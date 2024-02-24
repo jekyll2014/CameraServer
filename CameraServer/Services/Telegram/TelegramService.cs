@@ -179,12 +179,12 @@ namespace CameraServer.Services.Telegram
                     await botClient.SendTextMessageAsync(
                         chatId: chatId,
                         text: $"""
-                               Usage tips:\r\n
-                               \t\"{ListCommand}\" - camera list\r\n
-                               \t\"{RefreshCommand}\" - refresh camera list on the server\r\n
-                               \t\"n\" - get image from camera[n]\r\n
-                               \t\"n,m\" - get images from cameras[n] and [m]\r\n
-                               \t\"n m\" - get images from cameras [n] and[m]\r\n
+                               Usage tips:
+                               "{ListCommand}" - camera list
+                               "{RefreshCommand}" - refresh camera list on the server
+                               n - get image from camera[n]
+                               "n,m" - get images from cameras[n] and [m]
+                               "n m" - get images from cameras [n] and[m]
                                """,
                         cancellationToken: cancellationToken);
 
