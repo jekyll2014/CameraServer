@@ -19,7 +19,7 @@ namespace CameraServer
             var builder = WebApplication.CreateBuilder(args);
             var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
             // Add services to the container.
-            builder.Services.AddSingleton<IAntiBruteForceService, AntiBruteForceService>();
+            builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
             builder.Services.AddTransient<IUserManager, UserManager>();
             builder.Services.AddSingleton<CameraHubService, CameraHubService>();
             builder.Services.AddHostedService<TelegramService>();

@@ -11,9 +11,9 @@ public class UserManager : IUserManager
     private const string TooManyAttemptsMessage = "Too many login attempts!";
     private const string UsersConfigSection = "WebUsers";
     private readonly IConfiguration _configuration;
-    private readonly IAntiBruteForceService? _antiBruteForceService;
+    private readonly IBruteForceDetectionService? _antiBruteForceService;
 
-    public UserManager(IConfiguration configuration, IAntiBruteForceService? antiBruteForceService)
+    public UserManager(IConfiguration configuration, IBruteForceDetectionService? antiBruteForceService)
     {
         _configuration = configuration;
         _antiBruteForceService = antiBruteForceService;

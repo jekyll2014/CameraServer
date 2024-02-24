@@ -2,31 +2,31 @@
 
 namespace CameraServer.Services.AntiBruteForce
 {
-    public class AntiBruteForceService : IAntiBruteForceService, IHostedService, IDisposable
+    public class BruteForceDetectionDetectionService : IBruteForceDetectionService, IDisposable//, IHostedService
     {
-        private const string AntiBruteForceConfigSection = "AntiBruteForce";
-        private readonly AntiBruteForceSettings _settings;
+        private const string AntiBruteForceConfigSection = "BruteForceDetection";
+        private readonly BruteForceDetectionSettings _detectionSettings;
         //private CancellationTokenSource? _cts;
         private readonly Dictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = [];
         private bool _disposedValue;
 
-        public AntiBruteForceService(IConfiguration configuration)
+        public BruteForceDetectionDetectionService(IConfiguration configuration)
         {
-            _settings = configuration.GetSection(AntiBruteForceConfigSection)?.Get<AntiBruteForceSettings>() ?? new AntiBruteForceSettings();
+            _detectionSettings = configuration.GetSection(AntiBruteForceConfigSection)?.Get<BruteForceDetectionSettings>() ?? new BruteForceDetectionSettings();
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        /*public async Task StartAsync(CancellationToken cancellationToken)
         {
-            //_cts = new CancellationTokenSource();
-        }
+            _cts = new CancellationTokenSource();
+        }*/
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        /*public async Task StopAsync(CancellationToken cancellationToken)
         {
-            /*if (_cts != null)
+            if (_cts != null)
                 await _cts.CancelAsync();
 
-            _cts?.Dispose();*/
-        }
+            _cts?.Dispose();
+        }*/
 
         public void AddFailedAttempt(string login, IPAddress host)
         {
@@ -57,7 +57,7 @@ namespace CameraServer.Services.AntiBruteForce
                                 && n.Item2 > DateTime.Now.AddMinutes(-1))
                     .ToArray();
 
-                if (lastMinuteAtempts?.Length > _settings.RetriesPerMinute)
+                if (lastMinuteAtempts?.Length > _detectionSettings.RetriesPerMinute)
                     return true;
 
                 var lastHourAtempts = attempts
@@ -65,7 +65,7 @@ namespace CameraServer.Services.AntiBruteForce
                                 && n.Item2 > DateTime.Now.AddHours(-1))
                     .ToArray();
 
-                if (lastHourAtempts?.Length > _settings.RetriesPerHour)
+                if (lastHourAtempts?.Length > _detectionSettings.RetriesPerHour)
                     return true;
             }
 

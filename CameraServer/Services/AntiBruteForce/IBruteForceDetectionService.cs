@@ -2,7 +2,7 @@
 
 namespace CameraServer.Services.AntiBruteForce;
 
-public interface IAntiBruteForceService
+public interface IBruteForceDetectionService
 {
     public void AddFailedAttempt(string login, IPAddress host);
     public bool CheckThreat(string login, IPAddress host);
