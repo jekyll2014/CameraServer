@@ -106,7 +106,7 @@ namespace CameraLib.USB
                             header.Width,
                             header.Height,
                             format ?? "",
-                            10000000.0 / videoInfoHeader.AvgTimePerFrame));
+                            (double)10000000 / videoInfoHeader.AvgTimePerFrame));
                     }
 
                     mediaTypeEnum.Next(1, mediaTypes, fetched);

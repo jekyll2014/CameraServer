@@ -173,6 +173,7 @@ namespace CameraServer.Services.CameraHub
 
             var camera = _cameras
                 .FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
+
             if (!camera.Value.TryAdd(cameraId + userId, srcImageQueue))
                 return CancellationToken.None;
 
