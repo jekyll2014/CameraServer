@@ -148,11 +148,13 @@ namespace CameraServer.Controllers
                     if (imageQueue.TryDequeue(out var image))
                     {
                         var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
-                        var header = $"\r\n{Boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {jpegBuffer.Length}\r\n";
+                        var header = $"\r\n{Boundary}\r\n" +
+                                     $"Content-Type: image/jpeg\r\n" +
+                                     $"Content-Length: {jpegBuffer.Length}\r\n" +
+                                     $"\r\n";
                         await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
                         await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
                         await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
-
                         image.Dispose();
                     }
                     else
