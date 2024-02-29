@@ -90,7 +90,7 @@ namespace CameraServer.Services.CameraHub
                 // add newly discovered cameras
                 foreach (var c in usbCameras
                              .Where(c => _cameras
-                                 .All(n => n.Key.Camera.Path != c.Path)))
+                                 .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
                     _cameras.Add(serverCamera, new());
@@ -100,7 +100,7 @@ namespace CameraServer.Services.CameraHub
                 foreach (var c in _cameras
                              .Where(n => n.Key.Camera is UsbCamera && !n.Key.Custom)
                              .Where(c => !usbCameras
-                                 .Exists(n => n.Path == c.Key.Camera.Path)))
+                                 .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
                     _cameras.Remove(c.Key);
                 }
@@ -116,7 +116,7 @@ namespace CameraServer.Services.CameraHub
                 // add newly discovered cameras
                 foreach (var c in usbFcCameras
                              .Where(c => _cameras
-                                 .All(n => n.Key.Camera.Path != c.Path)))
+                                 .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
                     _cameras.Add(serverCamera, new());
@@ -126,7 +126,7 @@ namespace CameraServer.Services.CameraHub
                 foreach (var c in _cameras
                              .Where(n => n.Key.Camera is UsbCameraFc && !n.Key.Custom)
                              .Where(c => !usbFcCameras
-                                 .Exists(n => n.Path == c.Key.Camera.Path)))
+                                 .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
                     _cameras.Remove(c.Key);
                 }
@@ -141,7 +141,7 @@ namespace CameraServer.Services.CameraHub
                 // add newly discovered cameras
                 foreach (var c in ipCameras
                              .Where(c => _cameras
-                                 .All(n => n.Key.Camera.Path != c.Path)))
+                                 .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
                     _cameras.Add(serverCamera, new());
@@ -151,7 +151,7 @@ namespace CameraServer.Services.CameraHub
                 foreach (var c in _cameras
                              .Where(c => c.Key.Camera is IpCamera && !c.Key.Custom)
                              .Where(c => !ipCameras
-                                 .Exists(n => n.Path == c.Key.Camera.Path)))
+                                 .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
                     _cameras.Remove(c.Key);
                 }
@@ -168,10 +168,11 @@ namespace CameraServer.Services.CameraHub
             int yResolution = 0,
             string format = "")
         {
-            if (_cameras.All(n => n.Key.Camera.Path != cameraId))
+            if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
                 return CancellationToken.None;
 
-            var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Path == cameraId);
+            var camera = _cameras
+                .FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
             if (!camera.Value.TryAdd(cameraId + userId, srcImageQueue))
                 return CancellationToken.None;
 
@@ -187,10 +188,10 @@ namespace CameraServer.Services.CameraHub
 
         public async Task<bool> UnHookCamera(string cameraId, string userId)
         {
-            if (_cameras.All(n => n.Key.Camera.Path != cameraId))
+            if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
                 return false;
 
-            var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Path == cameraId);
+            var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
             camera.Value.Remove(cameraId + userId);
             if (camera.Value.Count <= 0)

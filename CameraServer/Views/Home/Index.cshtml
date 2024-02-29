@@ -36,7 +36,7 @@
                         <tr>
                             <td>@i</td>
                             <td>@camera.Camera.Description.Type</td>
-                            <td><a href="@($"{scheme}://{host}/Camera/GetVideoContent?cameraNumber={i}&xResolution={resolution?.Width??0}&yResolution={resolution?.Heigth??0}")" target="_blank">@($"{camera.Camera.Name} [{resolution?.Width ?? 0}x{resolution?.Heigth ?? 0}]")</a></td>
+                            <td><a href="@($"{scheme}://{host}/Camera/GetVideoContent?cameraNumber={i}&xResolution={resolution?.Width??0}&yResolution={resolution?.Heigth??0}")" target="_blank">@($"{camera.Camera.Description.Name} [{resolution?.Width ?? 0}x{resolution?.Heigth ?? 0}]")</a></td>
                             <td>@camera.Custom</td>
                         </tr>
                     }

@@ -58,7 +58,7 @@ namespace CameraServer.Controllers
                 .Where(n => n.AllowedRoles.Intersect(userRoles).Any());
 
             var i = 0;
-            return Ok(cameras.Select(n => new Dictionary<int, string>() { { i++, n.Camera.Name } }));
+            return Ok(cameras.Select(n => new Dictionary<int, string>() { { i++, n.Camera.Description.Name } }));
         }
 
         [HttpGet]
@@ -89,7 +89,7 @@ namespace CameraServer.Controllers
             var cameraNumber = -1;
             for (var i = 0; i < cameras.Length; i++)
             {
-                if (cameras[i].Camera.Name == cameraName)
+                if (cameras[i].Camera.Description.Name == cameraName)
                 {
                     cameraNumber = i;
                     break;
@@ -133,7 +133,7 @@ namespace CameraServer.Controllers
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             }
 
-            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Path, Request.HttpContext.TraceIdentifier, imageQueue,
+            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path, Request.HttpContext.TraceIdentifier, imageQueue,
                 xResolution ?? 0, yResolution ?? 0, format ?? "");
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
@@ -166,7 +166,7 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            await _collection.UnHookCamera(camera.Camera.Path, Request.HttpContext.TraceIdentifier);
+            await _collection.UnHookCamera(camera.Camera.Description.Path, Request.HttpContext.TraceIdentifier);
             while (imageQueue.TryDequeue(out var image))
             {
                 image.Dispose();

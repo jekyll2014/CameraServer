@@ -230,7 +230,7 @@ namespace CameraServer.Services.Telegram
                                          .Any()))
                         {
                             var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
-                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
+                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
                             {
                                 CallbackData = $"{SnapShotCommand} {n}"
                             });
@@ -291,7 +291,7 @@ namespace CameraServer.Services.Telegram
                                 await botClient.SendPhotoAsync(
                                     chatId: chatId,
                                     photo: pic,
-                                    caption: $"Camera[{n}]: {camera.Camera.Name}",
+                                    caption: $"Camera[{n}]: {camera.Camera.Description.Name}",
                                     cancellationToken: cancellationToken);
                             }
 
@@ -331,7 +331,7 @@ namespace CameraServer.Services.Telegram
                                          .Any()))
                         {
                             var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
-                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
+                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
                             {
                                 CallbackData = $"{VideoRecordCommand} {n} {_settings.DefaultVideoTime}"
                             });
@@ -365,7 +365,7 @@ namespace CameraServer.Services.Telegram
 
                         var userId = $"{currentTelegramUser.UserId}{DateTime.Now.Ticks}";
                         var imageQueue = new ConcurrentQueue<Mat>();
-                        var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Path,
+                        var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
                             userId,
                             imageQueue,
                             0,
@@ -391,7 +391,11 @@ namespace CameraServer.Services.Telegram
                         var fileName = $"{userId}.mp4";
                         try
                         {
-                            var recorder = new VideoRecorder(fileName, 30, 90);
+                            var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
+                            if (fps < 0)
+                                fps = 30;
+
+                            var recorder = new VideoRecorder(fileName, fps, 90);
                             var timeOut = DateTime.Now.AddSeconds(recordTime);
                             while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
                             {
@@ -422,7 +426,7 @@ namespace CameraServer.Services.Telegram
                         {
                         }
 
-                        await _collection.UnHookCamera(camera.Camera.Path, userId);
+                        await _collection.UnHookCamera(camera.Camera.Description.Path, userId);
                         while (imageQueue.TryDequeue(out var image))
                         {
                             image.Dispose();

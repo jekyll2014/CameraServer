@@ -9,11 +9,11 @@ namespace CameraServer.Services.Helpers
         private readonly string _fileName;
         private readonly int _fourcc = VideoWriter.Fourcc('m', 'p', '4', 'v');
         private VideoWriter? _videoWriter;
-        private readonly int _fps;
+        private readonly double _fps;
         private readonly byte _compressionQuality;
         private bool _disposedValue;
 
-        public VideoRecorder(string fileName, int fps = 30, byte quality = 90)
+        public VideoRecorder(string fileName, double fps = 30, byte quality = 90)
         {
             _fileName = fileName;
             _fps = fps;

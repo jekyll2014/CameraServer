@@ -14,22 +14,6 @@ namespace CameraLib.FlashCap
 {
     public class UsbCameraFc : ICamera, IDisposable
     {
-        public string Name
-        {
-            get
-            {
-                if (!string.IsNullOrEmpty(_usbCameraName))
-                    return _usbCameraName;
-
-                return Path;
-            }
-            set
-            {
-                _usbCameraName = value;
-                Description.Name = value;
-            }
-        }
-        public string Path { get; }
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
 
@@ -41,7 +25,6 @@ namespace CameraLib.FlashCap
 
         private readonly CaptureDeviceDescriptor _usbCamera;
         private CaptureDevice? _captureDevice;
-        private string _usbCameraName;
         private Mat? _frame = null;
         private readonly object _getPictureThreadLock = new object();
 
@@ -49,9 +32,6 @@ namespace CameraLib.FlashCap
 
         public UsbCameraFc(string path, string name = "")
         {
-            Path = path;
-            _usbCameraName = name;
-
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
@@ -60,12 +40,12 @@ namespace CameraLib.FlashCap
             _usbCamera = descriptors.FirstOrDefault(n => n.Identity?.ToString() == path)
                          ?? throw new ArgumentException("Can not find camera", nameof(path));
 
-            if (string.IsNullOrEmpty(_usbCameraName))
-                _usbCameraName = _usbCamera.Name;
-            if (string.IsNullOrEmpty(_usbCameraName))
-                _usbCameraName = path;
+            if (string.IsNullOrEmpty(name))
+                name = _usbCamera.Name;
+            if (string.IsNullOrEmpty(name))
+                name = path;
 
-            Description = new CameraDescription(CameraType.USB_FC, Path, Name, GetAllAvailableResolution(_usbCamera));
+            Description = new CameraDescription(CameraType.USB_FC, path, name, GetAllAvailableResolution(_usbCamera));
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)

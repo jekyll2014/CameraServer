@@ -8,8 +8,6 @@ namespace CameraLib
 {
     public interface ICamera
     {
-        public string Name { get; set; }
-        public string Path { get; }
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; }
 

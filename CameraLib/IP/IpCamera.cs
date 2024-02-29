@@ -19,22 +19,6 @@ namespace CameraLib.IP
 {
     public class IpCamera : ICamera, IDisposable
     {
-        public string Name
-        {
-            get
-            {
-                if (!string.IsNullOrEmpty(_ipCameraName))
-                    return _ipCameraName;
-
-                return Path;
-            }
-            set
-            {
-                _ipCameraName = value;
-                Description.Name = value;
-            }
-        }
-        public string Path { get; }
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; } = false;
 
@@ -46,20 +30,17 @@ namespace CameraLib.IP
         private static List<CameraDescription> _lastCamerasFound = new List<CameraDescription>();
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
-        private string _ipCameraName;
         private Mat? _frame = new Mat();
 
         private bool _disposedValue;
 
         public IpCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
-            Path = path;
-
             if (authenicationType == AuthType.Plain)
-                Path = string.Format(Path, login, password);
+                path = string.Format(path, login, password);
 
-            _ipCameraName = string.IsNullOrEmpty(name)
-                ? Dns.GetHostAddresses(new Uri(Path).Host).FirstOrDefault()?.ToString() ?? Path
+            name = string.IsNullOrEmpty(name)
+                ? Dns.GetHostAddresses(new Uri(path).Host).FirstOrDefault()?.ToString() ?? path
                 : name;
 
             if (_lastCamerasFound.Count == 0)
@@ -69,7 +50,7 @@ namespace CameraLib.IP
 
             if (frameFormats.Count == 0 || forceCameraConnect)
             {
-                var cameraUri = new Uri(Path);
+                var cameraUri = new Uri(path);
                 if (PingAddress(cameraUri.Host).Result)
                 {
                     var image = GrabFrame(CancellationToken.None).Result;
@@ -81,7 +62,7 @@ namespace CameraLib.IP
                 }
             }
 
-            Description = new CameraDescription(CameraType.IP, Path, _ipCameraName, frameFormats);
+            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
         }
 
         public static async Task<List<CameraDescription>> DiscoverOnvifCamerasAsync(int discoveryTimeout,
@@ -133,7 +114,8 @@ namespace CameraLib.IP
                         {
                             new(profile.VideoEncoderConfiguration.Resolution.Width,
                                 profile.VideoEncoderConfiguration.Resolution.Height,
-                                profile.VideoEncoderConfiguration.Encoding.ToString())
+                                profile.VideoEncoderConfiguration.Encoding.ToString(),
+                                profile.VideoEncoderConfiguration.RateControl.FrameRateLimit)
                         }));
                 }
             }
@@ -295,7 +277,7 @@ namespace CameraLib.IP
 
         private async Task<VideoCapture?> GetCaptureDevice(CancellationToken token)
         {
-            return await Task.Run(() => new VideoCapture(Path), token);
+            return await Task.Run(() => new VideoCapture(Description.Path), token);
         }
 
         protected virtual void Dispose(bool disposing)

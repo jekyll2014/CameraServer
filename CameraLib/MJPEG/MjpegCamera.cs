@@ -24,22 +24,6 @@ namespace CameraLib.MJPEG
         const byte picStart = 0xD8;
         const byte picEnd = 0xD9;
 
-        public string Name
-        {
-            get
-            {
-                if (!string.IsNullOrEmpty(_ipCameraName))
-                    return _ipCameraName;
-
-                return Path;
-            }
-            set
-            {
-                _ipCameraName = value;
-                Description.Name = value;
-            }
-        }
-        public string Path { get; }
         public AuthType AuthenicationType { get; }
         public string Login { get; }
         public string Password { get; }
@@ -58,7 +42,6 @@ namespace CameraLib.MJPEG
         private CancellationTokenSource? _cancellationTokenSource;
 
         private readonly object _getPictureThreadLock = new object();
-        private string _ipCameraName;
         private Mat? _frame;
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
@@ -66,21 +49,20 @@ namespace CameraLib.MJPEG
 
         public MjpegCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
-            Path = path;
             AuthenicationType = authenicationType;
             Login = login;
             Password = password;
 
             if (authenicationType == AuthType.Plain)
-                Path = string.Format(Path, login, password);
+                path = string.Format(path, login, password);
 
-            var cameraUri = new Uri(Path);
-            _ipCameraName = string.IsNullOrEmpty(name)
+            var cameraUri = new Uri(path);
+            name = string.IsNullOrEmpty(name)
                 ? cameraUri.Host
                 : name;
 
             List<FrameFormat> frameFormats = new();
-            if (frameFormats.Count == 0 || forceCameraConnect)
+            if (forceCameraConnect)
             {
                 if (PingAddress(cameraUri.Host, discoveryTimeout).Result)
                 {
@@ -93,7 +75,7 @@ namespace CameraLib.MJPEG
                 }
             }
 
-            Description = new CameraDescription(CameraType.IP, Path, _ipCameraName, frameFormats);
+            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
         }
 
         // not implemented
@@ -123,7 +105,7 @@ namespace CameraLib.MJPEG
                 try
                 {
                     _stopCapture = false;
-                    _imageGrabber = StartAsync(Path, AuthenicationType, Login, Password, token);
+                    _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
                 }
                 catch (Exception e)
                 {
