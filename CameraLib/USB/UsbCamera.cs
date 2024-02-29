@@ -5,7 +5,6 @@ using Emgu.CV.CvEnum;
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -36,6 +35,7 @@ namespace CameraLib.USB
         public bool IsRunning { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
+
         public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
 
         private CancellationTokenSource? _cancellationTokenSource;
@@ -46,8 +46,7 @@ namespace CameraLib.USB
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice;
         private string _usbCameraName;
-        private readonly Mat _frame = new Mat();
-        private Bitmap? _image;
+        private Mat? _frame = new Mat();
 
         private bool _disposedValue;
 
@@ -130,7 +129,7 @@ namespace CameraLib.USB
                             bitCount = header.BitCount;
                         }
 
-                        FrameFormat.codecs.TryGetValue(header.Compression, out var format);
+                        FrameFormat.Codecs.TryGetValue(header.Compression, out var format);
                         availableResolutions.Add(new FrameFormat(
                             header.Width,
                             header.Height,
@@ -150,7 +149,7 @@ namespace CameraLib.USB
             }
         }
 
-        public async Task<bool> Start(int x, int y, string format, CancellationToken token)
+        public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
             if (!IsRunning)
             {
@@ -164,23 +163,25 @@ namespace CameraLib.USB
                 if (_usbCamera == null)
                     return false;
 
-                if (x > 0 && y > 0)
+                if (width > 0 && height > 0)
                 {
                     var res = GetAllAvailableResolution(_usbCamera);
-                    if (res.Exists(n => n.Width == x && n.Heigth == y))
+                    if (res.Exists(n => n.Width == width && n.Heigth == height))
                     {
-                        _captureDevice.Set(CapProp.FrameWidth, x);
-                        _captureDevice.Set(CapProp.FrameHeight, y);
+                        _captureDevice.Set(CapProp.FrameWidth, width);
+                        _captureDevice.Set(CapProp.FrameHeight, height);
                     }
 
                     if (!string.IsNullOrEmpty(format))
                     {
-                        var codecId = FrameFormat.codecs.FirstOrDefault(n => n.Value == format);
+                        var codecId = FrameFormat.Codecs.FirstOrDefault(n => n.Value == format);
                         if (!string.IsNullOrEmpty(codecId.Value))
                             _captureDevice.Set(CapProp.FourCC, codecId.Key);
                     }
                 }
 
+                _frame?.Dispose();
+                _frame = new Mat();
                 _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _captureDevice.Start();
@@ -205,26 +206,23 @@ namespace CameraLib.USB
         private void ImageCaptured(object? sender, EventArgs args)
         {
             if (Monitor.IsEntered(_getPictureThreadLock))
-            {
                 return;
-            }
 
             try
             {
                 lock (_getPictureThreadLock)
                 {
-                    _image?.Dispose();
+                    _frame?.Dispose();
+                    _frame = new Mat();
                     if (!(_captureDevice?.Grab() ?? false))
                         return;
 
                     if (!(_captureDevice?.Retrieve(_frame) ?? false))
                         return;
 
-                    _image = _frame.ToBitmap();
-                    if (_image != null)
-                    {
-                        ImageCapturedEvent?.Invoke(this, _image);
-                    }
+                    ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                    //_frame?.Dispose();
+                    //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
             }
             catch
@@ -244,7 +242,7 @@ namespace CameraLib.USB
                 _captureDevice?.Stop();
                 _captureDevice?.Dispose();
                 _captureDevice = null;
-                _image?.Dispose();
+                _frame?.Dispose();
                 IsRunning = false;
             }
         }
@@ -254,30 +252,29 @@ namespace CameraLib.USB
             Stop();
         }
 
-        public async Task<Bitmap?> GrabFrame(CancellationToken token)
+        public async Task<Mat?> GrabFrame(CancellationToken token)
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                while (IsRunning && _frame == null && !token.IsCancellationRequested)
                     await Task.Delay(10, token);
 
                 lock (_getPictureThreadLock)
                 {
-                    return (Bitmap?)_image?.Clone();
+                    return _frame?.Clone();
                 }
             }
 
-            Bitmap? image = null;
+            var image = new Mat();
             await Task.Run(() =>
                 {
                     _captureDevice = GetCaptureDevice();
                     if (_captureDevice == null)
                         return;
 
-                    if (_captureDevice.Grab() && _captureDevice.Retrieve(_frame))
-                    {
-                        image = _frame.ToBitmap();
-                    }
+                    if (_captureDevice.Grab())
+                        _captureDevice.Retrieve(image);
+
                     _captureDevice.Stop();
                     _captureDevice.Dispose();
                 }, token);
@@ -285,7 +282,7 @@ namespace CameraLib.USB
             return image;
         }
 
-        public async IAsyncEnumerable<Bitmap> GrabFrames([EnumeratorCancellation] CancellationToken token)
+        public async IAsyncEnumerable<Mat> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
@@ -296,7 +293,8 @@ namespace CameraLib.USB
                 }
                 else
                 {
-                    yield return image;
+                    yield return image.Clone();
+                    image.Dispose();
                 }
             }
         }
@@ -311,8 +309,7 @@ namespace CameraLib.USB
                     _usbCamera?.Dispose();
                     _captureDevice?.Dispose();
                     _cancellationTokenSource?.Dispose();
-                    _frame.Dispose();
-                    _image?.Dispose();
+                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

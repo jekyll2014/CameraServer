@@ -6,7 +6,6 @@ using QuickNV.Onvif.Media;
 
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -20,7 +19,6 @@ namespace CameraLib.IP
 {
     public class IpCamera : ICamera, IDisposable
     {
-        private readonly int _discoveryTimeout;
         public string Name
         {
             get
@@ -45,18 +43,16 @@ namespace CameraLib.IP
         public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
         private CancellationTokenSource? _cancellationTokenSource;
 
-        private static List<CameraDescription> _lastCamerasFound = [];
+        private static List<CameraDescription> _lastCamerasFound = new List<CameraDescription>();
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
         private string _ipCameraName;
-        private readonly Mat _frame = new Mat();
-        private Bitmap? _image;
+        private Mat? _frame = new Mat();
 
         private bool _disposedValue;
 
         public IpCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
-            _discoveryTimeout = discoveryTimeout;
             Path = path;
 
             if (authenicationType == AuthType.Plain)
@@ -67,9 +63,9 @@ namespace CameraLib.IP
                 : name;
 
             if (_lastCamerasFound.Count == 0)
-                _lastCamerasFound = DiscoverOnvifCamerasAsync(_discoveryTimeout, CancellationToken.None).Result;
+                _lastCamerasFound = DiscoverOnvifCamerasAsync(discoveryTimeout, CancellationToken.None).Result;
 
-            var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? [];
+            var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? new List<FrameFormat>();
 
             if (frameFormats.Count == 0 || forceCameraConnect)
             {
@@ -79,7 +75,7 @@ namespace CameraLib.IP
                     var image = GrabFrame(CancellationToken.None).Result;
                     if (image != null)
                     {
-                        frameFormats.Add(new FrameFormat(image.Width, image.Height, image.RawFormat.ToString()));
+                        frameFormats.Add(new FrameFormat(image.Width, image.Height));
                         image.Dispose();
                     }
                 }
@@ -96,9 +92,8 @@ namespace CameraLib.IP
             var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
             var devices = await discovery.RunDiscovery();
 
-            if (!devices.Any())
+            if (devices.Length == 0)
             {
-                //Console.WriteLine("No cameras found");
                 return result;
             }
             Console.WriteLine("Found {0} cameras", devices.Length);
@@ -123,7 +118,6 @@ namespace CameraLib.IP
 
                     continue;
                 }
-                //Console.WriteLine("DeviceInformation: " + JsonConvert.SerializeObject(client.DeviceInformation, Formatting.Indented));
 
                 var mediaClient = new MediaClient(client);
                 var profilesResponse = await mediaClient.GetProfilesAsync();
@@ -131,26 +125,16 @@ namespace CameraLib.IP
                 foreach (var profile in profilesResponse.Profiles)
                 {
                     var stream = await mediaClient.QuickOnvif_GetStreamUriAsync(profile.token, true);
-                    //var resolution = $"{profile.VideoEncoderConfiguration.Resolution.Width}x{profile.VideoEncoderConfiguration.Resolution.Height}";
-
                     result.Add(new CameraDescription(
                         CameraType.IP,
                         stream,
                         $"{client.DeviceInformation.Manufacturer} {client.DeviceInformation.Model} [{device.EndPointAddress}]",
                         new FrameFormat[]
                         {
-                            new FrameFormat(profile.VideoEncoderConfiguration.Resolution.Width,
+                            new(profile.VideoEncoderConfiguration.Resolution.Width,
                                 profile.VideoEncoderConfiguration.Resolution.Height,
                                 profile.VideoEncoderConfiguration.Encoding.ToString())
                         }));
-
-                    /*Console.WriteLine("Stream: {0}", new
-                    {
-                        profile.Name,
-                        StreamUrl = stream,
-                        profile.VideoEncoderConfiguration.Encoding,
-                        resolution
-                    });*/
                 }
             }
 
@@ -178,7 +162,7 @@ namespace CameraLib.IP
             return pingResultTask.Status == IPStatus.Success;
         }
 
-        public async Task<bool> Start(int x, int y, string format, CancellationToken token)
+        public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
             if (!IsRunning)
             {
@@ -212,26 +196,23 @@ namespace CameraLib.IP
         private void ImageCaptured(object? sender, EventArgs args)
         {
             if (Monitor.IsEntered(_getPictureThreadLock))
-            {
                 return;
-            }
 
             try
             {
                 lock (_getPictureThreadLock)
                 {
-                    _image?.Dispose();
+                    _frame?.Dispose();
+                    _frame = new Mat();
                     if (!(_captureDevice?.Grab() ?? false))
                         return;
 
                     if (!(_captureDevice?.Retrieve(_frame) ?? false))
                         return;
 
-                    _image = _frame.ToBitmap();
-                    if (_image != null)
-                    {
-                        ImageCapturedEvent?.Invoke(this, _image);
-                    }
+                    ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                    //_frame?.Dispose();
+                    //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
             }
             catch
@@ -251,7 +232,7 @@ namespace CameraLib.IP
                 _captureDevice?.Stop();
                 _captureDevice?.Dispose();
                 _captureDevice = null;
-                _image?.Dispose();
+                _frame?.Dispose();
                 IsRunning = false;
             }
         }
@@ -261,20 +242,20 @@ namespace CameraLib.IP
             Stop();
         }
 
-        public async Task<Bitmap?> GrabFrame(CancellationToken token)
+        public async Task<Mat?> GrabFrame(CancellationToken token)
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                while (IsRunning && _frame == null && !token.IsCancellationRequested)
                     await Task.Delay(10, token);
 
                 lock (_getPictureThreadLock)
                 {
-                    return (Bitmap?)_image?.Clone();
+                    return _frame?.Clone();
                 }
             }
 
-            Bitmap? image = null;
+            var image = new Mat();
             await Task.Run(async () =>
             {
                 _captureDevice = await GetCaptureDevice(token);
@@ -283,10 +264,8 @@ namespace CameraLib.IP
 
                 try
                 {
-                    if (_captureDevice.Grab() && _captureDevice.Retrieve(_frame))
-                    {
-                        image = _frame.ToBitmap();
-                    }
+                    if (_captureDevice.Grab())
+                        _captureDevice.Retrieve(image);
                 }
                 catch { }
 
@@ -297,16 +276,20 @@ namespace CameraLib.IP
             return image;
         }
 
-        public async IAsyncEnumerable<Bitmap> GrabFrames([EnumeratorCancellation] CancellationToken token)
+        public async IAsyncEnumerable<Mat> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
                 var image = await GrabFrame(token);
                 if (image == null)
-                    yield break;
-
-                yield return image;
-                image.Dispose();
+                {
+                    await Task.Delay(100, token);
+                }
+                else
+                {
+                    yield return image.Clone();
+                    image.Dispose();
+                }
             }
         }
 
@@ -323,8 +306,7 @@ namespace CameraLib.IP
                 {
                     Stop();
                     _cancellationTokenSource?.Dispose();
-                    _frame.Dispose();
-                    _image?.Dispose();
+                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

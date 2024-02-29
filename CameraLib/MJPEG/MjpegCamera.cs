@@ -1,7 +1,10 @@
-﻿using System;
+﻿using CameraLib.IP;
+
+using Emgu.CV;
+using Emgu.CV.CvEnum;
+
+using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
@@ -12,7 +15,7 @@ using System.Threading.Tasks;
 
 using IPAddress = System.Net.IPAddress;
 
-namespace CameraLib.IP
+namespace CameraLib.MJPEG
 {
     public class MjpegCamera : ICamera, IDisposable
     {
@@ -21,7 +24,6 @@ namespace CameraLib.IP
         const byte picStart = 0xD8;
         const byte picEnd = 0xD9;
 
-        private readonly int _discoveryTimeout;
         public string Name
         {
             get
@@ -57,14 +59,13 @@ namespace CameraLib.IP
 
         private readonly object _getPictureThreadLock = new object();
         private string _ipCameraName;
-        private Bitmap? _image;
+        private Mat? _frame;
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
         private bool _disposedValue;
 
         public MjpegCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
         {
-            _discoveryTimeout = discoveryTimeout;
             Path = path;
             AuthenicationType = authenicationType;
             Login = login;
@@ -78,15 +79,15 @@ namespace CameraLib.IP
                 ? cameraUri.Host
                 : name;
 
-            List<FrameFormat> frameFormats = [];
+            List<FrameFormat> frameFormats = new();
             if (frameFormats.Count == 0 || forceCameraConnect)
             {
-                if (PingAddress(cameraUri.Host).Result)
+                if (PingAddress(cameraUri.Host, discoveryTimeout).Result)
                 {
                     var image = GrabFrame(CancellationToken.None).Result;
                     if (image != null)
                     {
-                        frameFormats.Add(new FrameFormat(image.Width, image.Height, image.RawFormat.ToString()));
+                        frameFormats.Add(new FrameFormat(image.Width, image.Height));
                         image.Dispose();
                     }
                 }
@@ -98,7 +99,7 @@ namespace CameraLib.IP
         // not implemented
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return [];
+            return new List<CameraDescription>();
         }
 
         private async Task<bool> PingAddress(string host, int pingTimeout = 3000)
@@ -115,7 +116,7 @@ namespace CameraLib.IP
             return pingResultTask.Status == IPStatus.Success;
         }
 
-        public async Task<bool> Start(int x, int y, string format, CancellationToken token)
+        public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
             if (!IsRunning)
             {
@@ -140,45 +141,45 @@ namespace CameraLib.IP
             return true;
         }
 
-        public void Stop()
+        public async void Stop()
+        {
+            await Stop(CancellationToken.None);
+        }
+
+        public async Task Stop(CancellationToken token)
         {
             if (!IsRunning)
                 return;
 
             _stopCapture = true;
-            while (IsRunning)
-                Task.Delay(10);
+            var timeOut = DateTime.Now.AddSeconds(10);
+            while (IsRunning && DateTime.Now < timeOut)
+                await Task.Delay(10, token);
 
             _imageGrabber?.Dispose();
             _cancellationTokenSource?.Cancel();
-            _image?.Dispose();
+            _frame?.Dispose();
         }
 
-        public async Task Stop(CancellationToken token)
-        {
-            Stop();
-        }
-
-        public async Task<Bitmap?> GrabFrame(CancellationToken token)
+        public async Task<Mat?> GrabFrame(CancellationToken token)
         {
             if (IsRunning)
             {
-                while (IsRunning && _image == null && !token.IsCancellationRequested)
+                while (IsRunning && _frame == null && !token.IsCancellationRequested)
                     await Task.Delay(10, token);
 
                 lock (_getPictureThreadLock)
                 {
-                    return (Bitmap?)_image?.Clone();
+                    return _frame?.Clone();
                 }
             }
 
-            Bitmap? image = null;
+            var image = new Mat();
             await Task.Run(async () =>
             {
                 if (await Start(0, 0, "", token))
                 {
-                    var img = await GrabFrame(token);
-                    image = (Bitmap?)img?.Clone();
+                    image = await GrabFrame(token);
                 }
 
                 await Stop(token);
@@ -187,16 +188,20 @@ namespace CameraLib.IP
             return image;
         }
 
-        public async IAsyncEnumerable<Bitmap> GrabFrames([EnumeratorCancellation] CancellationToken token)
+        public async IAsyncEnumerable<Mat> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
                 var image = await GrabFrame(token);
                 if (image == null)
-                    yield break;
-
-                yield return image;
-                image.Dispose();
+                {
+                    await Task.Delay(100, token);
+                }
+                else
+                {
+                    yield return image.Clone();
+                    image.Dispose();
+                }
             }
         }
 
@@ -240,31 +245,31 @@ namespace CameraLib.IP
                     while (!_stopCapture && !tok.IsCancellationRequested)
                     {
                         var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tok).ConfigureAwait(false);
-                        ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture, ref previous, ref current);
+                        ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture, ref previous, ref current, tok);
                     }
                 }
             }
         }
 
         // Parse the stream buffer
-        private void ParseStreamBuffer(byte[] frameBuffer, ref int frameIdx, int streamLength, byte[] streamBuffer, ref bool inPicture, ref byte previous, ref byte current)
+        private void ParseStreamBuffer(byte[] frameBuffer, ref int frameIdx, int streamLength, byte[] streamBuffer, ref bool inPicture, ref byte previous, ref byte current, CancellationToken token)
         {
             var idx = 0;
-            while (idx < streamLength && !_stopCapture)
+            while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested)
             {
                 if (inPicture)
                 {
-                    ParsePicture(frameBuffer, ref frameIdx, ref streamLength, streamBuffer, ref idx, ref inPicture, ref previous, ref current);
+                    ParsePicture(frameBuffer, ref frameIdx, ref streamLength, streamBuffer, ref idx, ref inPicture, ref previous, ref current, token);
                 }
                 else
                 {
-                    SearchPicture(frameBuffer, ref frameIdx, ref streamLength, streamBuffer, ref idx, ref inPicture, ref previous, ref current);
+                    SearchPicture(frameBuffer, ref frameIdx, ref streamLength, streamBuffer, ref idx, ref inPicture, ref previous, ref current, token);
                 }
             }
         }
 
         // While we are looking for a picture, look for a FFD8 (end of JPEG) sequence.
-        private void SearchPicture(byte[] frameBuffer, ref int frameIdx, ref int streamLength, byte[] streamBuffer, ref int idx, ref bool inPicture, ref byte previous, ref byte current)
+        private void SearchPicture(byte[] frameBuffer, ref int frameIdx, ref int streamLength, byte[] streamBuffer, ref int idx, ref bool inPicture, ref byte previous, ref byte current, CancellationToken token)
         {
             do
             {
@@ -280,11 +285,11 @@ namespace CameraLib.IP
                     inPicture = true;
                     return;
                 }
-            } while (idx < streamLength);
+            } while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested);
         }
 
         // While we are parsing a picture, fill the frame buffer until a FFD9 is reach.
-        private void ParsePicture(byte[] frameBuffer, ref int frameIdx, ref int streamLength, byte[] streamBuffer, ref int idx, ref bool inPicture, ref byte previous, ref byte current)
+        private void ParsePicture(byte[] frameBuffer, ref int frameIdx, ref int streamLength, byte[] streamBuffer, ref int idx, ref bool inPicture, ref byte previous, ref byte current, CancellationToken token)
         {
             do
             {
@@ -295,37 +300,42 @@ namespace CameraLib.IP
                 // JPEG picture end ?
                 if (previous == picMarker && current == picEnd)
                 {
+                    if (Monitor.IsEntered(_getPictureThreadLock))
+                    {
+                        inPicture = false;
+
+                        return;
+                    }
+
                     lock (_getPictureThreadLock)
                     {
-                        _image?.Dispose();
-
-                        // Using a memorystream this way prevent arrays copy and allocations
-                        using (var s = new MemoryStream(frameBuffer, 0, frameIdx))
+                        _frame?.Dispose();
+                        _frame = new Mat();
+                        try
                         {
-                            try
-                            {
-                                _image = new Bitmap(Image.FromStream(s));
-                            }
-                            catch
-                            {
-                                // We dont care about badly decoded pictures
-                            }
+                            CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
+                            ImageCapturedEvent?.Invoke(this, _frame.Clone());
                         }
-
-                        // Defer the image processing to prevent slow down
-                        // The image processing delegate must dispose the image eventually.
-                        if (_image != null)
-                            ImageCapturedEvent?.Invoke(this, _image);
+                        catch
+                        {
+                            // We dont care about badly decoded pictures
+                        }
+                        finally
+                        {
+                            //_frame?.Dispose();
+                            //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+                        }
                     }
 
                     inPicture = false;
 
                     return;
                 }
-            } while (idx < streamLength);
+            } while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested);
         }
 
         #endregion
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposedValue)
@@ -335,7 +345,7 @@ namespace CameraLib.IP
                     Stop();
                     _imageGrabber?.Dispose();
                     _cancellationTokenSource?.Dispose();
-                    _image?.Dispose();
+                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

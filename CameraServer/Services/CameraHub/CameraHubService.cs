@@ -1,13 +1,15 @@
 ﻿using CameraLib;
 using CameraLib.FlashCap;
 using CameraLib.IP;
+using CameraLib.MJPEG;
 using CameraLib.USB;
 
 using CameraServer.Models;
 using CameraServer.Settings;
 
+using Emgu.CV;
+
 using System.Collections.Concurrent;
-using System.Drawing;
 
 namespace CameraServer.Services.CameraHub
 {
@@ -18,7 +20,7 @@ namespace CameraServer.Services.CameraHub
         private readonly int _maxBuffer;
         public IEnumerable<ServerCamera> Cameras => _cameras.Keys;
 
-        private readonly Dictionary<ServerCamera, Dictionary<string, ConcurrentQueue<Bitmap>>> _cameras = [];
+        private readonly Dictionary<ServerCamera, Dictionary<string, ConcurrentQueue<Mat>>> _cameras = new();
 
         public CameraHubService(IConfiguration configuration)
         {
@@ -40,7 +42,7 @@ namespace CameraServer.Services.CameraHub
                 }
             }
 
-            List<CameraDescription> ipCameras = [];
+            List<CameraDescription> ipCameras = new();
             if (_cameraSettings.AutoSearchIp)
                 ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_cameraSettings.DiscoveryTimeOut, cancellationToken);
 
@@ -75,7 +77,7 @@ namespace CameraServer.Services.CameraHub
                 else
                     continue;
 
-                _cameras.Add(serverCamera, []);
+                _cameras.Add(serverCamera, new());
             }
 
             if (_cameraSettings.AutoSearchUsb)
@@ -91,7 +93,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, []);
+                    _cameras.Add(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -117,7 +119,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, []);
+                    _cameras.Add(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -142,7 +144,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, []);
+                    _cameras.Add(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -161,7 +163,7 @@ namespace CameraServer.Services.CameraHub
         public async Task<CancellationToken> HookCamera(
             string cameraId,
             string userId,
-            ConcurrentQueue<Bitmap> srcImageQueue,
+            ConcurrentQueue<Mat> srcImageQueue,
             int xResolution = 0,
             int yResolution = 0,
             string format = "")
@@ -200,7 +202,7 @@ namespace CameraServer.Services.CameraHub
             return true;
         }
 
-        private void GetImageFromCamera(ICamera camera, Bitmap image)
+        private void GetImageFromCamera(ICamera camera, Mat image)
         {
             var clientStreams = _cameras.FirstOrDefault(n => n.Key.Camera == camera).Value;
             if (clientStreams != null)
@@ -209,19 +211,26 @@ namespace CameraServer.Services.CameraHub
                 {
                     if (clientStream.Value.Count > _maxBuffer)
                     {
+                        foreach (var frame in clientStream.Value)
+                            frame.Dispose();
+
                         clientStream.Value.Clear();
-                        clientStreams.Remove(clientStream.Key);
+
+                        // stop streaming if consumer can't cosume fast enough
+                        /*clientStreams.Remove(clientStream.Key);
 
                         if (clientStreams.Count <= 0)
                         {
                             camera.ImageCapturedEvent -= GetImageFromCamera;
                             camera.Stop(CancellationToken.None);
-                        }
+                        }*/
                     }
 
-                    clientStream.Value.Enqueue((Bitmap)image.Clone());
+                    clientStream.Value.Enqueue(image.Clone());
                 }
             }
+
+            image.Dispose();
         }
     }
 }

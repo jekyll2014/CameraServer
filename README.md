@@ -8,10 +8,10 @@ Just unpack, adjust the configuration and run.
  - USB cameras autodetect
  - IP (ONVIF) cameras autodetect
  - MJPEG camera source support (plain and basic authentication)
- - Role-based authorisation (Admin. User, Guest) and camera access limitation
+ - Role-based authorisation (Admin. User, Guest) and camera access limitation for both Web and Telegram access
  - Basic authorisation option to enable integrating the streams into 3rd party systems
  - Web-based UI to access video streams
- - Telegram bot integration to see camera snapshots
+ - Telegram bot integration to see camera snapshots and video clips
  - Flexible configuration parameters via appsettings.json file
 
 ## Configuration:
@@ -60,6 +60,13 @@ The default setting is:
 "DefaultRoles": [ "Guest" ]
 ```
 But you may want to empty it to restrict unauthorized access to all your cameras.
+
+"DefaultVideoTime" parameter sets the default video clip duration. Max duration is limited to 120 seconds.
+
+The default setting is:
+```json
+"DefaultVideoTime": 30
+```
 
 ### Camera definitions
 The basic idea is to find all the available cameras automatically. Just allow it with the following parameters in the "CameraSettings" section:
@@ -147,8 +154,8 @@ The last is the system settings:
 "AllowBasicAuthentication": true - allow "Basic" authentication for video streams. Note that it is only safe to use "Basic" authentication via https connection.
 
 ## Planned features:
-- security improvements (limit unsuccessful authentication retries)
-- plain authentication option
 - Serilog logging
 - Web-based configuration interface
-- Telegram video calls integration
+- Image/video frame real-time resize
+- Video storage
+- Web link provisioning from Telegram

@@ -6,27 +6,13 @@ namespace CameraServer.Services.AntiBruteForce
     {
         private const string AntiBruteForceConfigSection = "BruteForceDetection";
         private readonly BruteForceDetectionSettings _detectionSettings;
-        //private CancellationTokenSource? _cts;
-        private readonly Dictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = [];
+        private readonly Dictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = new Dictionary<string, List<(IPAddress, DateTime)>>();
         private bool _disposedValue;
 
         public BruteForceDetectionDetectionService(IConfiguration configuration)
         {
             _detectionSettings = configuration.GetSection(AntiBruteForceConfigSection)?.Get<BruteForceDetectionSettings>() ?? new BruteForceDetectionSettings();
         }
-
-        /*public async Task StartAsync(CancellationToken cancellationToken)
-        {
-            _cts = new CancellationTokenSource();
-        }*/
-
-        /*public async Task StopAsync(CancellationToken cancellationToken)
-        {
-            if (_cts != null)
-                await _cts.CancelAsync();
-
-            _cts?.Dispose();
-        }*/
 
         public void AddFailedAttempt(string login, IPAddress host)
         {
@@ -42,14 +28,13 @@ namespace CameraServer.Services.AntiBruteForce
             }
             else
             {
-                attempts = [newAttempt];
+                attempts = new() { newAttempt };
                 _userAuthRetries.TryAdd(login, attempts);
             }
         }
 
         public bool CheckThreat(string login, IPAddress host)
         {
-            var result = false;
             if (_userAuthRetries.TryGetValue(login, out var attempts))
             {
                 var lastMinuteAtempts = attempts
@@ -57,7 +42,7 @@ namespace CameraServer.Services.AntiBruteForce
                                 && n.Item2 > DateTime.Now.AddMinutes(-1))
                     .ToArray();
 
-                if (lastMinuteAtempts?.Length > _detectionSettings.RetriesPerMinute)
+                if (lastMinuteAtempts.Length > _detectionSettings.RetriesPerMinute)
                     return true;
 
                 var lastHourAtempts = attempts
@@ -65,11 +50,11 @@ namespace CameraServer.Services.AntiBruteForce
                                 && n.Item2 > DateTime.Now.AddHours(-1))
                     .ToArray();
 
-                if (lastHourAtempts?.Length > _detectionSettings.RetriesPerHour)
+                if (lastHourAtempts.Length > _detectionSettings.RetriesPerHour)
                     return true;
             }
 
-            return result;
+            return false;
         }
 
         public void ClearFailedAttempts(string login, IPAddress host)
@@ -79,16 +64,13 @@ namespace CameraServer.Services.AntiBruteForce
                 attempts.RemoveAll(n => n.Item1.Equals(host));
             }
         }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposedValue)
             {
                 if (disposing)
                 {
-                    /*if (!(_cts?.IsCancellationRequested ?? true))
-                        _cts.Cancel();
-
-                    _cts?.Dispose();*/
                 }
 
                 _disposedValue = true;

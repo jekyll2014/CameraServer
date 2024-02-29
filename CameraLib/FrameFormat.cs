@@ -17,7 +17,7 @@ namespace CameraLib
             Fps = fps;
         }
 
-        public static Dictionary<int, string> codecs = new Dictionary<int, string>
+        public static readonly Dictionary<int, string> Codecs = new Dictionary<int, string>
         {
             {-1, "UNKN"}, // Unknown
             {810961203, "3IV0"}, // 'result := 'MPEG4-based codec 3ivx'

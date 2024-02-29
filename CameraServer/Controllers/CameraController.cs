@@ -1,7 +1,9 @@
 ﻿using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
-using CameraServer.StreamHelpers;
+
+using Emgu.CV;
+using Emgu.CV.Structure;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -10,8 +12,8 @@ using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
 
 using System.Collections.Concurrent;
-using System.Drawing;
 using System.Net;
+using System.Text;
 
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
@@ -78,7 +80,7 @@ namespace CameraServer.Controllers
         [HttpGet]
         [Route("GetVideoContentByName")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-        public async Task<IActionResult> GetVideoContentByName(string cameraName, int xResolution = 0, int yResolution = 0, string format = "")
+        public async Task<IActionResult> GetVideoContentByName(string cameraName, int? xResolution = 0, int? yResolution = 0, string? format = "")
         {
             if (string.IsNullOrEmpty(cameraName))
                 return BadRequest("Empty camera name");
@@ -96,54 +98,65 @@ namespace CameraServer.Controllers
 
             await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
 
-            return Empty;
+            return new EmptyResult();
         }
 
         [HttpGet]
         [Route("GetVideoContent")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-        public async Task<IActionResult> GetVideoContent(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
+        public async Task<IActionResult> GetVideoContent(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "")
         {
             await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
 
-            return Empty;
+            return new EmptyResult();
         }
 
-        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int xResolution = 0, int yResolution = 0, string format = "")
+        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "")
         {
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
             var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
-            var imageQueue = new ConcurrentQueue<Bitmap>();
+            var imageQueue = new ConcurrentQueue<Mat>();
             var cam = _collection.Cameras.ToArray()[cameraNumber];
             if (!cam.AllowedRoles.Intersect(userRoles).Any())
                 return BadRequest("No such camera");
 
-            var id = _collection.Cameras.ToArray()[cameraNumber].Camera.Path;
-            if (string.IsNullOrEmpty(id))
+            ServerCamera camera;
+            try
+            {
+                camera = _collection.Cameras.ToArray()[cameraNumber];
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
+            }
 
-            var cameraCancellationToken = await _collection.HookCamera(id, Request.HttpContext.TraceIdentifier, imageQueue,
-                xResolution, yResolution, format);
+            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Path, Request.HttpContext.TraceIdentifier, imageQueue,
+                xResolution ?? 0, yResolution ?? 0, format ?? "");
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             try
             {
                 Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
-                using (var wr = new MjpegWriter(Response.Body))
+                while (!Request.HttpContext.RequestAborted.IsCancellationRequested
+                       && !Response.HttpContext.RequestAborted.IsCancellationRequested
+                       && !HttpContext.RequestAborted.IsCancellationRequested
+                       && !cameraCancellationToken.IsCancellationRequested)
                 {
-                    while (!Request.HttpContext.RequestAborted.IsCancellationRequested
-                           && !Response.HttpContext.RequestAborted.IsCancellationRequested
-                           && !HttpContext.RequestAborted.IsCancellationRequested
-                           && !cameraCancellationToken.IsCancellationRequested)
+                    if (imageQueue.TryDequeue(out var image))
                     {
-                        if (imageQueue.TryDequeue(out var image))
-                        {
-                            await wr.Write(image);
-                            image.Dispose();
-                        }
+                        var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
+                        var header = $"\r\n{Boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {jpegBuffer.Length}\r\n";
+                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
+                        await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
+                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
 
+                        image.Dispose();
+                    }
+                    else
+                    {
                         await Task.Delay(10, Response.HttpContext.RequestAborted);
                     }
                 }
@@ -153,7 +166,7 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            await _collection.UnHookCamera(id, Request.HttpContext.TraceIdentifier);
+            await _collection.UnHookCamera(camera.Camera.Path, Request.HttpContext.TraceIdentifier);
             while (imageQueue.TryDequeue(out var image))
             {
                 image.Dispose();
@@ -161,9 +174,9 @@ namespace CameraServer.Controllers
 
             imageQueue.Clear();
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
-            return Empty;
+            return new EmptyResult();
         }
     }
 }

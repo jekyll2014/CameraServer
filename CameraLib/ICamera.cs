@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Drawing;
+﻿using Emgu.CV;
+
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,14 +13,15 @@ namespace CameraLib
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; }
 
-        public delegate void ImageCapturedEventHandler(ICamera camera, Bitmap image);
+        public delegate void ImageCapturedEventHandler(ICamera camera, Mat image);
         public event ImageCapturedEventHandler? ImageCapturedEvent;
+
         public CancellationToken CancellationToken { get; }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token);
-        public Task<bool> Start(int x, int y, string format, CancellationToken token);
+        public Task<bool> Start(int width, int height, string format, CancellationToken token);
         public Task Stop(CancellationToken token);
-        public Task<Bitmap?> GrabFrame(CancellationToken token);
-        public IAsyncEnumerable<Bitmap> GrabFrames(CancellationToken token);
+        public Task<Mat?> GrabFrame(CancellationToken token);
+        public IAsyncEnumerable<Mat> GrabFrames(CancellationToken token);
     }
 }

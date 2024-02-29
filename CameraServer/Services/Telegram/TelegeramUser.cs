@@ -7,7 +7,7 @@ public class TelegeramUser : ICameraUser
     public string Login { get; set; } = string.Empty;
     public long UserId { get; }
     public string Name { get; set; } = string.Empty;
-    public List<Roles> Roles { get; set; } = [];
+    public List<Roles> Roles { get; set; } = new List<Roles>();
 
     public TelegeramUser(long userId)
     {

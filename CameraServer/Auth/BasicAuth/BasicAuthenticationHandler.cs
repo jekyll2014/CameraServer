@@ -20,10 +20,11 @@ namespace CameraServer.Auth.BasicAuth
             IOptionsMonitor<AuthenticationSchemeOptions> options,
             IConfiguration configuration,
             ILoggerFactory logger,
+            ISystemClock systemClock,
             UrlEncoder encoder,
             IUserManager manager,
             IHttpContextAccessor accessor) :
-            base(options, logger, encoder)
+            base(options, logger, encoder, systemClock)
         {
             _configuration = configuration;
             _manager = manager;
