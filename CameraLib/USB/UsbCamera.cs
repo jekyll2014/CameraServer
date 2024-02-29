@@ -58,16 +58,7 @@ namespace CameraLib.USB
             var result = new List<CameraDescription>();
             foreach (var camera in descriptors)
             {
-                var formats = new List<FrameFormat>();
-                var cameraCharacteristics = GetAllAvailableResolution(camera);
-                foreach (var cameraCharacteristic in cameraCharacteristics)
-                {
-                    formats.Add(new FrameFormat(cameraCharacteristic.Width,
-                        cameraCharacteristic.Heigth,
-                        cameraCharacteristic.Format,
-                        0.0));
-                }
-
+                var formats = GetAllAvailableResolution(camera);
                 result.Add(new CameraDescription(CameraType.USB, camera.DevicePath, camera.Name, formats));
             }
 
@@ -91,7 +82,7 @@ namespace CameraLib.USB
 
                 var availableResolutions = new List<FrameFormat>();
 
-                var v = new VideoInfoHeader();
+                var videoInfoHeader = new VideoInfoHeader();
                 pRaw2.EnumMediaTypes(out var mediaTypeEnum);
 
                 var mediaTypes = new AMMediaType[1];
@@ -100,8 +91,8 @@ namespace CameraLib.USB
 
                 while (mediaTypes[0] != null)
                 {
-                    Marshal.PtrToStructure(mediaTypes[0].formatPtr, v);
-                    var header = v.BmiHeader;
+                    Marshal.PtrToStructure(mediaTypes[0].formatPtr, videoInfoHeader);
+                    var header = videoInfoHeader.BmiHeader;
                     if (header.Size != 0 && header.BitCount != 0)
                     {
                         if (header.BitCount > bitCount)
@@ -115,7 +106,7 @@ namespace CameraLib.USB
                             header.Width,
                             header.Height,
                             format ?? "",
-                            10000000 / v.AvgTimePerFrame));
+                            10000000.0 / videoInfoHeader.AvgTimePerFrame));
                     }
 
                     mediaTypeEnum.Next(1, mediaTypes, fetched);
