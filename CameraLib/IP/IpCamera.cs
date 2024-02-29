@@ -48,6 +48,8 @@ namespace CameraLib.IP
 
             var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? new List<FrameFormat>();
 
+            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+
             if (frameFormats.Count == 0 || forceCameraConnect)
             {
                 var cameraUri = new Uri(path);

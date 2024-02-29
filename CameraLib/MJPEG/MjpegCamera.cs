@@ -62,6 +62,8 @@ namespace CameraLib.MJPEG
                 : name;
 
             List<FrameFormat> frameFormats = new();
+            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+
             if (forceCameraConnect)
             {
                 if (PingAddress(cameraUri.Host, discoveryTimeout).Result)
