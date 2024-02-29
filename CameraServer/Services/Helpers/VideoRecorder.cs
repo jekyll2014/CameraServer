@@ -6,6 +6,7 @@ namespace CameraServer.Services.Helpers
 {
     public class VideoRecorder : IDisposable
     {
+        private const double DefaultFps = 25.0;
         private readonly string _fileName;
         private readonly int _fourcc = VideoWriter.Fourcc('m', 'p', '4', 'v');
         private VideoWriter? _videoWriter;
@@ -13,9 +14,13 @@ namespace CameraServer.Services.Helpers
         private readonly byte _compressionQuality;
         private bool _disposedValue;
 
-        public VideoRecorder(string fileName, double fps = 30, byte quality = 90)
+        public VideoRecorder(string fileName, double fps = DefaultFps, byte quality = 90)
         {
             _fileName = fileName;
+
+            if (fps < 0)
+                fps = DefaultFps;
+
             _fps = fps;
             _compressionQuality = quality;
         }

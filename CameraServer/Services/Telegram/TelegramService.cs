@@ -392,9 +392,6 @@ namespace CameraServer.Services.Telegram
                         try
                         {
                             var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
-                            if (fps < 0)
-                                fps = 30;
-
                             var recorder = new VideoRecorder(fileName, fps, 90);
                             var timeOut = DateTime.Now.AddSeconds(recordTime);
                             while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
