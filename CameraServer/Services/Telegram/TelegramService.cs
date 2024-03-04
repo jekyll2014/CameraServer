@@ -1,6 +1,5 @@
 ﻿using CameraServer.Auth;
 using CameraServer.Models;
-using CameraServer.Services.Helpers;
 
 using Emgu.CV;
 using Emgu.CV.Structure;
@@ -164,21 +163,42 @@ namespace CameraServer.Services.Telegram
                 text: $"Requested: \"{messageText}\"",
                 cancellationToken: cancellationToken);
 
-            Task.Run(async () =>
+            await Task.Run(async () =>
             {
                 // search for the available cameras
                 if (messageText.Equals(RefreshCommand, StringComparison.OrdinalIgnoreCase)
                     && currentTelegramUser.Roles.Contains(Roles.Admin))
-                {
-                    await _collection.RefreshCameraCollection(cancellationToken);
-
-                    messageText = StartCommand;
-                }
-
+                    RefreshCameraListMessage(botClient, chatId, currentTelegramUser, cancellationToken);
                 // generate new command
-                if (messageText.Equals(StartCommand, StringComparison.OrdinalIgnoreCase))
-                {
-                    var buttons = new List<InlineKeyboardButton[]>
+                else if (messageText.Equals(StartCommand, StringComparison.OrdinalIgnoreCase))
+                    StartNewCommandMessage(botClient, chatId, currentTelegramUser, cancellationToken);
+                // return snapshots of the requested cameras
+                else if (messageText.StartsWith(SnapShotCommand, StringComparison.OrdinalIgnoreCase))
+                    SendImageMessage(botClient, chatId, currentTelegramUser, messageText, cancellationToken);
+                // return video clip
+                else if (messageText.StartsWith(VideoRecordCommand, StringComparison.OrdinalIgnoreCase))
+                    SendVideoMessage(botClient, chatId, currentTelegramUser, messageText, cancellationToken);
+                // return help message on unknown command
+                else
+                    SendHelpMessage(botClient, chatId, cancellationToken);
+            }, cancellationToken);
+        }
+
+        private async Task RefreshCameraListMessage(ITelegramBotClient botClient,
+            ChatId chatId,
+            TelegeramUser user,
+            CancellationToken cancellationToken)
+        {
+            await _collection.RefreshCameraCollection(cancellationToken);
+            await StartNewCommandMessage(botClient, chatId, user, cancellationToken);
+        }
+
+        private async Task StartNewCommandMessage(ITelegramBotClient botClient,
+            ChatId chatId,
+            TelegeramUser user,
+            CancellationToken cancellationToken)
+        {
+            var buttons = new List<InlineKeyboardButton[]>
                     {
                         new InlineKeyboardButton[]
                         {
@@ -196,262 +216,264 @@ namespace CameraServer.Services.Telegram
                         }
                     };
 
-                    if (currentTelegramUser.Roles.Contains(Roles.Admin))
-                    {
-                        buttons.Add(new InlineKeyboardButton[]
-                        {
+            if (user.Roles.Contains(Roles.Admin))
+            {
+                buttons.Add(new InlineKeyboardButton[]
+                {
                             new ("Referesh camera list")
                             {
                                 CallbackData = RefreshCommand
                             }
-                        });
-                    }
+                });
+            }
 
-                    var inline = new InlineKeyboardMarkup(buttons);
+            var inline = new InlineKeyboardMarkup(buttons);
 
-                    _botClient?.SendTextMessageAsync(chatId, "Camera list", null, parseMode: ParseMode.Html,
-                        replyMarkup: inline, cancellationToken: cancellationToken);
+            await botClient.SendTextMessageAsync(chatId, "Camera list", null, parseMode: ParseMode.Html,
+                replyMarkup: inline, cancellationToken: cancellationToken);
+        }
 
-                    return;
+        private async Task SendImageMessage(ITelegramBotClient botClient,
+            ChatId chatId,
+            TelegeramUser user,
+            string messageText,
+            CancellationToken cancellationToken)
+        {
+            var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (tokens.Count < 2)
+            {
+                var buttons = new List<InlineKeyboardButton[]>();
+                var buttonsRow = new List<InlineKeyboardButton>();
+                var n = 0;
+                foreach (var camera in _collection.Cameras
+                             .Where(m => m.AllowedRoles
+                                 .Intersect(user.Roles)
+                                 .Any()))
+                {
+                    var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
+                    buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
+                    {
+                        CallbackData = $"{SnapShotCommand} {n}"
+                    });
+                    buttons.Add(buttonsRow.ToArray());
+                    buttonsRow.Clear();
+                    n++;
                 }
 
-                // return snapshots of the requested cameras
-                if (messageText.StartsWith(SnapShotCommand, StringComparison.OrdinalIgnoreCase))
+                if (user.Roles.Contains(Roles.Admin))
                 {
-                    var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
-                    if (tokens.Count < 2)
+                    buttons.Add(new InlineKeyboardButton[]
                     {
-                        var buttons = new List<InlineKeyboardButton[]>();
-                        var buttonsRow = new List<InlineKeyboardButton>();
-                        var n = 0;
-                        foreach (var camera in _collection.Cameras
-                                     .Where(m => m.AllowedRoles
-                                         .Intersect(currentTelegramUser.Roles)
-                                         .Any()))
-                        {
-                            var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
-                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
-                            {
-                                CallbackData = $"{SnapShotCommand} {n}"
-                            });
-                            buttons.Add(buttonsRow.ToArray());
-                            buttonsRow.Clear();
-                            n++;
-                        }
-
-                        if (currentTelegramUser.Roles.Contains(Roles.Admin))
-                        {
-                            buttons.Add(new InlineKeyboardButton[]
-                            {
                                 new ("Referesh")
                                 {
                                     CallbackData = RefreshCommand
                                 }
-                            });
-                        }
+                    });
+                }
 
-                        var inline = new InlineKeyboardMarkup(buttons);
+                var inline = new InlineKeyboardMarkup(buttons);
 
-                        _botClient?.SendTextMessageAsync(chatId, "Get image from camera:", null, parseMode: ParseMode.Html,
-                            replyMarkup: inline, cancellationToken: cancellationToken);
-                    }
-                    else if (tokens.Count >= 2)
+                botClient?.SendTextMessageAsync(chatId, "Get image from camera:", null, parseMode: ParseMode.Html,
+                    replyMarkup: inline, cancellationToken: cancellationToken);
+            }
+            else if (tokens.Count >= 2)
+            {
+                var cameraNumber = tokens[1];
+                tokens.RemoveAt(0);
+                if (!int.TryParse(cameraNumber, out var n))
+                    return;
+
+                ServerCamera camera;
+                try
+                {
+                    camera = GetCamera(n, user);
+                }
+                catch (Exception ex)
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: ex.Message,
+                        cancellationToken: cancellationToken);
+
+                    return;
+                }
+
+                var image = await camera.Camera.GrabFrame(cancellationToken);
+                if (image != null)
+                {
+                    using (var ms = new MemoryStream())
                     {
-                        var cameraNumber = tokens[1];
-                        tokens.RemoveAt(0);
-                        if (!int.TryParse(cameraNumber, out var n))
-                            return;
+                        var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
+                        await ms.WriteAsync(jpegBuffer, cancellationToken);
+                        ms.Position = 0;
+                        image.Dispose();
+                        var pic = InputFile.FromStream(ms);
 
-                        ServerCamera camera;
-                        try
+                        await botClient.SendPhotoAsync(
+                            chatId: chatId,
+                            photo: pic,
+                            caption: $"Camera[{n}]: {camera.Camera.Description.Name}",
+                            cancellationToken: cancellationToken);
+                    }
+                }
+                else
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: $"Can't get image from camera: \"{n}\"",
+                        cancellationToken: cancellationToken);
+                }
+            }
+            else
+            {
+                await botClient.SendTextMessageAsync(
+                    chatId: chatId,
+                    text: $"Incorrect command",
+                    cancellationToken: cancellationToken);
+            }
+        }
+
+        private async Task SendVideoMessage(ITelegramBotClient botClient,
+            ChatId chatId,
+            TelegeramUser user,
+            string messageText,
+            CancellationToken cancellationToken)
+        {
+            var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (tokens.Count < 2)
+            {
+                var buttons = new List<InlineKeyboardButton[]>();
+                var buttonsRow = new List<InlineKeyboardButton>();
+                var n = 0;
+                foreach (var camera in _collection.Cameras
+                             .Where(m => m.AllowedRoles
+                                 .Intersect(user.Roles)
+                                 .Any()))
+                {
+                    var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
+                    buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
+                    {
+                        CallbackData = $"{VideoRecordCommand} {n} {_settings.DefaultVideoTime}"
+                    });
+                    buttons.Add(buttonsRow.ToArray());
+                    buttonsRow.Clear();
+                    n++;
+                }
+
+                var inline = new InlineKeyboardMarkup(buttons);
+                botClient?.SendTextMessageAsync(chatId, "Get video from camera:", null, parseMode: ParseMode.Html,
+                    replyMarkup: inline, cancellationToken: cancellationToken);
+            }
+            else if (tokens.Count >= 2
+                    && int.TryParse(tokens[1], out var cameraNumber)
+                    && int.TryParse(tokens[2], out var recordTime))
+            {
+                ServerCamera camera;
+                try
+                {
+                    camera = GetCamera(cameraNumber, user);
+                }
+                catch (Exception ex)
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: ex.Message,
+                        cancellationToken: cancellationToken);
+
+                    return;
+                }
+
+                var userId = $"{user.UserId}{DateTime.Now.Ticks}";
+                var imageQueue = new ConcurrentQueue<Mat>();
+                var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
+                    userId,
+                    imageQueue);
+                if (cameraCancellationToken == CancellationToken.None)
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId: chatId,
+                        text: $"Can not connect to camera#{cameraNumber}",
+                        cancellationToken: cancellationToken);
+
+                    return;
+                }
+
+                if (recordTime <= 0)
+                    return;
+
+                if (recordTime >= VideoRecordMaxTime)
+                    recordTime = VideoRecordMaxTime;
+
+                //record video
+                var fileName = $"{userId}.mp4";
+                try
+                {
+                    var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
+                    var recorder = new Helpers.VideoRecorder(fileName, fps, 90);
+                    var timeOut = DateTime.Now.AddSeconds(recordTime);
+                    while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
+                    {
+                        if (imageQueue.TryDequeue(out var image))
                         {
-                            camera = GetCamera(n, currentTelegramUser);
-                        }
-                        catch (Exception ex)
-                        {
-                            await botClient.SendTextMessageAsync(
-                                chatId: chatId,
-                                text: ex.Message,
-                                cancellationToken: cancellationToken);
-
-                            return;
-                        }
-
-                        var image = await camera.Camera.GrabFrame(cancellationToken);
-                        if (image != null)
-                        {
-                            using (var ms = new MemoryStream())
-                            {
-                                var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
-                                await ms.WriteAsync(jpegBuffer, cancellationToken);
-                                ms.Position = 0;
-                                image.Dispose();
-                                var pic = InputFile.FromStream(ms);
-
-                                await botClient.SendPhotoAsync(
-                                    chatId: chatId,
-                                    photo: pic,
-                                    caption: $"Camera[{n}]: {camera.Camera.Description.Name}",
-                                    cancellationToken: cancellationToken);
-                            }
-
+                            recorder.SaveFrame(image);
                             image.Dispose();
                         }
                         else
-                        {
-                            await botClient.SendTextMessageAsync(
-                                chatId: chatId,
-                                text: $"Can't get image from camera: \"{n}\"",
-                                cancellationToken: cancellationToken);
-                        }
-                    }
-                    else
-                    {
-                        await botClient.SendTextMessageAsync(
-                            chatId: chatId,
-                            text: $"Incorrect command",
-                            cancellationToken: cancellationToken);
+                            await Task.Delay(10, CancellationToken.None);
                     }
 
-                    return;
+                    recorder.Stop();
+                    recorder.Dispose();
+                    var stream = File.OpenRead(fileName);
+
+                    var videoFile = InputFile.FromStream(stream,
+                        $"Cam{cameraNumber}-{DateTime.Now.ToShortTimeString().Replace(':', '-')}");
+                    await botClient.SendVideoAsync(
+                        chatId: chatId,
+                        video: videoFile,
+                        caption: $"Camera#{cameraNumber} record", cancellationToken: cancellationToken);
+                    await stream.DisposeAsync();
+
+                    File.Delete(fileName);
                 }
-
-                // return video clip
-                if (messageText.StartsWith(VideoRecordCommand, StringComparison.OrdinalIgnoreCase))
+                catch
                 {
-                    var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
-                    if (tokens.Count < 2)
-                    {
-                        var buttons = new List<InlineKeyboardButton[]>();
-                        var buttonsRow = new List<InlineKeyboardButton>();
-                        var n = 0;
-                        foreach (var camera in _collection.Cameras
-                                     .Where(m => m.AllowedRoles
-                                         .Intersect(currentTelegramUser.Roles)
-                                         .Any()))
-                        {
-                            var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Heigth * n.Width);
-                            buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Heigth ?? 0}]")
-                            {
-                                CallbackData = $"{VideoRecordCommand} {n} {_settings.DefaultVideoTime}"
-                            });
-                            buttons.Add(buttonsRow.ToArray());
-                            buttonsRow.Clear();
-                            n++;
-                        }
-
-                        var inline = new InlineKeyboardMarkup(buttons);
-                        _botClient?.SendTextMessageAsync(chatId, "Get video from camera:", null, parseMode: ParseMode.Html,
-                            replyMarkup: inline, cancellationToken: cancellationToken);
-                    }
-                    else if (tokens.Count >= 2
-                            && int.TryParse(tokens[1], out var cameraNumber)
-                            && int.TryParse(tokens[2], out var recordTime))
-                    {
-                        ServerCamera camera;
-                        try
-                        {
-                            camera = GetCamera(cameraNumber, currentTelegramUser);
-                        }
-                        catch (Exception ex)
-                        {
-                            await botClient.SendTextMessageAsync(
-                                chatId: chatId,
-                                text: ex.Message,
-                                cancellationToken: cancellationToken);
-
-                            return;
-                        }
-
-                        var userId = $"{currentTelegramUser.UserId}{DateTime.Now.Ticks}";
-                        var imageQueue = new ConcurrentQueue<Mat>();
-                        var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
-                            userId,
-                            imageQueue);
-                        if (cameraCancellationToken == CancellationToken.None)
-                        {
-                            await botClient.SendTextMessageAsync(
-                                chatId: chatId,
-                                text: $"Can not connect to camera#{cameraNumber}",
-                                cancellationToken: cancellationToken);
-
-                            return;
-                        }
-
-                        if (recordTime <= 0)
-                            return;
-
-                        if (recordTime >= VideoRecordMaxTime)
-                            recordTime = VideoRecordMaxTime;
-
-                        //record video
-                        var fileName = $"{userId}.mp4";
-                        try
-                        {
-                            var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
-                            var recorder = new VideoRecorder(fileName, fps, 90);
-                            var timeOut = DateTime.Now.AddSeconds(recordTime);
-                            while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
-                            {
-                                if (imageQueue.TryDequeue(out var image))
-                                {
-                                    recorder.SaveFrame(image);
-                                    image.Dispose();
-                                }
-                                else
-                                    await Task.Delay(10, CancellationToken.None);
-                            }
-
-                            recorder.Stop();
-                            recorder.Dispose();
-                            var stream = File.OpenRead(fileName);
-
-                            var videoFile = InputFile.FromStream(stream,
-                                $"Cam{cameraNumber}-{DateTime.Now.ToShortTimeString().Replace(':', '-')}");
-                            await botClient.SendVideoAsync(
-                                chatId: chatId,
-                                video: videoFile,
-                                caption: $"Camera#{cameraNumber} record", cancellationToken: cancellationToken);
-                            await stream.DisposeAsync();
-
-                            File.Delete(fileName);
-                        }
-                        catch
-                        {
-                        }
-
-                        await _collection.UnHookCamera(camera.Camera.Description.Path, userId);
-                        while (imageQueue.TryDequeue(out var image))
-                        {
-                            image.Dispose();
-                        }
-
-                        imageQueue.Clear();
-                    }
-                    else
-                    {
-                        await botClient.SendTextMessageAsync(
-                            chatId: chatId,
-                            text: $"Incorrect command",
-                            cancellationToken: cancellationToken);
-                    }
-
-                    return;
                 }
 
-                // return help message on unknown command
+                await _collection.UnHookCamera(camera.Camera.Description.Path, userId);
+                while (imageQueue.TryDequeue(out var image))
+                {
+                    image.Dispose();
+                }
+
+                imageQueue.Clear();
+            }
+            else
+            {
                 await botClient.SendTextMessageAsync(
                     chatId: chatId,
-                    text: $"Usage tips:\r\n" +
-                          $"\t{StartCommand} - generate new command\r\n" +
-                          $"\t{RefreshCommand} - refresh camera list on the server\r\n" +
-                          $"\t{SnapShotCommand} n - get image from camera[n]\r\n" +
-                          $"\t{VideoRecordCommand} n s - get video from camera [n], duration [s] seconds",
+                    text: $"Incorrect command",
                     cancellationToken: cancellationToken);
-            });
+            }
         }
 
-        private Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+        private async Task SendHelpMessage(ITelegramBotClient botClient,
+            ChatId chatId,
+            CancellationToken cancellationToken)
+        {
+            await botClient.SendTextMessageAsync(
+                chatId: chatId,
+                text: $"Usage tips:\r\n" +
+                      $"\t{StartCommand} - generate new command\r\n" +
+                      $"\t{RefreshCommand} - refresh camera list on the server\r\n" +
+                      $"\t{SnapShotCommand} n - get image from camera[n]\r\n" +
+                      $"\t{VideoRecordCommand} n s - get video from camera [n], duration [s] seconds",
+                cancellationToken: cancellationToken);
+        }
+
+        private Task HandlePollingErrorAsync(ITelegramBotClient botClient,
+            Exception exception,
+            CancellationToken cancellationToken)
         {
             var errorMessage = exception switch
             {
