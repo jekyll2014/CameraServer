@@ -5,6 +5,7 @@ using Emgu.CV.CvEnum;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
@@ -29,12 +30,8 @@ namespace CameraLib.MJPEG
         public string Password { get; }
 
         public CameraDescription Description { get; set; }
-        public bool IsRunning =>
-            !(_imageGrabber == null
-              || _imageGrabber.IsCanceled
-              || _imageGrabber.IsCompleted
-              || _imageGrabber.IsCompletedSuccessfully
-              || _imageGrabber.IsFaulted);
+        public bool IsRunning { get; set; }
+        public FrameFormat? CurrentFrameFormat { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -71,7 +68,7 @@ namespace CameraLib.MJPEG
                     var image = GrabFrame(CancellationToken.None).Result;
                     if (image != null)
                     {
-                        frameFormats.Add(new FrameFormat(image.Width, image.Height));
+                        frameFormats.Add(new FrameFormat(image.Width, image.Height, "MJPG"));
                         image.Dispose();
                     }
                 }
@@ -125,24 +122,22 @@ namespace CameraLib.MJPEG
             return true;
         }
 
-        public async void Stop()
-        {
-            await Stop(CancellationToken.None);
-        }
-
-        public async Task Stop(CancellationToken token)
+        public void Stop()
         {
             if (!IsRunning)
                 return;
+            lock (_getPictureThreadLock)
+            {
+                _cancellationTokenSource?.Cancel();
+                _stopCapture = true;
+                var timeOut = DateTime.Now.AddSeconds(100);
+                while (IsRunning && DateTime.Now < timeOut)
+                    Task.Delay(10).Wait();
 
-            _stopCapture = true;
-            var timeOut = DateTime.Now.AddSeconds(10);
-            while (IsRunning && DateTime.Now < timeOut)
-                await Task.Delay(10, token);
-
-            _imageGrabber?.Dispose();
-            _cancellationTokenSource?.Cancel();
-            _frame?.Dispose();
+                _imageGrabber?.Dispose();
+                _frame?.Dispose();
+                CurrentFrameFormat = null;
+            }
         }
 
         public async Task<Mat?> GrabFrame(CancellationToken token)
@@ -164,9 +159,12 @@ namespace CameraLib.MJPEG
                 if (await Start(0, 0, "", token))
                 {
                     image = await GrabFrame(token);
+
+                    if (image != null)
+                        CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
                 }
 
-                await Stop(token);
+                Stop();
             }, token);
 
             return image;
@@ -226,10 +224,24 @@ namespace CameraLib.MJPEG
                     byte previous = 0x00;   // The byte before
 
                     // Continuously pump the stream. The cancellationtoken is used to get out of there
-                    while (!_stopCapture && !tok.IsCancellationRequested)
+                    IsRunning = true;
+                    try
                     {
-                        var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tok).ConfigureAwait(false);
-                        ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture, ref previous, ref current, tok);
+                        while (!_stopCapture && !tok.IsCancellationRequested)
+                        {
+                            var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tok)
+                                .ConfigureAwait(false);
+                            ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture,
+                                ref previous, ref current, tok);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                    }
+                    finally
+                    {
+                        IsRunning = false;
                     }
                 }
             }
@@ -298,6 +310,7 @@ namespace CameraLib.MJPEG
                         try
                         {
                             CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
+                            CurrentFrameFormat ??= new FrameFormat(_frame.Width, _frame.Height);
                             ImageCapturedEvent?.Invoke(this, _frame.Clone());
                         }
                         catch
@@ -319,6 +332,47 @@ namespace CameraLib.MJPEG
         }
 
         #endregion
+
+        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format)
+        {
+            FrameFormat? selectedFormat;
+
+            if (!Description.FrameFormats.Any())
+                return new FrameFormat(0, 0);
+
+            if (Description.FrameFormats.Count() == 1)
+                return Description.FrameFormats.First();
+
+            if (xResolution > 0 && yResolution > 0)
+            {
+                var mpix = xResolution * yResolution;
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+            }
+            else
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+
+            var result = Description.FrameFormats
+                .Where(n =>
+                    n.Width == selectedFormat?.Width
+                    && n.Heigth == selectedFormat.Heigth)
+                .ToArray();
+
+            if (result.Length != 0)
+            {
+                var result2 = result.Where(n => n.Format == format)
+                    .ToArray();
+
+                if (result2.Length != 0)
+                    result = result2;
+            }
+
+            if (result.Length == 0)
+                return new FrameFormat(0, 0);
+
+            var result3 = result.MaxBy(n => n.Fps) ?? result[0];
+
+            return result3;
+        }
 
         protected virtual void Dispose(bool disposing)
         {

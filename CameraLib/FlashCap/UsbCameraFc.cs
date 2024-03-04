@@ -16,6 +16,7 @@ namespace CameraLib.FlashCap
     {
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
+        public FrameFormat? CurrentFrameFormat { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -156,11 +157,17 @@ namespace CameraLib.FlashCap
                     var image = bufferScope.Buffer.CopyImage();
                     bufferScope.ReleaseNow();
                     CvInvoke.Imdecode(image, ImreadModes.Color, _frame);
+
+                    if (CurrentFrameFormat == null)
+                    {
+                        CurrentFrameFormat = new FrameFormat(_frame.Width, _frame.Height);
+                    }
+
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
                 }
                 catch
                 {
-                    Stop(CancellationToken.None).Wait(CancellationToken.None);
+                    Stop();
                 }
                 finally
                 {
@@ -170,28 +177,25 @@ namespace CameraLib.FlashCap
             }
         }
 
-        public async void Stop()
-        {
-            await Stop(CancellationToken.None);
-        }
-
-        public async Task Stop(CancellationToken token)
+        public void Stop()
         {
             if (!IsRunning)
                 return;
 
-            if (_captureDevice != null)
+            lock (_getPictureThreadLock)
             {
-                await _captureDevice.StopAsync(token);
-                await _captureDevice.DisposeAsync();
+                _cancellationTokenSource?.Cancel();
+                if (_captureDevice != null)
+                {
+                    _captureDevice.StopAsync().Wait();
+                    _captureDevice.Dispose();
+                    _captureDevice = null;
+                }
+
+                _frame?.Dispose();
+                CurrentFrameFormat = null;
+                IsRunning = false;
             }
-
-            _captureDevice = null;
-            if (_cancellationTokenSource != null)
-                await _cancellationTokenSource.CancelAsync();
-
-            _frame?.Dispose();
-            IsRunning = false;
         }
 
         public async Task<Mat?> GrabFrame(CancellationToken token)
@@ -210,14 +214,22 @@ namespace CameraLib.FlashCap
             var image = new Mat();
             await Task.Run(async () =>
             {
-                var cameraCharacteristics = GetCaptureDevice(0, 0, string.Empty);
+                try
+                {
+                    var cameraCharacteristics = GetCaptureDevice(0, 0, string.Empty);
 
-                if (cameraCharacteristics == null)
-                    return;
+                    if (cameraCharacteristics == null)
+                        return;
 
-                var imageData = await _usbCamera.TakeOneShotAsync(cameraCharacteristics, token);
+                    var imageData = await _usbCamera.TakeOneShotAsync(cameraCharacteristics, token);
 
-                CvInvoke.Imdecode(imageData, ImreadModes.Color, image);
+                    CvInvoke.Imdecode(imageData, ImreadModes.Color, image);
+                    CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
             }, token);
 
             return image;
@@ -240,6 +252,47 @@ namespace CameraLib.FlashCap
             }
         }
 
+        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format)
+        {
+            FrameFormat? selectedFormat;
+
+            if (!Description.FrameFormats.Any())
+                return new FrameFormat(0, 0);
+
+            if (Description.FrameFormats.Count() == 1)
+                return Description.FrameFormats.First();
+
+            if (xResolution > 0 && yResolution > 0)
+            {
+                var mpix = xResolution * yResolution;
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+            }
+            else
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+
+            var result = Description.FrameFormats
+                .Where(n =>
+                    n.Width == selectedFormat?.Width
+                    && n.Heigth == selectedFormat.Heigth)
+                .ToArray();
+
+            if (result.Length != 0)
+            {
+                var result2 = result.Where(n => n.Format == format)
+                    .ToArray();
+
+                if (result2.Length != 0)
+                    result = result2;
+            }
+
+            if (result.Length == 0)
+                return new FrameFormat(0, 0);
+
+            var result3 = result.MaxBy(n => n.Fps) ?? result[0];
+
+            return result3;
+        }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposedValue)
@@ -249,7 +302,6 @@ namespace CameraLib.FlashCap
                     Stop();
                     _cancellationTokenSource?.Dispose();
                     _captureDevice?.Dispose();
-                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

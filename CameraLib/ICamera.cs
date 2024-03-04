@@ -10,6 +10,7 @@ namespace CameraLib
     {
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; }
+        public FrameFormat? CurrentFrameFormat { get; }
 
         public delegate void ImageCapturedEventHandler(ICamera camera, Mat image);
         public event ImageCapturedEventHandler? ImageCapturedEvent;
@@ -18,8 +19,9 @@ namespace CameraLib
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token);
         public Task<bool> Start(int width, int height, string format, CancellationToken token);
-        public Task Stop(CancellationToken token);
+        public void Stop();
         public Task<Mat?> GrabFrame(CancellationToken token);
         public IAsyncEnumerable<Mat> GrabFrames(CancellationToken token);
+        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format);
     }
 }

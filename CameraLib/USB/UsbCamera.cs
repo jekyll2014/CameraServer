@@ -17,6 +17,7 @@ namespace CameraLib.USB
     {
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
+        public FrameFormat? CurrentFrameFormat { get; private set; }
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -24,12 +25,12 @@ namespace CameraLib.USB
 
         private CancellationTokenSource? _cancellationTokenSource;
 
-        private const VideoCapture.API CaptureSource = VideoCapture.API.DShow;
+        //private const VideoCapture.API CaptureSource = VideoCapture.API.DShow;
         private readonly DsDevice? _usbCamera;
 
-        private readonly object _getPictureThreadLock = new object();
+        private readonly object _getPictureThreadLock = new();
         private VideoCapture? _captureDevice;
-        private Mat? _frame = new Mat();
+        private Mat? _frame;
 
         private bool _disposedValue;
 
@@ -172,7 +173,7 @@ namespace CameraLib.USB
             if (cameras.Length == 0 || camNumber >= cameras.Length)
                 return null;
 
-            return new VideoCapture(camNumber, CaptureSource);
+            return new VideoCapture(camNumber);
         }
 
         private void ImageCaptured(object? sender, EventArgs args)
@@ -191,6 +192,11 @@ namespace CameraLib.USB
 
                     if (!(_captureDevice?.Retrieve(_frame) ?? false))
                         return;
+
+                    if (CurrentFrameFormat == null)
+                    {
+                        CurrentFrameFormat = new FrameFormat(_frame.Width, _frame.Height);
+                    }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
                     //_frame?.Dispose();
@@ -211,17 +217,18 @@ namespace CameraLib.USB
             lock (_getPictureThreadLock)
             {
                 _cancellationTokenSource?.Cancel();
-                _captureDevice?.Stop();
-                _captureDevice?.Dispose();
-                _captureDevice = null;
+                if (_captureDevice != null)
+                {
+                    _captureDevice.Stop();
+                    _captureDevice.ImageGrabbed -= ImageCaptured;
+                    _captureDevice.Dispose();
+                    _captureDevice = null;
+                }
+
                 _frame?.Dispose();
+                CurrentFrameFormat = null;
                 IsRunning = false;
             }
-        }
-
-        public async Task Stop(CancellationToken token)
-        {
-            Stop();
         }
 
         public async Task<Mat?> GrabFrame(CancellationToken token)
@@ -244,8 +251,21 @@ namespace CameraLib.USB
                     if (_captureDevice == null)
                         return;
 
-                    if (_captureDevice.Grab())
-                        _captureDevice.Retrieve(image);
+                    try
+                    {
+
+                        if (_captureDevice.Grab())
+                        {
+                            if (_captureDevice.Retrieve(image))
+                            {
+                                CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                    }
 
                     _captureDevice.Stop();
                     _captureDevice.Dispose();
@@ -269,6 +289,47 @@ namespace CameraLib.USB
                     image.Dispose();
                 }
             }
+        }
+
+        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format)
+        {
+            FrameFormat? selectedFormat;
+
+            if (!Description.FrameFormats.Any())
+                return new FrameFormat(0, 0);
+
+            if (Description.FrameFormats.Count() == 1)
+                return Description.FrameFormats.First();
+
+            if (xResolution > 0 && yResolution > 0)
+            {
+                var mpix = xResolution * yResolution;
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+            }
+            else
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+
+            var result = Description.FrameFormats
+                .Where(n =>
+                    n.Width == selectedFormat?.Width
+                    && n.Heigth == selectedFormat.Heigth)
+                .ToArray();
+
+            if (result.Length != 0)
+            {
+                var result2 = result.Where(n => n.Format == format)
+                    .ToArray();
+
+                if (result2.Length != 0)
+                    result = result2;
+            }
+
+            if (result.Length == 0)
+                return new FrameFormat(0, 0);
+
+            var result3 = result.MaxBy(n => n.Fps) ?? result[0];
+
+            return result3;
         }
 
         protected virtual void Dispose(bool disposing)
