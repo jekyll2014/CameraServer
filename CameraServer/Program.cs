@@ -3,6 +3,7 @@ using CameraServer.Auth.BasicAuth;
 using CameraServer.Services.AntiBruteForce;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.Telegram;
+using CameraServer.Services.VideoRecorder;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -22,6 +23,7 @@ namespace CameraServer
             builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
             builder.Services.AddTransient<IUserManager, UserManager>();
             builder.Services.AddSingleton<CameraHubService, CameraHubService>();
+            builder.Services.AddHostedService<VideoRecorderService>();
             builder.Services.AddHostedService<TelegramService>();
             builder.Services.AddControllersWithViews().AddControllersAsServices();
 

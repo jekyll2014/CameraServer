@@ -42,7 +42,6 @@
 
 	<ItemGroup>
 	  <Folder Include="Services\MotionDetection\" />
-	  <Folder Include="Services\VideoRecorder\" />
 	</ItemGroup>
 
 </Project>

@@ -4,6 +4,7 @@ using CameraLib.IP;
 using CameraLib.MJPEG;
 using CameraLib.USB;
 
+using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Settings;
 
@@ -202,6 +203,27 @@ namespace CameraServer.Services.CameraHub
             }
 
             return true;
+        }
+
+        public ServerCamera GetCamera(int cameraNumber, ICameraUser currentTelegramUser)
+        {
+            if (cameraNumber < 0 || cameraNumber >= Cameras.Count())
+                throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
+
+            var camera = Cameras.ToArray()[cameraNumber];
+            if (!camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+                throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
+
+            return camera;
+        }
+
+        public ServerCamera GetCamera(string cameraId, ICameraUser currentTelegramUser)
+        {
+            var camera = Cameras.FirstOrDefault(n => n.Camera.Description.Path == cameraId);
+            if (camera == null || !camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+                throw new ArgumentOutOfRangeException($"No camera available: \"{cameraId}\"");
+
+            return camera;
         }
 
         private void GetImageFromCamera(ICamera camera, Mat image)

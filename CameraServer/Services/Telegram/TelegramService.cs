@@ -286,7 +286,7 @@ namespace CameraServer.Services.Telegram
                 ServerCamera camera;
                 try
                 {
-                    camera = GetCamera(n, user);
+                    camera = _collection.GetCamera(n, user);
                 }
                 catch (Exception ex)
                 {
@@ -371,7 +371,7 @@ namespace CameraServer.Services.Telegram
                 ServerCamera camera;
                 try
                 {
-                    camera = GetCamera(cameraNumber, user);
+                    camera = _collection.GetCamera(cameraNumber, user);
                 }
                 catch (Exception ex)
                 {
@@ -409,7 +409,7 @@ namespace CameraServer.Services.Telegram
                 try
                 {
                     var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
-                    var recorder = new Helpers.VideoRecorder(fileName, fps, 90);
+                    var recorder = new VideoRecorder.VideoRecorder(fileName, 0, 0, fps, 90);
                     var timeOut = DateTime.Now.AddSeconds(recordTime);
                     while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
                     {
@@ -485,18 +485,6 @@ namespace CameraServer.Services.Telegram
             Console.WriteLine(errorMessage);
 
             return Task.CompletedTask;
-        }
-
-        private ServerCamera GetCamera(int cameraNumber, TelegeramUser currentTelegramUser)
-        {
-            if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
-                throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
-
-            var camera = _collection.Cameras.ToArray()[cameraNumber];
-            if (!camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
-                throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
-
-            return camera;
         }
 
         protected virtual void Dispose(bool disposing)
