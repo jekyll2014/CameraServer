@@ -22,6 +22,6 @@ namespace CameraLib
         public void Stop();
         public Task<Mat?> GrabFrame(CancellationToken token);
         public IAsyncEnumerable<Mat> GrabFrames(CancellationToken token);
-        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format);
+        public FrameFormat GetNearestFormat(int width, int height, string format);
     }
 }

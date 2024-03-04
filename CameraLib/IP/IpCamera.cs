@@ -297,7 +297,7 @@ namespace CameraLib.IP
             return await Task.Run(() => new VideoCapture(Description.Path), token);
         }
 
-        public FrameFormat GetNearestFormat(int xResolution, int yResolution, string format)
+        public FrameFormat GetNearestFormat(int width, int height, string format)
         {
             FrameFormat? selectedFormat;
 
@@ -307,9 +307,9 @@ namespace CameraLib.IP
             if (Description.FrameFormats.Count() == 1)
                 return Description.FrameFormats.First();
 
-            if (xResolution > 0 && yResolution > 0)
+            if (width > 0 && height > 0)
             {
-                var mpix = xResolution * yResolution;
+                var mpix = width * height;
                 selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
             }
             else
