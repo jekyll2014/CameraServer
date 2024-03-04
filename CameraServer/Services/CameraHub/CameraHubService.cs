@@ -164,8 +164,8 @@ namespace CameraServer.Services.CameraHub
             string cameraId,
             string userId,
             ConcurrentQueue<Mat> srcImageQueue,
-            int xResolution = 0,
-            int yResolution = 0,
+            int width = 0,
+            int height = 0,
             string format = "")
         {
             if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
@@ -174,31 +174,31 @@ namespace CameraServer.Services.CameraHub
             var camera = _cameras
                 .FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
-            if (!camera.Value.TryAdd(cameraId + userId, srcImageQueue))
+            if (!camera.Value.TryAdd(cameraId + userId + width + height, srcImageQueue))
                 return CancellationToken.None;
 
             if (camera.Value.Count == 1)
             {
                 camera.Key.Camera.ImageCapturedEvent += GetImageFromCamera;
-                if (!await camera.Key.Camera.Start(xResolution, yResolution, format, CancellationToken.None))
+                if (!await camera.Key.Camera.Start(0, 0, format, CancellationToken.None))
                     return CancellationToken.None;
             }
 
             return camera.Key.Camera.CancellationToken;
         }
 
-        public async Task<bool> UnHookCamera(string cameraId, string userId)
+        public async Task<bool> UnHookCamera(string cameraId, string userId, int width = 0, int height = 0)
         {
             if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
                 return false;
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
-            camera.Value.Remove(cameraId + userId);
+            camera.Value.Remove(cameraId + userId + width + height);
             if (camera.Value.Count <= 0)
             {
                 camera.Key.Camera.ImageCapturedEvent -= GetImageFromCamera;
-                await camera.Key.Camera.Stop(CancellationToken.None);
+                camera.Key.Camera.Stop();
             }
 
             return true;

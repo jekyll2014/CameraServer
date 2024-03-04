@@ -3,6 +3,7 @@ using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
 using Emgu.CV;
+using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -111,7 +112,7 @@ namespace CameraServer.Controllers
             return new EmptyResult();
         }
 
-        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "")
+        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int? width = 0, int? height = 0, string? format = "", byte quality = 95)
         {
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
@@ -130,15 +131,29 @@ namespace CameraServer.Controllers
             catch (Exception e)
             {
                 Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
-                return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
+                return Problem("Can not find camera#",
+                    cameraNumber.ToString(),
+                    StatusCodes.Status204NoContent);
             }
 
-            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path, Request.HttpContext.TraceIdentifier, imageQueue,
-                xResolution ?? 0, yResolution ?? 0, format ?? "");
+            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
+                Request.HttpContext.TraceIdentifier,
+                imageQueue,
+                width ?? 0,
+                height ?? 0,
+                format ?? "");
+
             if (cameraCancellationToken == CancellationToken.None)
-                return Problem("Can not connect to camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
+                return Problem("Can not connect to camera#",
+                    cameraNumber.ToString(),
+                    StatusCodes.Status204NoContent);
             try
             {
+                if (quality < 1)
+                    quality = 1;
+                else if (quality > 100)
+                    quality = 100;
+
                 Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
                 while (!Request.HttpContext.RequestAborted.IsCancellationRequested
                        && !Response.HttpContext.RequestAborted.IsCancellationRequested
@@ -147,15 +162,33 @@ namespace CameraServer.Controllers
                 {
                     if (imageQueue.TryDequeue(out var image))
                     {
-                        var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
-                        var header = $"\r\n{Boundary}\r\n" +
-                                     $"Content-Type: image/jpeg\r\n" +
-                                     $"Content-Length: {jpegBuffer.Length}\r\n" +
-                                     $"\r\n";
-                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
-                        await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
-                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
-                        image.Dispose();
+                        if (image == null)
+                            continue;
+
+                        Image<Rgb, byte> outImage;
+                        if (width > 0 && height > 0 && image.Width > width && image.Height > height)
+                        {
+                            outImage = image
+                                .ToImage<Rgb, byte>()
+                                .Resize(width ?? 0, height ?? 0, Inter.Nearest);
+                        }
+                        else
+                            outImage = image.ToImage<Rgb, byte>();
+
+                        if (outImage != null)
+                        {
+                            var jpegBuffer = outImage.ToJpegData(quality);
+                            var header = $"\r\n{Boundary}\r\n" +
+                                         $"Content-Type: image/jpeg\r\n" +
+                                         $"Content-Length: {jpegBuffer.Length}\r\n" +
+                                         $"\r\n";
+                            await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
+                            await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
+                            await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
+                        }
+
+                        outImage?.Dispose();
+                        image?.Dispose();
                     }
                     else
                     {
@@ -168,7 +201,11 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            await _collection.UnHookCamera(camera.Camera.Description.Path, Request.HttpContext.TraceIdentifier);
+            await _collection.UnHookCamera(camera.Camera.Description.Path,
+                Request.HttpContext.TraceIdentifier,
+                width ?? 0,
+                height ?? 0);
+
             while (imageQueue.TryDequeue(out var image))
             {
                 image.Dispose();
@@ -176,7 +213,7 @@ namespace CameraServer.Controllers
 
             imageQueue.Clear();
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
 
             return new EmptyResult();
         }

@@ -367,10 +367,7 @@ namespace CameraServer.Services.Telegram
                         var imageQueue = new ConcurrentQueue<Mat>();
                         var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
                             userId,
-                            imageQueue,
-                            0,
-                            0,
-                            "");
+                            imageQueue);
                         if (cameraCancellationToken == CancellationToken.None)
                         {
                             await botClient.SendTextMessageAsync(
