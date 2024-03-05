@@ -205,22 +205,22 @@ namespace CameraServer.Services.CameraHub
             return true;
         }
 
-        public ServerCamera GetCamera(int cameraNumber, ICameraUser currentTelegramUser)
+        public ServerCamera GetCamera(int cameraNumber, ICameraUser currentUser)
         {
             if (cameraNumber < 0 || cameraNumber >= Cameras.Count())
                 throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
 
             var camera = Cameras.ToArray()[cameraNumber];
-            if (!camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+            if (!camera.AllowedRoles.Intersect(currentUser.Roles).Any())
                 throw new ArgumentOutOfRangeException($"No camera available: \"{cameraNumber}\"");
 
             return camera;
         }
 
-        public ServerCamera GetCamera(string cameraId, ICameraUser currentTelegramUser)
+        public ServerCamera GetCamera(string cameraId, ICameraUser currentUser)
         {
             var camera = Cameras.FirstOrDefault(n => n.Camera.Description.Path == cameraId);
-            if (camera == null || !camera.AllowedRoles.Intersect(currentTelegramUser.Roles).Any())
+            if (camera == null || !camera.AllowedRoles.Intersect(currentUser.Roles).Any())
                 throw new ArgumentOutOfRangeException($"No camera available: \"{cameraId}\"");
 
             return camera;
