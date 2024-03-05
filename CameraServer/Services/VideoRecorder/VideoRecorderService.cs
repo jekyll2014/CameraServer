@@ -88,7 +88,7 @@ namespace CameraServer.Services.VideoRecorder
                 try
                 {
                     var avgFps = fps > 0 ? fps : camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
-                    var stopTask = !_recorderTasks.TryGetValue(taskId, out _);
+                    var stopTask = false;
                     while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
                     {
                         var currentTime = DateTime.Now;
