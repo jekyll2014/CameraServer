@@ -123,7 +123,6 @@ namespace CameraServer.Services.VideoRecorder
                             }
                             timer.Stop();
                             avgFps = (double)n / ((double)timer.ElapsedMilliseconds / (double)1000);
-                            Console.WriteLine($"Avg fps: {avgFps}");
                             timer.Reset();
 
                             recorder.Stop();
