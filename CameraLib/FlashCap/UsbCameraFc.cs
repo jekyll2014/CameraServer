@@ -110,7 +110,7 @@ namespace CameraLib.FlashCap
             return true;
         }
 
-        private VideoCharacteristics? GetCaptureDevice(int x, int y, string format)
+        private VideoCharacteristics? GetCaptureDevice(int width, int height, string format)
         {
             var characteristics = _usbCamera.Characteristics
                 .Where(n => n.PixelFormat != PixelFormats.Unknown);
@@ -119,10 +119,10 @@ namespace CameraLib.FlashCap
                 characteristics = _usbCamera.Characteristics
                     .Where(n => n.PixelFormat.ToString() == format);
 
-            if (x > 0 && y > 0)
+            if (width > 0 && height > 0)
             {
                 characteristics = characteristics
-                    .Where(n => n.Width == x && n.Height == y).ToList();
+                    .Where(n => n.Width == width && n.Height == height).ToList();
             }
             else
             {
