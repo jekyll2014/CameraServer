@@ -23,19 +23,19 @@ public class RecorderSettings
 
     private int _videoFileLengthSeconds = 300;
 
-    public byte VideoQuality
+    public byte DefaultVideoQuality
     {
-        get => _videoQuality;
+        get => _defaultVideoQuality;
         set
         {
             if (value > 100)
-                _videoQuality = 100;
+                _defaultVideoQuality = 100;
             else if (value < 1)
-                _videoQuality = 1;
+                _defaultVideoQuality = 1;
             else
-                _videoQuality = value;
+                _defaultVideoQuality = value;
         }
     }
 
-    private byte _videoQuality = 90;
+    private byte _defaultVideoQuality = 90;
 }

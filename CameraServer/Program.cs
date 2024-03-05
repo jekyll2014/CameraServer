@@ -23,8 +23,10 @@ namespace CameraServer
             builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
             builder.Services.AddTransient<IUserManager, UserManager>();
             builder.Services.AddSingleton<CameraHubService, CameraHubService>();
-            builder.Services.AddHostedService<VideoRecorderService>();
-            builder.Services.AddHostedService<TelegramService>();
+            builder.Services.AddSingleton<VideoRecorderService>();
+            builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
+            builder.Services.AddSingleton<TelegramService>();
+            builder.Services.AddHostedService<TelegramService>(provider => provider.GetService<TelegramService>());
             builder.Services.AddControllersWithViews().AddControllersAsServices();
 
             builder.Services.AddAuthentication(BasicAuthenticationSchemeName)

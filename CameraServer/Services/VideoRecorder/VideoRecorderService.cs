@@ -1,5 +1,6 @@
 ﻿using CameraServer.Auth;
 using CameraServer.Models;
+using CameraServer.Services.CameraHub;
 
 using Emgu.CV;
 
@@ -13,14 +14,15 @@ namespace CameraServer.Services.VideoRecorder
         private const string RecorderConfigSection = "Recorder";
 
         private readonly IUserManager _manager;
-        private readonly CameraHub.CameraHubService _collection;
+        private readonly CameraHubService _collection;
         private readonly RecorderSettings _settings;
 
+        public IEnumerable<string> TaskList => _recorderTasks.Select(n => n.Key);
         private readonly Dictionary<string, Task> _recorderTasks = new Dictionary<string, Task>();
 
         private bool _disposedValue;
 
-        public VideoRecorderService(IConfiguration configuration, IUserManager manager, CameraHub.CameraHubService collection)
+        public VideoRecorderService(IConfiguration configuration, IUserManager manager, CameraHubService collection)
         {
             _manager = manager;
             _collection = collection;
@@ -32,7 +34,14 @@ namespace CameraServer.Services.VideoRecorder
         {
             foreach (var record in _settings.RecordCameras)
             {
-                Start(record.CameraId, record.User, record.Width, record.Height);
+                try
+                {
+                    Start(record.CameraId, record.User, record.Width, record.Height, record.Fps, record.CameraFrameFormat, record.Quality);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Can't start recording: {e}");
+                }
             }
         }
 
@@ -41,10 +50,13 @@ namespace CameraServer.Services.VideoRecorder
             Dispose();
         }
 
-        public string Start(string cameraId, string user, int width = 0, int height = 0, string format = "")
+        public string Start(string cameraId, string user, int width = 0, int height = 0, int fps = 20, string format = "", byte quality = 0)
         {
             if (!_settings.AutorizedUsers.Any(n => n.Equals(user, StringComparison.OrdinalIgnoreCase)))
-                return "";
+                throw new ApplicationException($"User [{user}] not authorised to start recording.");
+
+            if (quality <= 0)
+                quality = _settings.DefaultVideoQuality;
 
             var userDto = _manager.GetUserInfo(user);
             ServerCamera camera;
@@ -55,35 +67,34 @@ namespace CameraServer.Services.VideoRecorder
             catch (Exception ex)
             {
                 Console.WriteLine($"Error finding camera: {ex.Message}");
-
-                return "";
+                throw new ApplicationException($"User [{user}] not authorised to start recording.");
             }
 
-            var userUid = $"{user}{DateTime.Now.Ticks}";
-            var taskId = camera.Camera.Description.Path + userUid + width + height;
+            var taskId = camera.Camera.Description.Path + width + height;
             var t = new Task(async () =>
             {
                 var imageQueue = new ConcurrentQueue<Mat>();
                 var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
-                    userUid,
+                    string.Empty,
                     imageQueue,
                     width,
                     height,
                     format);
+
                 if (cameraCancellationToken == CancellationToken.None)
                     throw new ApplicationException($"Can not connect to camera [{cameraId}]");
 
                 //record video
                 try
                 {
-                    var avgFps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
+                    var avgFps = fps > 0 ? fps : camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? -1;
                     var stopTask = !_recorderTasks.TryGetValue(taskId, out _);
                     while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
                     {
                         var currentTime = DateTime.Now;
                         var fileName = $"{_settings.StoragePath}\\{VideoRecorder.SanitizeFileName($"{camera.Camera.Description.Name}-{width}x{height}-{currentTime.ToShortDateString()}-{currentTime.ToLongTimeString()}.mp4")}";
                         var timer = new Stopwatch();
-                        using (var recorder = new VideoRecorder(fileName, 0, 0, fps: avgFps, _settings.VideoQuality))
+                        using (var recorder = new VideoRecorder(fileName, 0, 0, avgFps, quality))
                         {
                             var timeOut = DateTime.Now.AddSeconds(_settings.VideoFileLengthSeconds);
                             var n = 0;
@@ -126,7 +137,7 @@ namespace CameraServer.Services.VideoRecorder
                     Console.WriteLine($"Exception while video file recording: {ex}");
                 }
 
-                await _collection.UnHookCamera(camera.Camera.Description.Path, userUid);
+                await _collection.UnHookCamera(camera.Camera.Description.Path, string.Empty);
                 while (imageQueue.TryDequeue(out var image))
                 {
                     image?.Dispose();
@@ -135,6 +146,8 @@ namespace CameraServer.Services.VideoRecorder
                 imageQueue.Clear();
 
                 _recorderTasks.Remove(taskId);
+
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
             });
 
             _recorderTasks.TryAdd(taskId, t);
