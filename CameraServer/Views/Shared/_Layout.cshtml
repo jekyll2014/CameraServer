@@ -32,9 +32,9 @@
                         @if (User.Identity?.IsAuthenticated ?? false)
                         {
                             <li><a asp-controller="Home" asp-action="Index">Cameras</a></li>
-                            @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity.Name??"")))
+                            @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity.Name ?? string.Empty)?? new UserDto()))
                             {
-                                <li><a asp-controller="Home" asp-action="ConfidentialData">WebUser data</a></li>
+                                <li><a asp-controller="Home" asp-action="ConfidentialData">User data</a></li>
                             }
                         }
                     </ul>

@@ -33,8 +33,8 @@ public class AuthenticateController : ControllerBase
     {
         try
         {
-            var user = _manager.GetUser(loginModel.Login ?? "",
-                loginModel.Password ?? "",
+            var user = _manager.GetUser(loginModel.Login ?? string.Empty,
+                loginModel.Password ?? string.Empty,
                 _accessor.HttpContext?.Connection.RemoteIpAddress ?? IPAddress.None);
             if (user != null)
             {

@@ -1,5 +1,5 @@
-﻿using CameraServer.Services.AntiBruteForce;
-using CameraServer.Settings;
+﻿using CameraServer.Models;
+using CameraServer.Services.AntiBruteForce;
 
 using System.Net;
 using System.Security.Authentication;
@@ -19,7 +19,7 @@ public class UserManager : IUserManager
         _antiBruteForceService = antiBruteForceService;
     }
 
-    public WebUser? GetUser(string name, string password, IPAddress ipAddress)
+    public User? GetUser(string name, string password, IPAddress ipAddress)
     {
         if (_antiBruteForceService?.CheckThreat(name, ipAddress) ?? false)
             throw new AuthenticationException(TooManyAttemptsMessage);
@@ -33,18 +33,27 @@ public class UserManager : IUserManager
         return user;
     }
 
-    public UserDto GetUserInfo(string name)
+    public UserDto? GetUserInfo(string name)
     {
         var user = GetUsers()?.FirstOrDefault(n => n.Login == name);
         if (user == null)
-            return new UserDto();
+            return null;
 
-        return new UserDto() { Login = user.Login, Roles = user.Roles };
+        return new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
     }
 
-    public IEnumerable<WebUser>? GetUsers()
+    public UserDto? GetUserInfo(long telegramId)
     {
-        return _configuration.GetSection(UsersConfigSection).Get<List<WebUser>>();
+        var user = GetUsers()?.FirstOrDefault(n => n.TelegramId == telegramId);
+        if (user == null)
+            return null;
+
+        return new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
+    }
+
+    public IEnumerable<User>? GetUsers()
+    {
+        return _configuration.GetSection(UsersConfigSection).Get<List<User>>();
     }
 
     public bool HasAdminRole(ICameraUser webUser)

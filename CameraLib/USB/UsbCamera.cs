@@ -106,7 +106,7 @@ namespace CameraLib.USB
                         availableResolutions.Add(new FrameFormat(
                             header.Width,
                             header.Height,
-                            format ?? "",
+                            format ?? string.Empty,
                             (double)10000000 / videoInfoHeader.AvgTimePerFrame));
                     }
 
@@ -139,7 +139,7 @@ namespace CameraLib.USB
                 if (width > 0 && height > 0)
                 {
                     var res = GetAllAvailableResolution(_usbCamera);
-                    if (res.Exists(n => n.Width == width && n.Heigth == height))
+                    if (res.Exists(n => n.Width == width && n.Height == height))
                     {
                         _captureDevice.Set(CapProp.FrameWidth, width);
                         _captureDevice.Set(CapProp.FrameHeight, height);
@@ -304,15 +304,15 @@ namespace CameraLib.USB
             if (width > 0 && height > 0)
             {
                 var mpix = width * height;
-                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Height - mpix));
             }
             else
-                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Height);
 
             var result = Description.FrameFormats
                 .Where(n =>
                     n.Width == selectedFormat?.Width
-                    && n.Heigth == selectedFormat.Heigth)
+                    && n.Height == selectedFormat.Height)
                 .ToArray();
 
             if (result.Length != 0)

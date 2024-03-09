@@ -2,12 +2,11 @@
 
 public class RecorderSettings
 {
-    public List<string> AutorizedUsers { get; set; } = new();
     public List<RecordCameraSetting> RecordCameras { get; set; } = new List<RecordCameraSetting>();
 
     public string StoragePath { get; set; } = ".\\Records";
 
-    public int VideoFileLengthSeconds
+    public uint VideoFileLengthSeconds
     {
         get => _videoFileLengthSeconds;
         set
@@ -21,7 +20,7 @@ public class RecorderSettings
         }
     }
 
-    private int _videoFileLengthSeconds = 300;
+    private uint _videoFileLengthSeconds = 300;
 
     public byte DefaultVideoQuality
     {

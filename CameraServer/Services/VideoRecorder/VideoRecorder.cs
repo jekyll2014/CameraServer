@@ -1,4 +1,6 @@
-﻿using Emgu.CV;
+﻿using CameraLib;
+
+using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
 
@@ -12,22 +14,21 @@ namespace CameraServer.Services.VideoRecorder
         private readonly string _fileName;
         private readonly int _fourcc = VideoWriter.Fourcc('m', 'p', '4', 'v');
         private VideoWriter? _videoWriter;
-        private int _width;
-        private int _height;
+        private readonly int _width;
+        private readonly int _height;
         private readonly double _fps;
         private readonly byte _compressionQuality;
         private bool _disposedValue;
 
-        public VideoRecorder(string fileName, int width = 0, int height = 0, double fps = DefaultFps, byte quality = 90)
+        public VideoRecorder(string fileName, FrameFormatDto frameFormat, byte quality = 90)
         {
             _fileName = fileName;
-            _width = width;
-            _height = height;
+            _width = frameFormat.Width;
+            _height = frameFormat.Height;
+            _fps = frameFormat.Fps;
+            if (_fps <= 0)
+                _fps = DefaultFps;
 
-            if (fps <= 0)
-                fps = DefaultFps;
-
-            _fps = fps;
             _compressionQuality = quality;
         }
 

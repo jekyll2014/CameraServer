@@ -8,4 +8,5 @@ public interface ICameraUser
     public List<Roles> Roles { get; set; }
     [Required]
     public string Login { get; set; }
+    public long TelegramId { get; set; }
 }

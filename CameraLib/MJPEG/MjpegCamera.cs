@@ -156,7 +156,7 @@ namespace CameraLib.MJPEG
             var image = new Mat();
             await Task.Run(async () =>
             {
-                if (await Start(0, 0, "", token))
+                if (await Start(0, 0, string.Empty, token))
                 {
                     image = await GrabFrame(token);
 
@@ -346,15 +346,15 @@ namespace CameraLib.MJPEG
             if (width > 0 && height > 0)
             {
                 var mpix = width * height;
-                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Height - mpix));
             }
             else
-                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Height);
 
             var result = Description.FrameFormats
                 .Where(n =>
                     n.Width == selectedFormat?.Width
-                    && n.Heigth == selectedFormat.Heigth)
+                    && n.Height == selectedFormat.Height)
                 .ToArray();
 
             if (result.Length != 0)

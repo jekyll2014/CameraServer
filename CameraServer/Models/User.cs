@@ -2,9 +2,9 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace CameraServer.Settings
+namespace CameraServer.Models
 {
-    public class WebUser : ICameraUser
+    public class User : ICameraUser
     {
         [Required]
         public List<Roles> Roles { get; set; } = new();
@@ -13,5 +13,7 @@ namespace CameraServer.Settings
         [Required]
         public string Password { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
+        public long TelegramId { get; set; } = 0;
+        public string TelegramName { get; set; } = string.Empty;
     }
 }

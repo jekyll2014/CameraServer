@@ -44,7 +44,7 @@ namespace CameraServer.Auth.BasicAuth
             {
                 var authClaims = new List<Claim>
                 {
-                    new Claim(ClaimTypes.Name, Request.HttpContext.User.Identity.Name??""),
+                    new Claim(ClaimTypes.Name, Request.HttpContext.User.Identity.Name ?? string.Empty)
                 };
 
                 var userRoles = Request.HttpContext.User.FindAll(ClaimTypes.Role);

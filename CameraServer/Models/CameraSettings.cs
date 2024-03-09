@@ -1,6 +1,6 @@
 ﻿using CameraServer.Auth;
 
-namespace CameraServer.Settings;
+namespace CameraServer.Models;
 
 public class CameraSettings
 {

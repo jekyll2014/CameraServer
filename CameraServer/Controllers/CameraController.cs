@@ -1,4 +1,6 @@
-﻿using CameraServer.Auth;
+﻿using CameraLib;
+
+using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
@@ -41,8 +43,8 @@ namespace CameraServer.Controllers
         [Route("RefreshCameraList")]
         public async Task<IActionResult> RefreshCameraList()
         {
-            var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "");
-            if (_manager.HasAdminRole(user))
+            var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+            if (user == null || !_manager.HasAdminRole(user))
                 return BadRequest("Only allowed for Admin");
 
             await _collection.RefreshCameraCollection(CancellationToken.None);
@@ -54,7 +56,10 @@ namespace CameraServer.Controllers
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(Dictionary<int, string>))]
         public IActionResult GetCameraList()
         {
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return Ok(new Dictionary<int, string>());
+
             var cameras = _collection.Cameras
                 .Where(n => n.AllowedRoles.Intersect(userRoles).Any());
 
@@ -70,7 +75,10 @@ namespace CameraServer.Controllers
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return BadRequest("No such camera");
+
             var cam = _collection.Cameras.ToArray()[cameraNumber];
             if (!cam.AllowedRoles.Intersect(userRoles).Any())
                 return BadRequest("No such camera");
@@ -81,7 +89,7 @@ namespace CameraServer.Controllers
         [HttpGet]
         [Route("GetVideoContentByName")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-        public async Task<IActionResult> GetVideoContentByName(string cameraName, int? xResolution = 0, int? yResolution = 0, string? format = "")
+        public async Task<IActionResult> GetVideoContentByName(string cameraName, int? xResolution, int? yResolution, string? format, byte? quality)
         {
             if (string.IsNullOrEmpty(cameraName))
                 return BadRequest("Empty camera name");
@@ -97,7 +105,7 @@ namespace CameraServer.Controllers
                 }
             }
 
-            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
+            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format, quality);
 
             return new EmptyResult();
         }
@@ -105,19 +113,22 @@ namespace CameraServer.Controllers
         [HttpGet]
         [Route("GetVideoContent")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-        public async Task<IActionResult> GetVideoContent(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "")
+        public async Task<IActionResult> GetVideoContent(int cameraNumber, int? xResolution, int? yResolution, string? format, byte? quality)
         {
-            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format);
+            await GetVideoContentInternal(cameraNumber, xResolution, yResolution, format, quality);
 
             return new EmptyResult();
         }
 
-        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int? width = 0, int? height = 0, string? format = "", byte quality = 95)
+        private async Task<IActionResult> GetVideoContentInternal(int cameraNumber, int? width, int? height, string? format, byte? quality)
         {
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return BadRequest("No such camera");
+
             var imageQueue = new ConcurrentQueue<Mat>();
             var cam = _collection.Cameras.ToArray()[cameraNumber];
             if (!cam.AllowedRoles.Intersect(userRoles).Any())
@@ -139,20 +150,20 @@ namespace CameraServer.Controllers
             var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
                 Request.HttpContext.TraceIdentifier,
                 imageQueue,
-                width ?? 0,
-                height ?? 0,
-                format ?? "");
+                new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty });
 
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#",
                     cameraNumber.ToString(),
                     StatusCodes.Status204NoContent);
+
+            var qlt = quality ?? 95;
+            if (qlt < 1)
+                qlt = 1;
+            else if (qlt > 100)
+                qlt = 100;
             try
             {
-                if (quality < 1)
-                    quality = 1;
-                else if (quality > 100)
-                    quality = 100;
 
                 Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
                 while (!Request.HttpContext.RequestAborted.IsCancellationRequested
@@ -177,7 +188,7 @@ namespace CameraServer.Controllers
 
                         if (outImage != null)
                         {
-                            var jpegBuffer = outImage.ToJpegData(quality);
+                            var jpegBuffer = outImage.ToJpegData(qlt);
                             var header = $"\r\n{Boundary}\r\n" +
                                          $"Content-Type: image/jpeg\r\n" +
                                          $"Content-Length: {jpegBuffer.Length}\r\n" +
@@ -203,8 +214,7 @@ namespace CameraServer.Controllers
 
             await _collection.UnHookCamera(camera.Camera.Description.Path,
                 Request.HttpContext.TraceIdentifier,
-                width ?? 0,
-                height ?? 0);
+                new FrameFormatDto { Width = width ?? 0, Height = height ?? 0 });
 
             while (imageQueue.TryDequeue(out var image))
             {
@@ -216,6 +226,12 @@ namespace CameraServer.Controllers
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
 
             return new EmptyResult();
+        }
+
+        public static string GenerateCameraUrl(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
+        {
+            return
+                $"/{nameof(CameraController)[..^"Controller".Length]}/{nameof(GetVideoContent)}?{nameof(cameraNumber)}={cameraNumber}&{nameof(xResolution)}={xResolution ?? 0}&{nameof(yResolution)}={yResolution ?? 0}&{nameof(format)}={format ?? string.Empty}&{nameof(quality)}={quality ?? 90}";
         }
     }
 }

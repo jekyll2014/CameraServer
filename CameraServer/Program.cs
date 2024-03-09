@@ -2,6 +2,7 @@ using CameraServer.Auth;
 using CameraServer.Auth.BasicAuth;
 using CameraServer.Services.AntiBruteForce;
 using CameraServer.Services.CameraHub;
+using CameraServer.Services.MotionDetection;
 using CameraServer.Services.Telegram;
 using CameraServer.Services.VideoRecorder;
 
@@ -27,6 +28,8 @@ namespace CameraServer
             builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
             builder.Services.AddSingleton<TelegramService>();
             builder.Services.AddHostedService<TelegramService>(provider => provider.GetService<TelegramService>());
+            builder.Services.AddSingleton<MotionDetectionService>();
+            builder.Services.AddHostedService<MotionDetectionService>(provider => provider.GetService<MotionDetectionService>());
             builder.Services.AddControllersWithViews().AddControllersAsServices();
 
             builder.Services.AddAuthentication(BasicAuthenticationSchemeName)

@@ -65,7 +65,7 @@ namespace CameraLib.FlashCap
             foreach (var camera in descriptors)
             {
                 var formats = GetAllAvailableResolution(camera);
-                result.Add(new CameraDescription(CameraType.USB, camera.Identity.ToString() ?? "", camera.Name, formats));
+                result.Add(new CameraDescription(CameraType.USB, camera.Identity.ToString() ?? string.Empty, camera.Name, formats));
             }
 
             return result;
@@ -265,15 +265,15 @@ namespace CameraLib.FlashCap
             if (width > 0 && height > 0)
             {
                 var mpix = width * height;
-                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Heigth - mpix));
+                selectedFormat = Description.FrameFormats.MinBy(n => Math.Abs(n.Width * n.Height - mpix));
             }
             else
-                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Heigth);
+                selectedFormat = Description.FrameFormats.MaxBy(n => n.Width * n.Height);
 
             var result = Description.FrameFormats
                 .Where(n =>
                     n.Width == selectedFormat?.Width
-                    && n.Heigth == selectedFormat.Heigth)
+                    && n.Height == selectedFormat.Height)
                 .ToArray();
 
             if (result.Length != 0)

@@ -41,8 +41,8 @@ namespace CameraServer.Controllers
             {
                 if (ModelState.IsValid)
                 {
-                    var user = _manager.GetUser(loginModel.Login ?? "",
-                        loginModel.Password ?? "",
+                    var user = _manager.GetUser(loginModel.Login ?? string.Empty,
+                        loginModel.Password ?? string.Empty,
                         HttpContext.Connection.RemoteIpAddress ?? IPAddress.None);
                     if (user != null)
                     {

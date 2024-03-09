@@ -2,17 +2,12 @@
 
 namespace CameraLib
 {
-    public class FrameFormat
+    public class FrameFormat : FrameFormatDto
     {
-        public int Width { get; }
-        public int Heigth { get; }
-        public string Format { get; }
-        public double Fps { get; }
-
-        public FrameFormat(int width, int heigth, string format = "", double fps = -1)
+        public FrameFormat(int width = 0, int height = 0, string format = "", double fps = 0)
         {
             Width = width;
-            Heigth = heigth;
+            Height = height;
             Format = format;
             Fps = fps;
         }
@@ -361,7 +356,7 @@ namespace CameraLib
 
         public override string ToString()
         {
-            return $"{Width}x{Heigth} {Fps} {Format}";
+            return $"{Width}x{Height} {Fps} {Format}";
         }
     }
 }

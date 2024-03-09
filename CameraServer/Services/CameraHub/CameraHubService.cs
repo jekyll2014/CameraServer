@@ -6,7 +6,6 @@ using CameraLib.USB;
 
 using CameraServer.Auth;
 using CameraServer.Models;
-using CameraServer.Settings;
 
 using Emgu.CV;
 
@@ -163,11 +162,9 @@ namespace CameraServer.Services.CameraHub
 
         public async Task<CancellationToken> HookCamera(
             string cameraId,
-            string userId,
+            string queueId,
             ConcurrentQueue<Mat> srcImageQueue,
-            int width = 0,
-            int height = 0,
-            string format = "")
+            FrameFormatDto frameFormat)
         {
             if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
                 return CancellationToken.None;
@@ -175,27 +172,27 @@ namespace CameraServer.Services.CameraHub
             var camera = _cameras
                 .FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
-            if (!camera.Value.TryAdd(cameraId + userId + width + height, srcImageQueue))
+            if (!camera.Value.TryAdd(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), srcImageQueue))
                 return CancellationToken.None;
 
             if (camera.Value.Count == 1)
             {
                 camera.Key.Camera.ImageCapturedEvent += GetImageFromCamera;
-                if (!await camera.Key.Camera.Start(0, 0, format, CancellationToken.None))
+                if (!await camera.Key.Camera.Start(0, 0, frameFormat.Format, CancellationToken.None))
                     return CancellationToken.None;
             }
 
             return camera.Key.Camera.CancellationToken;
         }
 
-        public async Task<bool> UnHookCamera(string cameraId, string userId, int width = 0, int height = 0)
+        public async Task<bool> UnHookCamera(string cameraId, string queueId, FrameFormatDto frameFormat)
         {
             if (_cameras.All(n => n.Key.Camera.Description.Path != cameraId))
                 return false;
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
-            camera.Value.Remove(cameraId + userId + width + height);
+            camera.Value.Remove(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height));
             if (camera.Value.Count <= 0)
             {
                 camera.Key.Camera.ImageCapturedEvent -= GetImageFromCamera;
@@ -235,20 +232,25 @@ namespace CameraServer.Services.CameraHub
                 {
                     if (clientStream.Value.Count > _maxBuffer)
                     {
+                        clientStream.Value.TryDequeue(out var frame);
+                        frame?.Dispose();
+                    }
+
+                    /*if (clientStream.Value.Count > _maxBuffer)
+                    {
                         foreach (var frame in clientStream.Value)
                             frame.Dispose();
 
                         clientStream.Value.Clear();
 
                         // stop streaming if consumer can't cosume fast enough
-                        /*clientStreams.Remove(clientStream.Key);
-
-                        if (clientStreams.Count <= 0)
-                        {
-                            camera.ImageCapturedEvent -= GetImageFromCamera;
-                            camera.Stop(CancellationToken.None);
-                        }*/
-                    }
+                        //clientStreams.Remove(clientStream.Key);
+                        //if (clientStreams.Count <= 0)
+                        //{
+                        //    camera.ImageCapturedEvent -= GetImageFromCamera;
+                        //    camera.Stop(CancellationToken.None);
+                        //}
+                    }*/
 
                     clientStream.Value.Enqueue(image.Clone());
                 }
@@ -256,5 +258,11 @@ namespace CameraServer.Services.CameraHub
 
             image.Dispose();
         }
+
+        public static string GenerateImageQueueId(string cameraId, string queueId, int width, int height)
+        {
+            return cameraId + queueId + width + height;
+        }
+
     }
 }

@@ -3,7 +3,7 @@ using CameraLib.IP;
 
 using CameraServer.Auth;
 
-namespace CameraServer.Settings;
+namespace CameraServer.Models;
 
 public class CustomCamera
 {

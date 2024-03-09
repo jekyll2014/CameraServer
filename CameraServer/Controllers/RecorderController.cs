@@ -1,4 +1,6 @@
-﻿using CameraServer.Auth;
+﻿using CameraLib;
+
+using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.VideoRecorder;
@@ -76,7 +78,10 @@ namespace CameraServer.Controllers
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? "").Roles;
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return BadRequest("No such camera");
+
             var cam = _collection.Cameras.ToArray()[cameraNumber];
             if (!cam.AllowedRoles.Intersect(userRoles).Any())
                 return BadRequest("No such camera");
@@ -95,11 +100,14 @@ namespace CameraServer.Controllers
             try
             {
                 var taskId = _recorder.Start(camera.Camera.Description.Path,
-                    HttpContext.User.Identity?.Name ?? "",
-                    width ?? 0,
-                    height ?? 0,
-                    fps ?? 0,
-                    format ?? "",
+                    HttpContext.User.Identity?.Name ?? string.Empty,
+                    new FrameFormatDto
+                    {
+                        Width = width ?? 0,
+                        Height = height ?? 0,
+                        Format = format ?? string.Empty,
+                        Fps = fps ?? 0
+                    },
                     quality ?? 0);
                 return Ok(taskId);
             }
