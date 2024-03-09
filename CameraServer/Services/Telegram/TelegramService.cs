@@ -625,8 +625,17 @@ namespace CameraServer.Services.Telegram
                 var message = "Incorrect command";
                 if (tokens[2] == "start")
                 {
-                    _videoRecorderService.Start(camera.Camera.Description.Path, user.Login, new FrameFormatDto(), 95);
-                    message = $"Record started for camera {camera.Camera.Description.Name}";
+                    try
+                    {
+                        _videoRecorderService.Start(camera.Camera.Description.Path, user.Login, new FrameFormatDto(),
+                            95);
+                        message = $"Record started for camera {camera.Camera.Description.Name}";
+                    }
+                    catch (Exception ex)
+                    {
+                        message = $"Can't start record: {ex.Message}";
+                    }
+
                 }
                 else if (tokens[2] == "stop")
                 {
@@ -764,12 +773,14 @@ namespace CameraServer.Services.Telegram
                     else if (tokens[3] == "video")
                         messageType = MotionDetection.MessageType.Video;
 
-                    motionDetectionService.Start(camera.Camera.Description.Path,
-                        user.Login,
-                        new FrameFormatDto(),
-                        motionDetectionService.Settings.DefaultMotionDetectParameters,
-                        new List<NotificationParameters>()
-                        {
+                    try
+                    {
+                        motionDetectionService.Start(camera.Camera.Description.Path,
+                            user.Login,
+                            new FrameFormatDto(),
+                            motionDetectionService.Settings.DefaultMotionDetectParameters,
+                            new List<NotificationParameters>()
+                            {
                             new NotificationParameters()
                             {
                                 Message = $"Movement detected at camera {camera.Camera.Description.Name}",
@@ -778,9 +789,15 @@ namespace CameraServer.Services.Telegram
                                 Transport = NotificationTransport.Telegram,
                                 VideoLengthSec = _settings.DefaultVideoTime
                             }
-                        });
+                            });
 
-                    message = $"Motion detect started for camera {camera.Camera.Description.Name}";
+                        message = $"Motion detect started for camera {camera.Camera.Description.Name}";
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(e);
+                        message = $"Can't start motion detector {ex.Message}";
+                    }
                 }
                 else if (tokens[2] == "stop")
                 {

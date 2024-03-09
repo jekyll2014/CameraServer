@@ -71,9 +71,29 @@ namespace CameraServer.Services.CameraHub
                             forceCameraConnect: _cameraSettings.ForceCameraConnect),
                         c.AllowedRoles, true);
                 else if (c.Type == CameraType.USB)
-                    serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
+                {
+                    try
+                    {
+                        serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                        continue;
+                    }
+                }
                 else if (c.Type == CameraType.USB_FC)
-                    serverCamera = new ServerCamera(new UsbCameraFc(c.Path, c.Name), c.AllowedRoles, true);
+                {
+                    try
+                    {
+                        serverCamera = new ServerCamera(new UsbCameraFc(c.Path, c.Name), c.AllowedRoles, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                        continue;
+                    }
+                }
                 else
                     continue;
 
