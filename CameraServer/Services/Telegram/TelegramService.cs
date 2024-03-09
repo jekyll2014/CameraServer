@@ -795,7 +795,7 @@ namespace CameraServer.Services.Telegram
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(e);
+                        Console.WriteLine(ex);
                         message = $"Can't start motion detector {ex.Message}";
                     }
                 }
