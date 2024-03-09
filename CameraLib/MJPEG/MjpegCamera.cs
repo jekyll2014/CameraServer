@@ -106,9 +106,9 @@ namespace CameraLib.MJPEG
                     _stopCapture = false;
                     _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine(e);
+                    Console.WriteLine(ex);
 
                     return false;
                 }
@@ -235,9 +235,9 @@ namespace CameraLib.MJPEG
                                 ref previous, ref current, tok);
                         }
                     }
-                    catch (Exception e)
+                    catch (Exception ex)
                     {
-                        Console.WriteLine(e);
+                        Console.WriteLine(ex);
                     }
                     finally
                     {

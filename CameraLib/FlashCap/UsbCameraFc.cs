@@ -226,9 +226,9 @@ namespace CameraLib.FlashCap
                     CvInvoke.Imdecode(imageData, ImreadModes.Color, image);
                     CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine(e);
+                    Console.WriteLine(ex);
                 }
             }, token);
 

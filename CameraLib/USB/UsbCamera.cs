@@ -262,9 +262,9 @@ namespace CameraLib.USB
                             }
                         }
                     }
-                    catch (Exception e)
+                    catch (Exception ex)
                     {
-                        Console.WriteLine(e);
+                        Console.WriteLine(ex);
                     }
 
                     _captureDevice.Stop();

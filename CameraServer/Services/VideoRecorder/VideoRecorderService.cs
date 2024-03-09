@@ -50,9 +50,9 @@ namespace CameraServer.Services.VideoRecorder
                         },
                         record.Quality);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't start recording: {e}");
+                    Console.WriteLine($"Can't start recording: {ex}");
                 }
             }
         }

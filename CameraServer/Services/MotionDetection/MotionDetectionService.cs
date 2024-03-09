@@ -52,9 +52,9 @@ namespace CameraServer.Services.MotionDetection
                         record.MotionDetectParameters ?? Settings.DefaultMotionDetectParameters,
                         record.Notifications);
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't start recording: {e}");
+                    Console.WriteLine($"Can't start recording: {ex}");
                 }
             }
         }
@@ -207,7 +207,6 @@ namespace CameraServer.Services.MotionDetection
             var tmpRecordtaskId =
                 $"{TmpVideoStreamId}-{chatId}-{camera.Camera.Description.Path}";
             if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
-                //throw new ApplicationException($"Recording task is already started [{tmpRecordtaskId}]");
                 return;
 
             var t = new Task(async () =>

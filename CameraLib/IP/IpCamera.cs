@@ -96,9 +96,9 @@ namespace CameraLib.IP
                 {
                     await client.ConnectAsync();
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"Can not connect to camera: {uri}\r\n{e.Message}");
+                    Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
 
                     continue;
                 }
@@ -156,9 +156,9 @@ namespace CameraLib.IP
                     _captureDevice = await GetCaptureDevice(token);
 
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine(e);
+                    Console.WriteLine(ex);
 
                     return false;
                 }
@@ -263,9 +263,9 @@ namespace CameraLib.IP
                         }
                     }
                 }
-                catch (Exception e)
+                catch (Exception ex)
                 {
-                    Console.WriteLine(e);
+                    Console.WriteLine(ex);
                 }
 
                 _captureDevice.Stop();
