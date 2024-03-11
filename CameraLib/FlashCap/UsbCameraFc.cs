@@ -5,6 +5,7 @@ using FlashCap;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -27,7 +28,10 @@ namespace CameraLib.FlashCap
         private readonly CaptureDeviceDescriptor _usbCamera;
         private CaptureDevice? _captureDevice;
         private Mat? _frame = null;
-        private readonly object _getPictureThreadLock = new object();
+        private readonly object _getPictureThreadLock = new();
+        private readonly Stopwatch _timer = new();
+        private byte _frameCount;
+        public double CurrentFps { get; private set; }
 
         private bool _disposedValue;
 
@@ -47,6 +51,7 @@ namespace CameraLib.FlashCap
                 name = path;
 
             Description = new CameraDescription(CameraType.USB_FC, path, name, GetAllAvailableResolution(_usbCamera));
+            CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -102,6 +107,8 @@ namespace CameraLib.FlashCap
                 }
 
                 _cancellationTokenSource = new CancellationTokenSource();
+                _timer.Reset();
+                _frameCount = 0;
                 await _captureDevice.StartAsync(token);
 
                 IsRunning = true;
@@ -164,6 +171,23 @@ namespace CameraLib.FlashCap
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                    if (!_timer.IsRunning)
+                    {
+                        _timer.Start();
+                        _frameCount = 0;
+                    }
+                    else
+                    {
+                        _frameCount++;
+                        if (_frameCount >= 100)
+                        {
+                            if (_timer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+
+                            _timer.Reset();
+                            _frameCount = 0;
+                        }
+                    }
                 }
                 catch
                 {
@@ -194,6 +218,7 @@ namespace CameraLib.FlashCap
 
                 _frame?.Dispose();
                 CurrentFrameFormat = null;
+                _timer.Reset();
                 IsRunning = false;
             }
         }

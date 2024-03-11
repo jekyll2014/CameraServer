@@ -5,6 +5,7 @@ using Emgu.CV.CvEnum;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -31,6 +32,9 @@ namespace CameraLib.USB
         private readonly object _getPictureThreadLock = new();
         private VideoCapture? _captureDevice;
         private Mat? _frame;
+        private readonly Stopwatch _timer = new();
+        private byte _frameCount;
+        public double CurrentFps { get; private set; }
 
         private bool _disposedValue;
 
@@ -46,6 +50,7 @@ namespace CameraLib.USB
                 name = path;
 
             Description = new CameraDescription(CameraType.USB, path, name, GetAllAvailableResolution(_usbCamera));
+            CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -157,6 +162,8 @@ namespace CameraLib.USB
                 _frame = new Mat();
                 _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ImageGrabbed += ImageCaptured;
+                _timer.Reset();
+                _frameCount = 0;
                 _captureDevice.Start();
 
                 IsRunning = true;
@@ -199,6 +206,23 @@ namespace CameraLib.USB
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                    if (!_timer.IsRunning)
+                    {
+                        _timer.Start();
+                        _frameCount = 0;
+                    }
+                    else
+                    {
+                        _frameCount++;
+                        if (_frameCount >= 100)
+                        {
+                            if (_timer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+
+                            _timer.Reset();
+                            _frameCount = 0;
+                        }
+                    }
                     //_frame?.Dispose();
                     //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
@@ -227,6 +251,7 @@ namespace CameraLib.USB
 
                 _frame?.Dispose();
                 CurrentFrameFormat = null;
+                _timer.Reset();
                 IsRunning = false;
             }
         }

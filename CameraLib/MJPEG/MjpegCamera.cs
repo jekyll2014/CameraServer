@@ -5,6 +5,7 @@ using Emgu.CV.CvEnum;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -42,6 +43,10 @@ namespace CameraLib.MJPEG
         private Mat? _frame;
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
+        private readonly Stopwatch _timer = new();
+        private byte _frameCount;
+        public double CurrentFps { get; private set; }
+
         private bool _disposedValue;
 
         public MjpegCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
@@ -75,6 +80,7 @@ namespace CameraLib.MJPEG
             }
 
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+            CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
         }
 
         // not implemented
@@ -104,6 +110,8 @@ namespace CameraLib.MJPEG
                 try
                 {
                     _stopCapture = false;
+                    _timer.Reset();
+                    _frameCount = 0;
                     _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
                 }
                 catch (Exception ex)
@@ -137,6 +145,7 @@ namespace CameraLib.MJPEG
                 _imageGrabber?.Dispose();
                 _frame?.Dispose();
                 CurrentFrameFormat = null;
+                _timer.Reset();
             }
         }
 
@@ -312,6 +321,23 @@ namespace CameraLib.MJPEG
                             CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
                             CurrentFrameFormat ??= new FrameFormat(_frame.Width, _frame.Height);
                             ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                            if (!_timer.IsRunning)
+                            {
+                                _timer.Start();
+                                _frameCount = 0;
+                            }
+                            else
+                            {
+                                _frameCount++;
+                                if (_frameCount >= 100)
+                                {
+                                    if (_timer.ElapsedMilliseconds > 0)
+                                        CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+
+                                    _timer.Reset();
+                                    _frameCount = 0;
+                                }
+                            }
                         }
                         catch
                         {

@@ -11,6 +11,7 @@ namespace CameraLib
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; }
         public FrameFormat? CurrentFrameFormat { get; }
+        public double CurrentFps { get; }
 
         public delegate void ImageCapturedEventHandler(ICamera camera, Mat image);
         public event ImageCapturedEventHandler? ImageCapturedEvent;

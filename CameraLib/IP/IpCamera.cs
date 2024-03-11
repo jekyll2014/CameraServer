@@ -6,6 +6,7 @@ using QuickNV.Onvif.Media;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -32,6 +33,9 @@ namespace CameraLib.IP
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
         private Mat? _frame = new Mat();
+        private readonly Stopwatch _timer = new();
+        private byte _frameCount;
+        public double CurrentFps { get; private set; }
 
         private bool _disposedValue;
 
@@ -66,6 +70,7 @@ namespace CameraLib.IP
             }
 
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+            CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
         }
 
         public static async Task<List<CameraDescription>> DiscoverOnvifCamerasAsync(int discoveryTimeout,
@@ -170,6 +175,8 @@ namespace CameraLib.IP
 
                 _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ImageGrabbed += ImageCaptured;
+                _timer.Reset();
+                _frameCount = 0;
                 _captureDevice.Start();
 
                 IsRunning = true;
@@ -201,6 +208,23 @@ namespace CameraLib.IP
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                    if (!_timer.IsRunning)
+                    {
+                        _timer.Start();
+                        _frameCount = 0;
+                    }
+                    else
+                    {
+                        _frameCount++;
+                        if (_frameCount >= 100)
+                        {
+                            if (_timer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+
+                            _timer.Reset();
+                            _frameCount = 0;
+                        }
+                    }
                     //_frame?.Dispose();
                     //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
@@ -229,6 +253,7 @@ namespace CameraLib.IP
 
                 _frame?.Dispose();
                 CurrentFrameFormat = null;
+                _timer.Reset();
                 IsRunning = false;
             }
         }
