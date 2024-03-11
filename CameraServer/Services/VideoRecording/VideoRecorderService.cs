@@ -20,7 +20,7 @@ namespace CameraServer.Services.VideoRecording
         public readonly RecorderSettings Settings;
 
         public IEnumerable<string> TaskList => _recorderTasks.Select(n => n.Key);
-        private readonly Dictionary<string, Task> _recorderTasks = new Dictionary<string, Task>();
+        private readonly ConcurrentDictionary<string, Task> _recorderTasks = new();
 
         private bool _disposedValue;
 
@@ -91,7 +91,7 @@ namespace CameraServer.Services.VideoRecording
 
         public void Stop(string taskId)
         {
-            if (_recorderTasks.Remove(taskId, out var t))
+            if (_recorderTasks.TryRemove(taskId, out var t))
             {
                 t.Wait(5000);
                 t.Dispose();
@@ -167,7 +167,7 @@ namespace CameraServer.Services.VideoRecording
             }
             imageQueue.Clear();
 
-            _recorderTasks.Remove(taskId);
+            _recorderTasks.TryRemove(taskId, out _);
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
         }
 

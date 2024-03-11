@@ -10,6 +10,8 @@ using Emgu.CV;
 
 using System.Collections.Concurrent;
 
+using Telegram.Bot.Types;
+
 using File = System.IO.File;
 
 namespace CameraServer.Services.MotionDetection
@@ -27,8 +29,8 @@ namespace CameraServer.Services.MotionDetection
         public readonly MotionDetectionSettings Settings;
 
         public IEnumerable<string> TaskList => _detectorTasks.Select(n => n.Key);
-        private readonly Dictionary<string, Task> _detectorTasks = new Dictionary<string, Task>();
-        private readonly Dictionary<string, Task> _videoRecordingTasks = new Dictionary<string, Task>();
+        private readonly ConcurrentDictionary<string, Task> _detectorTasks = new();
+        private readonly ConcurrentDictionary<string, Task> _videoRecordingTasks = new();
 
         private bool _disposedValue;
 
@@ -116,10 +118,10 @@ namespace CameraServer.Services.MotionDetection
 
         public void Stop(string taskId)
         {
-            if (_detectorTasks.Remove(taskId, out var t))
+            if (_detectorTasks.TryRemove(taskId, out var t))
             {
-                t.Wait(5000);
-                t.Dispose();
+                //t.Wait(5000);
+                //t.Dispose();
             }
         }
 
@@ -131,7 +133,7 @@ namespace CameraServer.Services.MotionDetection
         {
             var imageQueue = new ConcurrentQueue<Mat>();
             var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
-                MotionDetectionStreamId,
+                MotionDetectionStreamId + taskId,
                 imageQueue,
                 frameFormat);
 
@@ -159,7 +161,7 @@ namespace CameraServer.Services.MotionDetection
                                 cameraCancellationToken);
                         }
 
-                        image?.Dispose();
+                        image.Dispose();
                     }
                     else
                         await Task.Delay(10, CancellationToken.None);
@@ -168,14 +170,14 @@ namespace CameraServer.Services.MotionDetection
                 }
             }
 
-            await _collection.UnHookCamera(camera.Camera.Description.Path, MotionDetectionStreamId, frameFormat);
+            await _collection.UnHookCamera(camera.Camera.Description.Path, MotionDetectionStreamId + taskId, frameFormat);
             while (imageQueue.TryDequeue(out var image))
             {
                 image?.Dispose();
             }
 
             imageQueue.Clear();
-            _detectorTasks.Remove(taskId);
+            _detectorTasks.TryRemove(taskId, out _);
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
         }
 
@@ -188,7 +190,12 @@ namespace CameraServer.Services.MotionDetection
             {
                 if (notificationParam.Transport == NotificationTransport.Telegram)
                 {
-                    if (!long.TryParse(notificationParam.Destination, out var chatId))
+                    ChatId chatId;
+                    if (long.TryParse(notificationParam.Destination, out var id))
+                        chatId = new ChatId(id);
+                    else if (notificationParam.Destination.StartsWith('@'))
+                        chatId = new ChatId(notificationParam.Destination);
+                    else
                         continue;
 
                     if (notificationParam.MessageType == MessageType.Text)
@@ -197,7 +204,7 @@ namespace CameraServer.Services.MotionDetection
                         {
                             await _telegramService.SendText(chatId, notificationParam.Message,
                                 cameraCancellationToken);
-                        });
+                        }, cameraCancellationToken);
                     }
                     else if (notificationParam.MessageType == MessageType.Image)
                     {
@@ -211,7 +218,7 @@ namespace CameraServer.Services.MotionDetection
                                 cameraCancellationToken);
 
                             movementImage?.Dispose();
-                        });
+                        }, cameraCancellationToken);
                     }
                     else if (notificationParam.MessageType == MessageType.Video)
                     {
@@ -223,10 +230,9 @@ namespace CameraServer.Services.MotionDetection
                     }
                 }
             }
-
         }
 
-        private void SendMovementVideo(ServerCamera camera, long chatId, string message, uint recordLengthSec, byte quality)
+        private void SendMovementVideo(ServerCamera camera, ChatId chatId, string message, uint recordLengthSec, byte quality)
         {
             var tmpRecordtaskId =
                 $"{TmpVideoStreamId}-{chatId}-{camera.Camera.Description.Path}";
@@ -244,6 +250,7 @@ namespace CameraServer.Services.MotionDetection
                         recordLengthSec,
                         null,
                         quality);
+
                     await _telegramService.SendVideo(chatId, fileName, $"{message}", CancellationToken.None);
                     File.Delete(fileName);
                 }
@@ -252,10 +259,10 @@ namespace CameraServer.Services.MotionDetection
                     await _telegramService.SendText(chatId, $"Can't record video: {ex}", CancellationToken.None);
                 }
 
-                _videoRecordingTasks.Remove(tmpRecordtaskId);
+                _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);
             });
 
-            _videoRecordingTasks.Add(tmpRecordtaskId, t);
+            _videoRecordingTasks.TryAdd(tmpRecordtaskId, t);
             t.Start();
         }
 

@@ -271,7 +271,7 @@ namespace CameraServer.Services.Telegram
             CancellationToken cancellationToken)
         {
             string messageText;
-            long chatId;
+            ChatId chatId;
             long senderId;
             string senderName;
             if (update.Message is { } message)
@@ -330,7 +330,7 @@ namespace CameraServer.Services.Telegram
             }, cancellationToken);
         }
 
-        private async Task SendImageMessage(long chatId,
+        private async Task SendImageMessage(ChatId chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -387,7 +387,7 @@ namespace CameraServer.Services.Telegram
                 await SendText(chatId: chatId, text: $"Incorrect command", cancellationToken);
         }
 
-        private async Task SendVideoMessage(long chatId,
+        private async Task SendVideoMessage(ChatId chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -466,7 +466,7 @@ namespace CameraServer.Services.Telegram
                 await SendText(chatId, $"Incorrect command", cancellationToken);
         }
 
-        private async Task SendLinkMessage(long chatId,
+        private async Task SendLinkMessage(ChatId chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -529,7 +529,7 @@ namespace CameraServer.Services.Telegram
         }
 
         //{VideoRecordCommand} [n] [start/stop]
-        private async Task ManageVideoRecorder(long chatId,
+        private async Task ManageVideoRecorder(ChatId chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -614,7 +614,7 @@ namespace CameraServer.Services.Telegram
         }
 
         //{MotionDetectorCommand} [n] [start/stop] [text/image/video]
-        private async Task ManageMotionDetector(long chatId,
+        private async Task ManageMotionDetector(ChatId chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -774,7 +774,7 @@ namespace CameraServer.Services.Telegram
             }
         }
 
-        private async Task RefreshCameraListMessage(long chatId,
+        private async Task RefreshCameraListMessage(ChatId chatId,
             ICameraUser user,
             CancellationToken cancellationToken)
         {
@@ -789,7 +789,7 @@ namespace CameraServer.Services.Telegram
             }
         }
 
-        private async Task SendHelpMessage(long chatId,
+        private async Task SendHelpMessage(ChatId chatId,
             CancellationToken cancellationToken)
         {
             await SendText(chatId,

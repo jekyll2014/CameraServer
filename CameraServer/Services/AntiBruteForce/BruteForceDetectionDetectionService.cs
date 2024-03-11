@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Collections.Concurrent;
+using System.Net;
 
 namespace CameraServer.Services.AntiBruteForce
 {
@@ -6,7 +7,7 @@ namespace CameraServer.Services.AntiBruteForce
     {
         private const string AntiBruteForceConfigSection = "BruteForceDetection";
         private readonly BruteForceDetectionSettings _detectionSettings;
-        private readonly Dictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = new Dictionary<string, List<(IPAddress, DateTime)>>();
+        private readonly ConcurrentDictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = new ConcurrentDictionary<string, List<(IPAddress, DateTime)>>();
         private bool _disposedValue;
 
         public BruteForceDetectionDetectionService(IConfiguration configuration)

@@ -20,7 +20,7 @@ namespace CameraServer.Services.CameraHub
         private readonly int _maxBuffer;
         public IEnumerable<ServerCamera> Cameras => _cameras.Keys;
 
-        private readonly Dictionary<ServerCamera, Dictionary<string, ConcurrentQueue<Mat>>> _cameras = new();
+        private readonly ConcurrentDictionary<ServerCamera, ConcurrentDictionary<string, ConcurrentQueue<Mat>>> _cameras = new();
 
         public CameraHubService(IConfiguration configuration)
         {
@@ -38,7 +38,7 @@ namespace CameraServer.Services.CameraHub
             {
                 if (cameras[i].Key.Custom)
                 {
-                    _cameras.Remove(cameras[i].Key);
+                    _cameras.TryRemove(cameras[i].Key, out _);
                 }
             }
 
@@ -97,7 +97,7 @@ namespace CameraServer.Services.CameraHub
                 else
                     continue;
 
-                _cameras.Add(serverCamera, new());
+                _cameras.TryAdd(serverCamera, new());
             }
 
             if (_cameraSettings.AutoSearchUsb)
@@ -113,7 +113,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, new());
+                    _cameras.TryAdd(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -122,7 +122,7 @@ namespace CameraServer.Services.CameraHub
                              .Where(c => !usbCameras
                                  .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
-                    _cameras.Remove(c.Key);
+                    _cameras.TryRemove(c.Key, out _);
                 }
             }
 
@@ -139,7 +139,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, new());
+                    _cameras.TryAdd(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -148,7 +148,7 @@ namespace CameraServer.Services.CameraHub
                              .Where(c => !usbFcCameras
                                  .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
-                    _cameras.Remove(c.Key);
+                    _cameras.TryRemove(c.Key, out _);
                 }
             }
 
@@ -164,7 +164,7 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.Camera.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.Add(serverCamera, new());
+                    _cameras.TryAdd(serverCamera, new());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -173,7 +173,7 @@ namespace CameraServer.Services.CameraHub
                              .Where(c => !ipCameras
                                  .Exists(n => n.Path == c.Key.Camera.Description.Path)))
                 {
-                    _cameras.Remove(c.Key);
+                    _cameras.TryRemove(c.Key, out _);
                 }
             }
 
@@ -212,7 +212,7 @@ namespace CameraServer.Services.CameraHub
 
             var camera = _cameras.FirstOrDefault(n => n.Key.Camera.Description.Path == cameraId);
 
-            camera.Value.Remove(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height));
+            camera.Value.TryRemove(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), out _);
             if (camera.Value.Count <= 0)
             {
                 camera.Key.Camera.ImageCapturedEvent -= GetImageFromCamera;
@@ -264,7 +264,7 @@ namespace CameraServer.Services.CameraHub
                         clientStream.Value.Clear();
 
                         // stop streaming if consumer can't cosume fast enough
-                        //clientStreams.Remove(clientStream.Key);
+                        //clientStreams.TryRemove(clientStream.Key);
                         //if (clientStreams.Count <= 0)
                         //{
                         //    camera.ImageCapturedEvent -= GetImageFromCamera;
