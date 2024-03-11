@@ -8,11 +8,11 @@ using System.Drawing;
 
 namespace CameraServer.Services.VideoRecording
 {
-    public class VideoRecorder : IDisposable
+    public class VideoRecorder : iVideoRecorder, IDisposable
     {
         private const double DefaultFps = 20.0;
         private readonly string _fileName;
-        private readonly int _fourcc = VideoWriter.Fourcc('m', 'p', '4', 'v');
+        private readonly int _fourcc = VideoWriter.Fourcc('a', 'v', 'c', '1');
         private VideoWriter? _videoWriter;
         private readonly int _width;
         private readonly int _height;
