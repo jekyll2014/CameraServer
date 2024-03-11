@@ -3,7 +3,7 @@
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
-using CameraServer.Services.VideoRecorder;
+using CameraServer.Services.VideoRecording;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;

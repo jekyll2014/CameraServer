@@ -283,6 +283,5 @@ namespace CameraServer.Services.CameraHub
         {
             return cameraId + queueId + width + height;
         }
-
     }
 }

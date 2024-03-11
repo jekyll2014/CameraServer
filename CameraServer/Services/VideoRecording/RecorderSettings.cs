@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Services.VideoRecorder;
+﻿namespace CameraServer.Services.VideoRecording;
 
 public class RecorderSettings
 {

@@ -6,7 +6,7 @@ using Emgu.CV.Structure;
 
 using System.Drawing;
 
-namespace CameraServer.Services.VideoRecorder
+namespace CameraServer.Services.VideoRecording
 {
     public class VideoRecorder : IDisposable
     {
@@ -32,8 +32,11 @@ namespace CameraServer.Services.VideoRecorder
             _compressionQuality = quality;
         }
 
-        public void SaveFrame(Mat frame)
+        public void SaveFrame(Mat? frame)
         {
+            if (frame == null)
+                return;
+
             Image<Rgb, byte> outImage;
             if (_width > 0 && _height > 0 && frame.Width > _width && frame.Height > _height)
             {

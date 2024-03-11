@@ -1,10 +1,9 @@
-﻿using CameraServer.Auth;
-
-namespace CameraServer.Services.Telegram;
+﻿namespace CameraServer.Services.Telegram;
 
 public class TelegeramSettings
 {
     public string Token { get; set; } = string.Empty;
-    public List<Roles> DefaultRoles { get; set; } = new List<Roles>() { Roles.Guest };
     public uint DefaultVideoTime { get; set; } = 15;
+    public byte DefaultVideoQuality { get; set; } = 90;
+    public byte DefaultImageQuality { get; set; } = 100;
 }

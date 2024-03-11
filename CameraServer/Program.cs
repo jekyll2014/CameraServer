@@ -4,7 +4,7 @@ using CameraServer.Services.AntiBruteForce;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.MotionDetection;
 using CameraServer.Services.Telegram;
-using CameraServer.Services.VideoRecorder;
+using CameraServer.Services.VideoRecording;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;

@@ -3,13 +3,12 @@
 using CameraServer.Auth;
 using CameraServer.Controllers;
 using CameraServer.Models;
+using CameraServer.Services.CameraHub;
 using CameraServer.Services.MotionDetection;
-using CameraServer.Services.VideoRecorder;
+using CameraServer.Services.VideoRecording;
 
 using Emgu.CV;
 using Emgu.CV.Structure;
-
-using System.Collections.Concurrent;
 
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
@@ -25,7 +24,7 @@ namespace CameraServer.Services.Telegram
     public class TelegramService : IHostedService, IDisposable
     {
         private const string TelegramConfigSection = "Telegram";
-        private const string ExternalHostUriSection = "ExternalHostUri";
+        private const string ExternalHostUriSection = "ExternalHostUrl";
         private const string TelegramStreamId = "telegram";
 
         private const string SnapShotCommand = "/image";
@@ -44,32 +43,29 @@ namespace CameraServer.Services.Telegram
         private const uint VideoRecordMaxTime = 120;
         private readonly char[] _separator = new[] { ' ', ',' };
         private readonly IUserManager _manager;
-        private readonly CameraHub.CameraHubService _collection;
-        private readonly VideoRecorderService _videoRecorderService;
+        private readonly CameraHubService _collection;
         private readonly IServiceProvider _serviceProvider;
-        private readonly TelegeramSettings _settings;
-        private readonly string _externalHostUri;
+        public readonly TelegeramSettings Settings;
+        private readonly string _externalHostUrl;
         private CancellationTokenSource? _cts;
         private TelegramBotClient? _botClient;
         private bool _disposedValue;
 
         public TelegramService(IConfiguration configuration,
             IUserManager manager,
-            CameraHub.CameraHubService collection,
-            VideoRecorderService videoRecorderService,
+            CameraHubService collection,
             IServiceProvider serviceProvider)
         {
-            _settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>() ?? new TelegeramSettings();
+            Settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>() ?? new TelegeramSettings();
             _manager = manager;
             _collection = collection;
-            _videoRecorderService = videoRecorderService;
             _serviceProvider = serviceProvider;
-            _externalHostUri = configuration.GetValue(ExternalHostUriSection, string.Empty) ?? string.Empty;
+            _externalHostUrl = configuration.GetValue(ExternalHostUriSection, string.Empty) ?? string.Empty;
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(_settings.Token))
+            if (string.IsNullOrEmpty(Settings.Token))
             {
                 Console.WriteLine("Telefram service not setup.");
 
@@ -78,7 +74,7 @@ namespace CameraServer.Services.Telegram
 
             Console.WriteLine("Starting Telefram service...");
             _cts = new CancellationTokenSource();
-            _botClient = new TelegramBotClient(_settings.Token);
+            _botClient = new TelegramBotClient(Settings.Token);
             // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
             ReceiverOptions receiverOptions = new()
             {
@@ -193,16 +189,19 @@ namespace CameraServer.Services.Telegram
             {
                 using (var ms = new MemoryStream())
                 {
-                    var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData();
-                    await ms.WriteAsync(jpegBuffer, cancellationToken);
-                    ms.Position = 0;
-                    image.Dispose();
-                    var pic = InputFile.FromStream(ms);
+                    var jpegBuffer = image.ToImage<Rgb, byte>().ToJpegData(Settings.DefaultImageQuality);
+                    if (jpegBuffer != null)
+                    {
+                        await ms.WriteAsync(jpegBuffer, cancellationToken);
+                        ms.Position = 0;
+                        image.Dispose();
+                        var pic = InputFile.FromStream(ms);
 
-                    return await _botClient.SendPhotoAsync(chatId: chatId,
-                        photo: pic,
-                        caption: caption,
-                        cancellationToken: cancellationToken);
+                        return await _botClient.SendPhotoAsync(chatId: chatId,
+                            photo: pic,
+                            caption: caption,
+                            cancellationToken: cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)
@@ -210,6 +209,8 @@ namespace CameraServer.Services.Telegram
                 Console.WriteLine($"Telegram exception: {ex}");
                 return null;
             }
+
+            return null;
         }
 
         public async Task<Message?> SendVideo(ChatId chatId,
@@ -297,17 +298,15 @@ namespace CameraServer.Services.Telegram
             var currentTelegramUser = _manager.GetUserInfo(senderId);
             if (currentTelegramUser == null)
             {
-                currentTelegramUser = new UserDto()
-                {
-                    TelegramId = senderId,
-                    Roles = _settings.DefaultRoles
-                };
+                await SendText(chatId: chatId, text: $"Non authorized users are not allowed", cancellationToken);
+
+                return;
             }
 
             // Echo received message text
             await SendText(chatId: chatId, text: $"Requested: \"{messageText}\"", cancellationToken);
 
-            await Task.Run(async () =>
+            Task.Run(async () =>
             {
                 // search for the available cameras
                 // return snapshots of the requested cameras
@@ -323,8 +322,7 @@ namespace CameraServer.Services.Telegram
                     await ManageVideoRecorder(chatId, currentTelegramUser, messageText, cancellationToken);
                 else if (messageText.StartsWith(MotionDetectorCommand, StringComparison.OrdinalIgnoreCase))
                     await ManageMotionDetector(chatId, currentTelegramUser, messageText, cancellationToken);
-                else if (messageText.Equals(RefreshCommand, StringComparison.OrdinalIgnoreCase)
-                    && currentTelegramUser.Roles.Contains(Roles.Admin))
+                else if (messageText.Equals(RefreshCommand, StringComparison.OrdinalIgnoreCase))
                     await RefreshCameraListMessage(chatId, currentTelegramUser, cancellationToken);
                 // return help message on unknown command
                 else
@@ -332,7 +330,7 @@ namespace CameraServer.Services.Telegram
             }, cancellationToken);
         }
 
-        private async Task SendImageMessage(ChatId chatId,
+        private async Task SendImageMessage(long chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -389,7 +387,7 @@ namespace CameraServer.Services.Telegram
                 await SendText(chatId: chatId, text: $"Incorrect command", cancellationToken);
         }
 
-        private async Task SendVideoMessage(ChatId chatId,
+        private async Task SendVideoMessage(long chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -411,7 +409,7 @@ namespace CameraServer.Services.Telegram
                     var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Height * n.Width);
                     buttonsRow.Add(new InlineKeyboardButton($"{cameraNumber}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Height ?? 0}]")
                     {
-                        CallbackData = $"{VideoCommand} {cameraNumber} {_settings.DefaultVideoTime}"
+                        CallbackData = $"{VideoCommand} {cameraNumber} {Settings.DefaultVideoTime}"
                     });
                     buttons.Add(buttonsRow.ToArray());
                     buttonsRow.Clear();
@@ -437,54 +435,24 @@ namespace CameraServer.Services.Telegram
                     return;
                 }
 
-                var queueId = $"{TelegramStreamId}-{chatId}";
-                var frameFormat = new FrameFormatDto();
-                var imageQueue = new ConcurrentQueue<Mat>();
-                var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
-                    queueId,
-                    imageQueue,
-                    frameFormat);
-                if (cameraCancellationToken == CancellationToken.None)
-                {
-                    await SendText(chatId, $"Can not connect to camera#{cameraNumber}", cancellationToken);
-
-                    return;
-                }
-
                 if (recordTime <= 0)
                     return;
 
                 if (recordTime >= VideoRecordMaxTime)
                     recordTime = VideoRecordMaxTime;
 
-                //record video
-                var currentTime = DateTime.Now;
-                var fileName = VideoRecorder.VideoRecorder.SanitizeFileName($"{TelegramStreamId}-" +
-                                                                            $"{chatId}-" +
-                                                                            $"Cam{cameraNumber}-" +
-                                                                            $"{currentTime.ToString("yyyy-MM-dd")}-" +
-                                                                            $"{currentTime.ToString("HH-mm-ss")}.mp4");
                 try
                 {
-                    var fps = camera.Camera.Description.FrameFormats.FirstOrDefault()?.Fps ?? 0;
-                    using (var recorder = new VideoRecorder.VideoRecorder(fileName,
-                               new FrameFormatDto { Width = 0, Height = 0, Format = string.Empty, Fps = fps }))
-                    {
-                        var timeOut = DateTime.Now.AddSeconds(recordTime);
-                        while (DateTime.Now < timeOut && !cancellationToken.IsCancellationRequested)
-                        {
-                            if (imageQueue.TryDequeue(out var image))
-                            {
-                                recorder.SaveFrame(image);
-                                image.Dispose();
-                            }
-                            else
-                                await Task.Delay(10);
-                        }
+                    if (_serviceProvider.GetService(typeof(VideoRecorderService)) is not VideoRecorderService videoRecorderService)
+                        return;
 
-                        await _collection.UnHookCamera(camera.Camera.Description.Path, queueId, frameFormat);
-                    }
-
+                    var queueId = $"{TelegramStreamId}-{chatId}";
+                    var fileName = await videoRecorderService.RecordVideoFile(camera,
+                        queueId,
+                        TelegramStreamId,
+                        recordTime,
+                        null,
+                        Settings.DefaultVideoQuality);
                     await SendVideo(chatId, fileName, $"Camera#{cameraNumber} record",
                         cancellationToken: cancellationToken);
                     File.Delete(fileName);
@@ -493,22 +461,12 @@ namespace CameraServer.Services.Telegram
                 {
                     Console.WriteLine($"Can not record video for Telegram user {chatId}: {ex}");
                 }
-                finally
-                {
-                    while (imageQueue.TryDequeue(out var image))
-                    {
-                        image.Dispose();
-                    }
-
-                    imageQueue.Clear();
-                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
-                }
             }
             else
                 await SendText(chatId, $"Incorrect command", cancellationToken);
         }
 
-        private async Task SendLinkMessage(ChatId chatId,
+        private async Task SendLinkMessage(long chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -556,7 +514,7 @@ namespace CameraServer.Services.Telegram
                 }
 
                 var linklabel = $"Url: {camera.Camera.Description.Name}";
-                var linkUrl = _externalHostUri.Trim('/') + CameraController.GenerateCameraUrl(n);
+                var linkUrl = _externalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
                 var keyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl(linklabel, linkUrl));
                 await SendMenu(
                      chatId,
@@ -571,12 +529,15 @@ namespace CameraServer.Services.Telegram
         }
 
         //{VideoRecordCommand} [n] [start/stop]
-        private async Task ManageVideoRecorder(ChatId chatId,
+        private async Task ManageVideoRecorder(long chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
         {
             if (_botClient == null)
+                return;
+
+            if (_serviceProvider.GetService(typeof(VideoRecorderService)) is not VideoRecorderService videoRecorderService)
                 return;
 
             var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -591,8 +552,8 @@ namespace CameraServer.Services.Telegram
                                  .Any()))
                 {
                     var taskId = VideoRecorderService.GenerateTaskId(camera.Camera.Description.Path, 0, 0);
-                    var running = _videoRecorderService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
-                    var action = _videoRecorderService.TaskList.Any(n => n == taskId) ? "stop" : "start";
+                    var running = videoRecorderService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
+                    var action = videoRecorderService.TaskList.Any(n => n == taskId) ? "stop" : "start";
                     buttonsRow.Add(new InlineKeyboardButton($"[{running}] {cameraNumber}:{camera.Camera.Description.Name}")
                     {
                         CallbackData = $"{VideoRecordCommand} {cameraNumber} {action}"
@@ -627,7 +588,7 @@ namespace CameraServer.Services.Telegram
                 {
                     try
                     {
-                        _videoRecorderService.Start(camera.Camera.Description.Path, user.Login, new FrameFormatDto(),
+                        videoRecorderService.Start(camera.Camera.Description.Path, user.Login, new FrameFormatDto(),
                             95);
                         message = $"Record started for camera {camera.Camera.Description.Name}";
                     }
@@ -640,7 +601,7 @@ namespace CameraServer.Services.Telegram
                 else if (tokens[2] == "stop")
                 {
                     var taskId = VideoRecorderService.GenerateTaskId(camera.Camera.Description.Path, 0, 0);
-                    _videoRecorderService.Stop(taskId);
+                    videoRecorderService.Stop(taskId);
                     message = $"Record stopped for camera {camera.Camera.Description.Name}";
                 }
 
@@ -653,7 +614,7 @@ namespace CameraServer.Services.Telegram
         }
 
         //{MotionDetectorCommand} [n] [start/stop] [text/image/video]
-        private async Task ManageMotionDetector(ChatId chatId,
+        private async Task ManageMotionDetector(long chatId,
             ICameraUser user,
             string messageText,
             CancellationToken cancellationToken)
@@ -661,8 +622,7 @@ namespace CameraServer.Services.Telegram
             if (_botClient == null)
                 return;
 
-            var motionDetectionService = (MotionDetectionService)_serviceProvider.GetService(typeof(MotionDetectionService));
-            if (motionDetectionService == null)
+            if (_serviceProvider.GetService(typeof(MotionDetectionService)) is not MotionDetectionService motionDetectionService)
                 return;
 
             var tokens = messageText.Split(_separator, StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -785,9 +745,9 @@ namespace CameraServer.Services.Telegram
                             {
                                 Message = $"Movement detected at camera {camera.Camera.Description.Name}",
                                 MessageType = messageType,
-                                Destination = chatId.Identifier?.ToString() ?? chatId.Username ?? "0",
+                                Destination = chatId.ToString(),
                                 Transport = NotificationTransport.Telegram,
-                                VideoLengthSec = _settings.DefaultVideoTime
+                                VideoLengthSec = Settings.DefaultVideoTime
                             }
                             });
 
@@ -814,15 +774,22 @@ namespace CameraServer.Services.Telegram
             }
         }
 
-        private async Task RefreshCameraListMessage(ChatId chatId,
+        private async Task RefreshCameraListMessage(long chatId,
             ICameraUser user,
             CancellationToken cancellationToken)
         {
-            await _collection.RefreshCameraCollection(cancellationToken);
-            await SendText(chatId, "Camera list refreshed", cancellationToken);
+            if (user.Roles.Contains(Roles.Admin))
+            {
+                await _collection.RefreshCameraCollection(cancellationToken);
+                await SendText(chatId, "Camera list refreshed", cancellationToken);
+            }
+            else
+            {
+                await SendText(chatId, "Only allowed to Admin", cancellationToken);
+            }
         }
 
-        private async Task SendHelpMessage(ChatId chatId,
+        private async Task SendHelpMessage(long chatId,
             CancellationToken cancellationToken)
         {
             await SendText(chatId,

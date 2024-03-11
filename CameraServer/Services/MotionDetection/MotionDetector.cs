@@ -28,8 +28,11 @@ namespace CameraServer.Services.MotionDetection
             _detectorDelayMs = parameters.DetectorDelayMs;
         }
 
-        public bool DetectMovement(Mat frame)
+        public bool DetectMovement(Mat? frame)
         {
+            if (frame == null)
+                return false;
+
             var result = false;
             var currentTime = DateTime.Now;
             if (_nextFrameProcess < currentTime.AddMilliseconds(-DetectorRestartMs - _detectorDelayMs))

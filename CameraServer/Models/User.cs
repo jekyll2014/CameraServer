@@ -13,7 +13,7 @@ namespace CameraServer.Models
         [Required]
         public string Password { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
-        public long TelegramId { get; set; } = 0;
+        public long TelegramId { get; set; }
         public string TelegramName { get; set; } = string.Empty;
     }
 }
