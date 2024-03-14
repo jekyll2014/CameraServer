@@ -186,54 +186,95 @@ namespace CameraServer.Services.MotionDetection
             Mat image,
             CancellationToken cameraCancellationToken)
         {
-            foreach (var notificationParam in notificationParams)
-            {
-                if (notificationParam.Transport == NotificationTransport.Telegram)
-                {
-                    ChatId chatId;
-                    if (long.TryParse(notificationParam.Destination, out var id))
-                        chatId = new ChatId(id);
-                    else if (notificationParam.Destination.StartsWith('@'))
-                        chatId = new ChatId(notificationParam.Destination);
-                    else
-                        continue;
+            var textNotifications = notificationParams
+                .Where(n => n.Transport == NotificationTransport.Telegram
+                            && n.MessageType == MessageType.Image);
 
-                    if (notificationParam.MessageType == MessageType.Text)
-                    {
-                        Task.Run(async () =>
-                        {
-                            await _telegramService.SendText(chatId, notificationParam.Message,
-                                cameraCancellationToken);
-                        }, cameraCancellationToken);
-                    }
-                    else if (notificationParam.MessageType == MessageType.Image)
-                    {
-                        var movementImage = image.Clone();
-                        Task.Run(async () =>
-                        {
-                            await _telegramService.SendImage(
-                                chatId,
-                                movementImage,
-                                caption: $"{notificationParam.Message}",
-                                cameraCancellationToken);
+            if (textNotifications.Any())
+                SendMovementTextMulti(textNotifications);
 
-                            movementImage?.Dispose();
-                        }, cameraCancellationToken);
-                    }
-                    else if (notificationParam.MessageType == MessageType.Video)
-                    {
-                        SendMovementVideo(camera,
-                            chatId,
-                            notificationParam.Message,
-                            notificationParam.VideoLengthSec,
-                            _telegramService.Settings.DefaultVideoQuality);
-                    }
-                }
-            }
+
+            var imageNotifications = notificationParams
+                .Where(n => n.Transport == NotificationTransport.Telegram
+                            && n.MessageType == MessageType.Image);
+
+            if (imageNotifications.Any())
+                SendMovementImageMulti(image.Clone(), imageNotifications);
+
+            var videoNotifications = notificationParams
+                .Where(n => n.Transport == NotificationTransport.Telegram
+                            && n.MessageType == MessageType.Video);
+
+            if (videoNotifications.Any())
+                SendMovementVideoMulti(camera, videoNotifications, _telegramService.Settings.DefaultVideoQuality);
         }
 
-        private void SendMovementVideo(ServerCamera camera, ChatId chatId, string message, uint recordLengthSec, byte quality)
+        private void SendMovementTextMulti(IEnumerable<NotificationParameters> notificationParams)
         {
+            if (notificationParams == null || !notificationParams.Any())
+                return;
+
+            Task.Run(async () =>
+            {
+                foreach (var notificationParam in notificationParams)
+                {
+                    var dest = notificationParam.Destination;
+                    ChatId chatId;
+                    if (long.TryParse(dest, out var id))
+                        chatId = new ChatId(id);
+                    else if (dest.StartsWith('@'))
+                        chatId = new ChatId(dest);
+                    else
+                        return;
+
+                    await _telegramService.SendText(chatId, notificationParam.Message, CancellationToken.None);
+                }
+            });
+        }
+
+        private void SendMovementImageMulti(Mat image, IEnumerable<NotificationParameters> notificationParams)
+        {
+            if (notificationParams == null || !notificationParams.Any())
+                return;
+
+            Task.Run(async () =>
+            {
+                foreach (var notificationParam in notificationParams)
+                {
+                    var dest = notificationParam.Destination;
+                    ChatId chatId;
+                    if (long.TryParse(dest, out var id))
+                        chatId = new ChatId(id);
+                    else if (dest.StartsWith('@'))
+                        chatId = new ChatId(dest);
+                    else
+                        return;
+
+                    await _telegramService.SendImage(
+                        chatId,
+                        image,
+                        caption: $"{notificationParam.Message}",
+                        CancellationToken.None);
+                }
+
+                image?.Dispose();
+            });
+        }
+
+        private void SendMovementVideoMulti(ServerCamera camera, IEnumerable<NotificationParameters> notificationParams, byte quality)
+        {
+            if (notificationParams == null || !notificationParams.Any())
+                return;
+
+            var dest = notificationParams.FirstOrDefault()?.Destination ?? string.Empty;
+            ChatId chatId;
+            if (long.TryParse(dest, out var id))
+                chatId = new ChatId(id);
+            else if (dest.StartsWith('@'))
+                chatId = new ChatId(dest);
+            else
+                return;
+
             var tmpRecordtaskId =
                 $"{TmpVideoStreamId}-{chatId}-{camera.Camera.Description.Path}";
             if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
@@ -243,15 +284,28 @@ namespace CameraServer.Services.MotionDetection
             {
                 try
                 {
+
                     var tmpUserId = $"{MotionDetectionStreamId}-{chatId}";
                     var fileName = await _videoRecorderService.RecordVideoFile(camera,
                         tmpUserId,
                         TmpVideoStreamId,
-                        recordLengthSec,
+                        notificationParams.Max(n => n.VideoLengthSec),
                         null,
                         quality);
 
-                    await _telegramService.SendVideo(chatId, fileName, $"{message}", CancellationToken.None);
+                    foreach (var notificationParam in notificationParams)
+                    {
+                        ChatId chatId;
+                        if (long.TryParse(notificationParam.Destination, out var id))
+                            chatId = new ChatId(id);
+                        else if (notificationParam.Destination.StartsWith('@'))
+                            chatId = new ChatId(notificationParam.Destination);
+                        else
+                            return;
+
+                        await _telegramService.SendVideo(chatId, fileName, $"{notificationParam.Message}", CancellationToken.None);
+                    }
+
                     File.Delete(fileName);
                 }
                 catch (Exception ex)

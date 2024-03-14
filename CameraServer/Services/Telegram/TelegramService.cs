@@ -194,7 +194,6 @@ namespace CameraServer.Services.Telegram
                     {
                         await ms.WriteAsync(jpegBuffer, cancellationToken);
                         ms.Position = 0;
-                        image.Dispose();
                         var pic = InputFile.FromStream(ms);
 
                         return await _botClient.SendPhotoAsync(chatId: chatId,
@@ -207,6 +206,7 @@ namespace CameraServer.Services.Telegram
             catch (Exception ex)
             {
                 Console.WriteLine($"Telegram exception: {ex}");
+
                 return null;
             }
 
@@ -379,7 +379,10 @@ namespace CameraServer.Services.Telegram
 
                 var image = await camera.Camera.GrabFrame(cancellationToken);
                 if (image != null)
+                {
                     await SendImage(chatId, image, $"Camera[{n}]: {camera.Camera.Description.Name}", cancellationToken);
+                    image.Dispose();
+                }
                 else
                     await SendText(chatId: chatId, text: $"Can't get image from camera: \"{n}\"", cancellationToken);
             }
