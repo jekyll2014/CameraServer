@@ -26,7 +26,7 @@
                 @{
                     var scheme = Context.Request.Scheme;
                     var host = Context.Request.Host;
-                    var userRoles = UserManager.GetUserInfo(User.Identity?.Name ?? string.Empty)?.Roles ?? new List<Roles>();
+                    var userRoles = UserManager.GetUserInfo(User.Identity?.Name ?? string.Empty)?.Roles ?? new ();
                     for (var i = 0; i < CamerasCollection.Cameras.Count(); i++)
                     {
                         var camera = CamerasCollection.Cameras.ToArray()[i];
@@ -37,7 +37,7 @@
                         <tr>
                             <td>@i</td>
                             <td>@camera.Camera.Description.Type</td>
-                            <td><a href="@($"{scheme}://{host}{CameraController.GenerateCameraUrl(i, resolution.Width,resolution?.Height)}")" target="_blank">@($"{camera.Camera.Description.Name} [{resolution?.Width ?? 0}x{resolution?.Height ?? 0}]")</a></td>
+                            <td><a href="@($"{scheme}://{host}{CameraController.GenerateCameraUrl(i, resolution?.Width ?? 0,resolution?.Height ?? 0)}")" target="_blank">@($"{camera.Camera.Description.Name} [{resolution?.Width ?? 0}x{resolution?.Height ?? 0}]")</a></td>
                             <td>@camera.Custom</td>
                         </tr>
                     }
@@ -45,7 +45,7 @@
             </tbody>
         </table>
 
-        @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity?.Name ?? string.Empty)?? new UserDto()))
+        @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity?.Name ?? string.Empty) ?? new UserDto()))
         {
             <input type="button" value="Refresh camera list" onclick="location.href='@Url.Action("RefreshCameraList", "Home")'" />
         }
