@@ -452,6 +452,7 @@ namespace CameraServer.Services.Telegram
                     var queueId = $"{TelegramStreamId}-{chatId}";
                     var fileName = await videoRecorderService.RecordVideoFile(camera,
                         queueId,
+                        string.Empty,
                         TelegramStreamId,
                         recordTime,
                         null,
@@ -797,12 +798,12 @@ namespace CameraServer.Services.Telegram
         {
             await SendText(chatId,
                  $"Usage tips:\r\n" +
-                      $"\t{SnapShotCommand} n - get image from camera[n]\r\n" +
-                      $"\t{VideoCommand} n s - get video from camera [n], duration [s] seconds" +
-                      $"\t{LinkCommand} n s - get url of the video from camera [n]" +
-                      $"\t{VideoRecordCommand} n k - video record from camera [n] k=[start/stop]" +
-                      $"\t{MotionDetectorCommand} n k m - motion detection camera [n] k=[start/stop] reporting with m=[text/image/video]" +
-                      $"\t{RefreshCommand} - refresh camera list on the server\r\n",
+                      $"{SnapShotCommand} n - get image from camera[n]\r\n" +
+                      $"{VideoCommand} n s - get video from camera [n], duration [s] seconds\r\n" +
+                      $"{LinkCommand} n s - get url of the video from camera [n]\r\n" +
+                      $"{VideoRecordCommand} n k - video record from camera [n] k=[start/stop]\r\n" +
+                      $"{MotionDetectorCommand} n k m - motion detection camera [n] k=[start/stop] reporting with m=[text/image/video]\r\n" +
+                      $"{RefreshCommand} - refresh camera list on the server\r\n",
                  cancellationToken);
         }
 

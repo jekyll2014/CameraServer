@@ -123,7 +123,7 @@ namespace CameraServer.Services.VideoRecording
             while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
             {
                 var currentTime = DateTime.Now;
-                var fileName = $"{Settings.StoragePath}\\" +
+                var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
                                $"{VideoRecorder.SanitizeFileName($"{camera.Camera.Description.Name}-" +
                                                                  $"{frameFormat.Width}x{frameFormat.Height}-" +
                                                                  $"{currentTime.ToString("yyyy-MM-dd")}-" +
@@ -173,12 +173,27 @@ namespace CameraServer.Services.VideoRecording
 
         public async Task<string> RecordVideoFile(ServerCamera camera,
             string streamId,
+            string fileStoragePath,
             string filePrefix,
             uint recordLengthSec,
             FrameFormatDto? frameFormat = null,
-            byte quality = 90)
+            byte quality = 90,
+            ConcurrentQueue<Mat>? bufferedImages = null)
         {
             var currentTime = DateTime.Now;
+
+            var imageBuffer = bufferedImages?.ToArray().Select(n => n?.Clone()).ToArray() ?? [];
+            /*var imageBuffer = new List<Mat>();
+            while (!bufferedImages.IsEmpty)
+            {
+                if (bufferedImages.TryDequeue(out var img))
+                {
+                    var imgCopy = img?.Clone();
+                    if (imgCopy != null)
+                        imageBuffer.Add(img);
+                }
+            }*/
+
             frameFormat ??= new FrameFormatDto();
             var tmpImageQueue = new ConcurrentQueue<Mat>();
             var tmpCameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
@@ -191,16 +206,30 @@ namespace CameraServer.Services.VideoRecording
             }
 
             var fileName = VideoRecorder.SanitizeFileName(
+                    $"{fileStoragePath.TrimEnd('\\')}\\" +
                     $"{filePrefix}-" +
                     $"Cam{camera.Camera.Description.Name}-" +
                     $"{streamId}-" +
                     $"{currentTime.ToString("yyyy-MM-dd")}-" +
                     $"{currentTime.ToString("HH-mm-ss")}.mp4");
 
-            frameFormat.Fps = camera.Camera.CurrentFps;
+            if (frameFormat.Fps <= 0)
+                frameFormat.Fps = camera.Camera.CurrentFps;
 
             using (var recorder = new VideoRecorder(fileName, frameFormat, quality))
             {
+                if (imageBuffer != null)
+                {
+                    foreach (var img in imageBuffer)
+                    {
+                        if (img != null)
+                        {
+                            recorder.SaveFrame(img);
+                            img.Dispose();
+                        }
+                    }
+                }
+
                 var timeOut = DateTime.Now.AddSeconds(recordLengthSec);
                 while (DateTime.Now < timeOut)
                 {

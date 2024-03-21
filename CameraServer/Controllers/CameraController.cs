@@ -147,10 +147,17 @@ namespace CameraServer.Controllers
                     StatusCodes.Status204NoContent);
             }
 
+            var frameFormat = new FrameFormatDto
+            {
+                Width = width ?? 0,
+                Height = height ?? 0,
+                Format = format ?? string.Empty
+            };
+
             var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
                 Request.HttpContext.TraceIdentifier,
                 imageQueue,
-                new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty });
+                frameFormat);
 
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#",
@@ -173,15 +180,15 @@ namespace CameraServer.Controllers
                 {
                     if (imageQueue.TryDequeue(out var image))
                     {
-                        if (image == null)
-                            continue;
-
                         Image<Rgb, byte> outImage;
-                        if (width > 0 && height > 0 && image.Width > width && image.Height > height)
+                        if (frameFormat.Width > 0
+                            && frameFormat.Height > 0
+                            && image.Width > frameFormat.Width
+                            && image.Height > frameFormat.Height)
                         {
                             outImage = image
                                 .ToImage<Rgb, byte>()
-                                .Resize(width ?? 0, height ?? 0, Inter.Nearest);
+                                .Resize(frameFormat.Width, frameFormat.Height, Inter.Nearest);
                         }
                         else
                             outImage = image.ToImage<Rgb, byte>();
@@ -214,7 +221,7 @@ namespace CameraServer.Controllers
 
             await _collection.UnHookCamera(camera.Camera.Description.Path,
                 Request.HttpContext.TraceIdentifier,
-                new FrameFormatDto { Width = width ?? 0, Height = height ?? 0 });
+                frameFormat);
 
             while (imageQueue.TryDequeue(out var image))
             {

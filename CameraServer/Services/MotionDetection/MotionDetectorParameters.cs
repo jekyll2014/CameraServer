@@ -7,4 +7,6 @@ public class MotionDetectorParameters
     public uint DetectorDelayMs { get; set; } = 1000;
     public byte NoiseThreshold { get; set; } = 70;
     public double ChangeLimit { get; set; } = 0.003;
+    public uint NotificationDelay { get; set; } = 10;
+    public uint KeepImageBuffer { get; set; } = 10;
 }
