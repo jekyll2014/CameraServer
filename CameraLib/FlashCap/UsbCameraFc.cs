@@ -195,8 +195,7 @@ namespace CameraLib.FlashCap
                 }
                 finally
                 {
-                    //_frame?.Dispose();
-                    //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
             }
         }
@@ -212,11 +211,8 @@ namespace CameraLib.FlashCap
                 if (_captureDevice != null)
                 {
                     _captureDevice.StopAsync().Wait();
-                    _captureDevice.Dispose();
-                    _captureDevice = null;
                 }
 
-                _frame?.Dispose();
                 CurrentFrameFormat = null;
                 _timer.Reset();
                 IsRunning = false;
@@ -327,6 +323,7 @@ namespace CameraLib.FlashCap
                     Stop();
                     _cancellationTokenSource?.Dispose();
                     _captureDevice?.Dispose();
+                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

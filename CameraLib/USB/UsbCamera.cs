@@ -158,14 +158,12 @@ namespace CameraLib.USB
                     }
                 }
 
-                _frame?.Dispose();
-                _frame = new Mat();
                 _cancellationTokenSource = new CancellationTokenSource();
+                _captureDevice.ExceptionMode = false;
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _timer.Reset();
                 _frameCount = 0;
                 _captureDevice.Start();
-
                 IsRunning = true;
             }
 
@@ -194,9 +192,6 @@ namespace CameraLib.USB
                 {
                     _frame?.Dispose();
                     _frame = new Mat();
-                    if (!(_captureDevice?.Grab() ?? false))
-                        return;
-
                     if (!(_captureDevice?.Retrieve(_frame) ?? false))
                         return;
 
@@ -223,8 +218,7 @@ namespace CameraLib.USB
                             _frameCount = 0;
                         }
                     }
-                    //_frame?.Dispose();
-                    //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+                    GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                 }
             }
             catch
@@ -245,11 +239,8 @@ namespace CameraLib.USB
                 {
                     _captureDevice.Stop();
                     _captureDevice.ImageGrabbed -= ImageCaptured;
-                    _captureDevice.Dispose();
-                    _captureDevice = null;
                 }
 
-                _frame?.Dispose();
                 CurrentFrameFormat = null;
                 _timer.Reset();
                 IsRunning = false;

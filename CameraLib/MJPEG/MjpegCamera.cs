@@ -345,8 +345,7 @@ namespace CameraLib.MJPEG
                         }
                         finally
                         {
-                            //_frame?.Dispose();
-                            //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+                            GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                         }
                     }
 
