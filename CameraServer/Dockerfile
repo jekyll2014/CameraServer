@@ -1,8 +1,10 @@
 #See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+#FROM emgu/emgucv-ubi:ubi9-dotnet8 AS base
+FROM emgu/bazel-android:dotnet-6.0-bazel-4.2.1 AS base
 #FROM emgu/bazel-android AS base
-USER app
+#FROM emgu/vs2019_buildtools_cuda_openvino:openvino_2021.3.394 AS base
+#USER app
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
@@ -22,5 +24,8 @@ RUN dotnet publish "./CameraServer.csproj" -c $BUILD_CONFIGURATION -o /app/publi
 
 FROM base AS final
 WORKDIR /app
+#RUN yum install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libavresample-dev
+RUN apt-get install -y libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+RUN apt-get install -y ffmpeg
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "CameraServer.dll"]
