@@ -20,16 +20,20 @@ public class UserManager : IUserManager
         _antiBruteForceService = antiBruteForceService;
     }
 
+    // ToDo: Shall I block repetitive logins for anonymous/unknown user?
     public User? GetUser(string name, string password, IPAddress ipAddress)
     {
         if (_antiBruteForceService?.CheckThreat(name, ipAddress) ?? false)
             throw new AuthenticationException(TooManyAttemptsMessage);
 
-        var user = GetUsers()?.FirstOrDefault(n => n.Login == name && n.Password == password);
+        var users = GetUsers()?.ToArray();
+        var user = users?.FirstOrDefault(n => n.Login == name && n.Password == password);
         if (user == null)
         {
-            _antiBruteForceService?.AddFailedAttempt(name, ipAddress);
-            user = _configuration.GetSection(DefaultUserConfigSection).Get<User>();
+            if (!(users?.Any(n => n.Login == name) ?? false))
+                user = _configuration.GetSection(DefaultUserConfigSection).Get<User>();
+            else
+                _antiBruteForceService?.AddFailedAttempt(name, ipAddress);
         }
         else
             _antiBruteForceService?.ClearFailedAttempts(name, ipAddress);
@@ -39,34 +43,29 @@ public class UserManager : IUserManager
 
     public UserDto? GetUserInfo(string name)
     {
-        var user = GetUsers()?.FirstOrDefault(n => n.Login == name);
-        if (user == null)
-        {
+        User? user;
+        if (string.IsNullOrEmpty(name))
             user = _configuration.GetSection(DefaultUserConfigSection).Get<User>();
+        else
+            user = GetUsers()?.FirstOrDefault(n => n.Login == name);
 
-            if (user == null)
-                return null;
-
-            user.TelegramId = 0;
-        }
-
-        return new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
+        return user == null ? null : new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
     }
 
     public UserDto? GetUserInfo(long telegramId)
     {
-        var user = GetUsers()?.FirstOrDefault(n => n.TelegramId == telegramId);
-        if (user == null)
+        User? user;
+        if (telegramId <= 0)
         {
             user = _configuration.GetSection(DefaultUserConfigSection).Get<User>();
 
-            if (user == null)
-                return null;
-
-            user.TelegramId = telegramId;
+            if (user != null)
+                user.TelegramId = telegramId;
         }
+        else
+            user = GetUsers()?.FirstOrDefault(n => n.TelegramId == telegramId);
 
-        return new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
+        return user == null ? null : new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId };
     }
 
     public IEnumerable<User>? GetUsers()
