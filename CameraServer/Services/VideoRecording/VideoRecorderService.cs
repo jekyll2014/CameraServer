@@ -103,7 +103,7 @@ namespace CameraServer.Services.VideoRecording
             return cameraPath + width + height;
         }
 
-        private async Task RecordingTask(ServerCamera camera, FrameFormatDto frameFormat, string taskId, byte quality)
+        private async Task RecordingTask(IServerCamera camera, FrameFormatDto frameFormat, string taskId, byte quality)
         {
             var imageQueue = new ConcurrentQueue<Mat>();
             var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,

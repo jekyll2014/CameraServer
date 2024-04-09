@@ -216,7 +216,7 @@ namespace CameraServer.Services.MotionDetection
                             && n.MessageType == MessageType.Image)
                 .ToArray();
 
-            if (imageNotifications.Any())
+            if (imageNotifications.Length != 0)
                 SendMovementImageMulti(camera, image.Clone(), imageNotifications);
 
             var videoNotifications = notificationParams
@@ -224,7 +224,7 @@ namespace CameraServer.Services.MotionDetection
                             && n.MessageType == MessageType.Video)
                 .ToArray();
 
-            if (videoNotifications.Any())
+            if (videoNotifications.Length != 0)
             {
                 SendMovementVideoMulti(camera, videoNotifications, bufferedImages,
                     _telegramService.Settings.DefaultVideoQuality);
@@ -232,16 +232,16 @@ namespace CameraServer.Services.MotionDetection
 
             var textNotifications = notificationParams
                 .Where(n => n.Transport == NotificationTransport.Telegram
-                            && n.MessageType == MessageType.Image)
+                            && n.MessageType == MessageType.Text)
                 .ToArray();
 
-            if (textNotifications.Any())
-                SendMovementTextMulti(camera, textNotifications);
+            if (textNotifications.Length != 0)
+                SendMovementTextMulti(textNotifications);
         }
 
-        private void SendMovementTextMulti(ServerCamera camera, NotificationParameters[] notificationParams)
+        private void SendMovementTextMulti(NotificationParameters[] notificationParams)
         {
-            if (notificationParams == null || !notificationParams.Any())
+            if (notificationParams.Length == 0)
                 return;
 
             Task.Run(async () =>
@@ -280,7 +280,7 @@ namespace CameraServer.Services.MotionDetection
             });
         }
 
-        private void SendMovementImageMulti(ServerCamera camera, Mat image, NotificationParameters[] notificationParams)
+        private void SendMovementImageMulti(IServerCamera camera, Mat image, NotificationParameters[] notificationParams)
         {
             if (notificationParams == null || !notificationParams.Any())
                 return;
@@ -341,21 +341,12 @@ namespace CameraServer.Services.MotionDetection
             ConcurrentQueue<Mat> bufferedImages,
             byte quality)
         {
-            if (notificationParams == null || !notificationParams.Any())
+            if (notificationParams.Length == 0)
                 return;
 
-            var destination = notificationParams.FirstOrDefault()?.Destination ?? string.Empty;
-
-            ChatId chatId1;
-            if (long.TryParse(destination, out var id))
-                chatId1 = new ChatId(id);
-            else if (destination.StartsWith('@'))
-                chatId1 = new ChatId(destination);
-            else
-                return;
-
+            var destinationTotal = notificationParams.Select(n => n.Destination).Aggregate((n, m) => m += $" {n}");
             var tmpRecordtaskId =
-                $"{TmpVideoStreamId}-{chatId1}-{camera.Camera.Description.Path}";
+                $"{TmpVideoStreamId}-{destinationTotal}-{camera.Camera.Description.Path}";
             if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
                 return;
 
@@ -364,10 +355,10 @@ namespace CameraServer.Services.MotionDetection
                 var currentTime = DateTime.Now;
                 try
                 {
-                    var tmpUserId = $"{MotionDetectionStreamId}-{chatId1}";
+                    var tmpUserId = $"{MotionDetectionStreamId}-{destinationTotal}";
                     var fileName = await _videoRecorderService.RecordVideoFile(camera,
-                        Settings.StoragePath,
                         tmpUserId,
+                        Settings.StoragePath,
                         TmpVideoStreamId,
                         notificationParams.Max(n => n.VideoLengthSec),
                         null,
@@ -390,8 +381,8 @@ namespace CameraServer.Services.MotionDetection
                         }
 
                         ChatId chatId;
-                        if (long.TryParse(dest, out var id))
-                            chatId = new ChatId(id);
+                        if (long.TryParse(dest, out var localIid))
+                            chatId = new ChatId(localIid);
                         else if (dest.StartsWith('@'))
                             chatId = new ChatId(dest);
                         else
@@ -405,7 +396,7 @@ namespace CameraServer.Services.MotionDetection
                 }
                 catch (Exception ex)
                 {
-                    await _telegramService.SendText(chatId1, $"Can't record video: {ex}", CancellationToken.None);
+                    await _telegramService.SendText(destinationTotal, $"Can't record video: {ex}", CancellationToken.None);
                 }
 
                 _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);

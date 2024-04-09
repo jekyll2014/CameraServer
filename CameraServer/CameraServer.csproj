@@ -35,6 +35,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <Content Update="appsettings.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
+
+	<ItemGroup>
 	  <None Update="libcvextern.so">
 	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>

@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/CameraServer/appsettings.json_git
+/CameraServer/appsettings.json_test
