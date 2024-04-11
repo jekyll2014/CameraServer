@@ -110,13 +110,13 @@ namespace CameraServer.Services.Telegram
                 },
                 new BotCommand()
                 {
-                    Command = VideoRecordCommand.TrimStart('/'),
-                    Description = VideoRecordCommandDescription
+                    Command = MotionDetectorCommand.TrimStart('/'),
+                    Description = MotionDetectorCommandDescription
                 },
                 new BotCommand()
                 {
-                    Command = MotionDetectorCommand.TrimStart('/'),
-                    Description = MotionDetectorCommandDescription
+                    Command = VideoRecordCommand.TrimStart('/'),
+                    Description = VideoRecordCommandDescription
                 },
                 new BotCommand()
                 {
@@ -267,6 +267,7 @@ namespace CameraServer.Services.Telegram
                 return null;
             }
         }
+
         private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
             CancellationToken cancellationToken)
         {
@@ -318,10 +319,10 @@ namespace CameraServer.Services.Telegram
                 // return video stream link
                 else if (messageText.StartsWith(LinkCommand, StringComparison.OrdinalIgnoreCase))
                     await SendLinkMessage(chatId, currentTelegramUser, messageText, cancellationToken);
-                else if (messageText.StartsWith(VideoRecordCommand, StringComparison.OrdinalIgnoreCase))
-                    await ManageVideoRecorder(chatId, currentTelegramUser, messageText, cancellationToken);
                 else if (messageText.StartsWith(MotionDetectorCommand, StringComparison.OrdinalIgnoreCase))
                     await ManageMotionDetector(chatId, currentTelegramUser, messageText, cancellationToken);
+                else if (messageText.StartsWith(VideoRecordCommand, StringComparison.OrdinalIgnoreCase))
+                    await ManageVideoRecorder(chatId, currentTelegramUser, messageText, cancellationToken);
                 else if (messageText.Equals(RefreshCommand, StringComparison.OrdinalIgnoreCase))
                     await RefreshCameraListMessage(chatId, currentTelegramUser, cancellationToken);
                 // return help message on unknown command
