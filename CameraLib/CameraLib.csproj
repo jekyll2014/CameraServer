@@ -9,11 +9,6 @@
   <ItemGroup>
     <PackageReference Include="DirectShowLib.Standard" Version="2.1.0" />
     <PackageReference Include="Emgu.CV" Version="4.8.1.5350" />
-    <PackageReference Include="Emgu.CV.runtime.debian-arm" Version="4.8.1.5350" />
-    <PackageReference Include="Emgu.CV.runtime.debian-arm64" Version="4.8.1.5350" />
-    <PackageReference Include="Emgu.CV.runtime.mini.debian-arm" Version="4.8.1.5350" />
-    <PackageReference Include="Emgu.CV.runtime.mini.debian-arm64" Version="4.8.1.5350" />
-    <PackageReference Include="Emgu.CV.runtime.ubuntu-x64" Version="4.8.1.5350" />
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.8.1.5350" />
     <PackageReference Include="FlashCap" Version="1.9.0" />
     <PackageReference Include="QuickNV.Onvif" Version="1.0.1" />
