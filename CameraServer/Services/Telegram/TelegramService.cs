@@ -67,12 +67,12 @@ namespace CameraServer.Services.Telegram
         {
             if (string.IsNullOrEmpty(Settings.Token))
             {
-                Console.WriteLine("Telefram service not setup.");
+                Console.WriteLine("Telegram service not setup.");
 
                 return;
             }
 
-            Console.WriteLine("Starting Telefram service...");
+            Console.WriteLine("Starting Telegram service...");
             _cts = new CancellationTokenSource();
             _botClient = new TelegramBotClient(Settings.Token);
             // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
@@ -264,6 +264,7 @@ namespace CameraServer.Services.Telegram
             catch (Exception ex)
             {
                 Console.WriteLine($"Telegram exception: {ex}");
+
                 return null;
             }
         }
@@ -502,6 +503,13 @@ namespace CameraServer.Services.Telegram
             }
             else if (tokens.Count >= 2)
             {
+                if (string.IsNullOrEmpty(_externalHostUrl))
+                {
+                    await SendText(chatId, "Can't generate URL: external host is empty.", cancellationToken);
+
+                    return;
+                }
+
                 var cameraNumber = tokens[1];
                 if (!int.TryParse(cameraNumber, out var n))
                     return;
@@ -785,8 +793,9 @@ namespace CameraServer.Services.Telegram
         {
             if (user.Roles.Contains(Roles.Admin))
             {
+                await SendText(chatId, "Camera list refreshing...", cancellationToken);
                 await _collection.RefreshCameraCollection(cancellationToken);
-                await SendText(chatId, "Camera list refreshed", cancellationToken);
+                await SendText(chatId, "Camera list refreshed!", cancellationToken);
             }
             else
             {
