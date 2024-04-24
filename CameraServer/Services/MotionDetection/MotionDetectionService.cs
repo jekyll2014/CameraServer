@@ -193,7 +193,6 @@ namespace CameraServer.Services.MotionDetection
                 }
             }
 
-
             await _collection.UnHookCamera(camera.Camera.Description.Path, MotionDetectionStreamId + taskId, frameFormat);
             while (imageQueue.TryDequeue(out var image))
             {

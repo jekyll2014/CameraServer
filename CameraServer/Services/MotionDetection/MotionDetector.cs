@@ -63,15 +63,19 @@ namespace CameraServer.Services.MotionDetection
                 var colorFrame = imgThreshold.Convert<Rgb, byte>();
 #endif
                 //Find big blobs to activate alarm
-                foreach (var c in contours.ToArrayOfArray())
+                var n = 0;
+                foreach (var c in contours?.ToArrayOfArray())
                 {
                     var r = CvInvoke.BoundingRectangle(c);
-                    if (r.Width * r.Height >= _changeLimit)
+                    var pixelCount = CountPixels(imgThreshold, r);
+                    if (pixelCount >= _changeLimit)
                     {
 #if DEBUG
+                        CvInvoke.DrawContours(colorFrame, contours, n, new MCvScalar(0, 255, 0));
                         CvInvoke.Rectangle(colorFrame, r, new MCvScalar(0, 255, 0));
 #endif
                         result = true;
+                        break;
                     }
 #if DEBUG
                     else
@@ -84,6 +88,7 @@ namespace CameraServer.Services.MotionDetection
                         CvInvoke.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), new MCvScalar(0, 0, 255));
                     }
 #endif
+                    n++;
                 }
 
                 contours.Dispose();
@@ -101,6 +106,15 @@ namespace CameraServer.Services.MotionDetection
             else _prevFrame ??= frame.ToImage<Gray, byte>().Resize(_width, _height, Inter.Nearest);
 
             return result;
+        }
+
+        private static int CountPixels(Image<Gray, byte> image, Rectangle r)
+        {
+            image.ROI = r;
+            var count = image.CountNonzero()[0];
+            image.ROI = Rectangle.Empty;
+
+            return count;
         }
 
         protected virtual void Dispose(bool disposing)
