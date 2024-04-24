@@ -332,6 +332,22 @@ namespace CameraServer.Services.Telegram
             }, cancellationToken);
         }
 
+        private Task HandlePollingErrorAsync(ITelegramBotClient botClient,
+            Exception exception,
+            CancellationToken cancellationToken)
+        {
+            var errorMessage = exception switch
+            {
+                ApiRequestException apiRequestException
+                    => $"Telegram API Error: [{apiRequestException.ErrorCode}] {apiRequestException.Message}",
+                _ => exception.ToString()
+            };
+
+            Console.WriteLine(errorMessage);
+
+            return Task.CompletedTask;
+        }
+
         private async Task SendImageMessage(ChatId chatId,
             ICameraUser user,
             string messageText,
@@ -348,8 +364,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Height * n.Width);
-                    buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Height ?? 0}]")
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, n))
                     {
                         CallbackData = $"{SnapShotCommand} {n}"
                     });
@@ -411,8 +426,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Height * n.Width);
-                    buttonsRow.Add(new InlineKeyboardButton($"{cameraNumber}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Height ?? 0}]")
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, cameraNumber))
                     {
                         CallbackData = $"{VideoCommand} {cameraNumber} {Settings.DefaultVideoTime}"
                     });
@@ -488,8 +502,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    var format = camera.Camera.Description.FrameFormats.MaxBy(n => n.Height * n.Width);
-                    buttonsRow.Add(new InlineKeyboardButton($"{n}:{camera.Camera.Description.Name}[{format?.Width ?? 0}x{format?.Height ?? 0}]")
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, n))
                     {
                         CallbackData = $"{LinkCommand} {n}"
                     });
@@ -567,7 +580,7 @@ namespace CameraServer.Services.Telegram
                     var taskId = VideoRecorderService.GenerateTaskId(camera.Camera.Description.Path, 0, 0);
                     var running = videoRecorderService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
                     var action = videoRecorderService.TaskList.Any(n => n == taskId) ? "stop" : "start";
-                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {cameraNumber}:{camera.Camera.Description.Name}")
+                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.Camera, cameraNumber)}")
                     {
                         CallbackData = $"{VideoRecordCommand} {cameraNumber} {action}"
                     });
@@ -652,7 +665,7 @@ namespace CameraServer.Services.Telegram
                     var taskId = MotionDetectionService.GenerateTaskId(camera.Camera.Description.Path, user.Login);
                     var running = motionDetectionService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
                     var action = motionDetectionService.TaskList.Any(n => n == taskId) ? " stop" : " start";
-                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {cameraNumber}:{camera.Camera.Description.Name}")
+                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.Camera, cameraNumber)}")
                     {
                         CallbackData = $"{MotionDetectorCommand} {cameraNumber}{action}"
                     });
@@ -817,20 +830,10 @@ namespace CameraServer.Services.Telegram
                  cancellationToken);
         }
 
-        private Task HandlePollingErrorAsync(ITelegramBotClient botClient,
-            Exception exception,
-            CancellationToken cancellationToken)
+        private string GetCameraMenuLine(ICamera camera, int cameraNumber)
         {
-            var errorMessage = exception switch
-            {
-                ApiRequestException apiRequestException
-                    => $"Telegram API Error: [{apiRequestException.ErrorCode}] {apiRequestException.Message}",
-                _ => exception.ToString()
-            };
-
-            Console.WriteLine(errorMessage);
-
-            return Task.CompletedTask;
+            var format = camera.Description.FrameFormats.MaxBy(n => n.Height * n.Width);
+            return $"{cameraNumber}:{camera.Description.Name}[{format?.Width ?? 0}x{format?.Height ?? 0}]";
         }
 
         protected virtual void Dispose(bool disposing)
