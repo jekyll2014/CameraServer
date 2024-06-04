@@ -97,7 +97,8 @@ namespace CameraServer.Services.CameraHub
                 else
                     continue;
 
-                _cameras.TryAdd(serverCamera, new());
+                serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
             }
 
             if (_cameraSettings.AutoSearchUsb)
@@ -113,7 +114,8 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.TryAdd(serverCamera, new());
+                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -139,7 +141,8 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.TryAdd(serverCamera, new());
+                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -164,7 +167,8 @@ namespace CameraServer.Services.CameraHub
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
                     var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    _cameras.TryAdd(serverCamera, new());
+                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)

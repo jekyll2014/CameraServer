@@ -47,7 +47,13 @@ namespace CameraLib.IP
 
         private bool _disposedValue;
 
-        public IpCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
+        public IpCamera(string path,
+            string name = "",
+            AuthType authenicationType = AuthType.None,
+            string login = "",
+            string password = "",
+            int discoveryTimeout = 1000,
+            bool forceCameraConnect = false)
         {
             if (authenicationType == AuthType.Plain)
                 path = string.Format(path, login, password);

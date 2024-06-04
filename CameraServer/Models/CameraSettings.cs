@@ -12,4 +12,5 @@ public class CameraSettings
     public bool ForceCameraConnect { get; set; } = false;
     public int MaxFrameBuffer { get; set; } = 10;
     public List<CustomCamera> CustomCameras { get; set; } = new();
+    public int FrameTimeout { get; set; } = 30000;
 }

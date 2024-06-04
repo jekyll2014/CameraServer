@@ -55,7 +55,13 @@ namespace CameraLib.MJPEG
 
         private bool _disposedValue;
 
-        public MjpegCamera(string path, string name = "", AuthType authenicationType = AuthType.None, string login = "", string password = "", int discoveryTimeout = 1000, bool forceCameraConnect = false)
+        public MjpegCamera(string path,
+            string name = "",
+            AuthType authenicationType = AuthType.None,
+            string login = "",
+            string password = "",
+            int discoveryTimeout = 1000,
+            bool forceCameraConnect = false)
         {
             AuthenicationType = authenicationType;
             Login = login;
