@@ -1,6 +1,4 @@
-﻿using CameraLib.IP;
-
-using Emgu.CV;
+﻿using Emgu.CV;
 using Emgu.CV.CvEnum;
 
 using System;
@@ -14,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 
 using IPAddress = System.Net.IPAddress;
 
@@ -33,6 +32,8 @@ namespace CameraLib.MJPEG
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
+        public double CurrentFps { get; private set; }
+        public int CameraTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -43,9 +44,14 @@ namespace CameraLib.MJPEG
         private Mat? _frame;
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
-        private readonly Stopwatch _timer = new();
+        private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
-        public double CurrentFps { get; private set; }
+
+        private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
+        private int _width = 0;
+        private int _height = 0;
+        private string _format = string.Empty;
+        private CancellationToken _token = CancellationToken.None;
 
         private bool _disposedValue;
 
@@ -81,6 +87,18 @@ namespace CameraLib.MJPEG
 
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
+
+            _keepAliveTimer.Elapsed += CameraDisconnected;
+        }
+
+        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        {
+            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            {
+                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                Stop(false);
+                Start(_width, _height, _format, _token);
+            }
         }
 
         // not implemented
@@ -109,8 +127,13 @@ namespace CameraLib.MJPEG
             {
                 try
                 {
+                    _width = width;
+                    _height = height;
+                    _format = format;
+                    _token = token;
+
                     _stopCapture = false;
-                    _timer.Reset();
+                    _fpsTimer.Reset();
                     _frameCount = 0;
                     _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
                 }
@@ -132,11 +155,21 @@ namespace CameraLib.MJPEG
 
         public void Stop()
         {
+            Stop(true);
+        }
+
+        public void Stop(bool cancellation)
+        {
             if (!IsRunning)
                 return;
+
             lock (_getPictureThreadLock)
             {
-                _cancellationTokenSource?.Cancel();
+                _keepAliveTimer.Stop();
+
+                if (cancellation)
+                    _cancellationTokenSource?.Cancel();
+
                 _stopCapture = true;
                 var timeOut = DateTime.Now.AddSeconds(100);
                 while (IsRunning && DateTime.Now < timeOut)
@@ -145,7 +178,7 @@ namespace CameraLib.MJPEG
                 _imageGrabber?.Dispose();
                 _frame?.Dispose();
                 CurrentFrameFormat = null;
-                _timer.Reset();
+                _fpsTimer.Reset();
             }
         }
 
@@ -321,9 +354,9 @@ namespace CameraLib.MJPEG
                             CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
                             CurrentFrameFormat ??= new FrameFormat(_frame.Width, _frame.Height);
                             ImageCapturedEvent?.Invoke(this, _frame.Clone());
-                            if (!_timer.IsRunning)
+                            if (!_fpsTimer.IsRunning)
                             {
-                                _timer.Start();
+                                _fpsTimer.Start();
                                 _frameCount = 0;
                             }
                             else
@@ -331,10 +364,10 @@ namespace CameraLib.MJPEG
                                 _frameCount++;
                                 if (_frameCount >= 100)
                                 {
-                                    if (_timer.ElapsedMilliseconds > 0)
-                                        CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+                                    if (_fpsTimer.ElapsedMilliseconds > 0)
+                                        CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
 
-                                    _timer.Reset();
+                                    _fpsTimer.Reset();
                                     _frameCount = 0;
                                 }
                             }

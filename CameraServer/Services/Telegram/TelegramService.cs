@@ -17,7 +17,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-using File = System.IO.File;
+//using File = System.IO.File;
 
 namespace CameraServer.Services.Telegram
 {
@@ -224,7 +224,7 @@ namespace CameraServer.Services.Telegram
             Console.WriteLine($"Sending video to [{chatId}]: {fileName} \"{caption}\"");
             try
             {
-                await using (var stream = File.OpenRead(fileName))
+                await using (var stream = System.IO.File.OpenRead(fileName))
                 {
                     var videoFileStream = InputFile.FromStream(stream, fileName);
 
@@ -475,7 +475,7 @@ namespace CameraServer.Services.Telegram
                         Settings.DefaultVideoQuality);
                     await SendVideo(chatId, fileName, $"Camera#{cameraNumber} record",
                         cancellationToken: cancellationToken);
-                    File.Delete(fileName);
+                    System.IO.File.Delete(fileName);
                 }
                 catch (Exception ex)
                 {
@@ -761,7 +761,7 @@ namespace CameraServer.Services.Telegram
 
                     try
                     {
-                        motionDetectionService.Start(camera.Camera.Description.Path,
+                        if (!string.IsNullOrEmpty(motionDetectionService.Start(camera.Camera.Description.Path,
                             user.Login,
                             new FrameFormatDto(),
                             motionDetectionService.Settings.DefaultMotionDetectParameters,
@@ -775,9 +775,10 @@ namespace CameraServer.Services.Telegram
                                 Transport = NotificationTransport.Telegram,
                                 VideoLengthSec = Settings.DefaultVideoTime
                             }
-                            });
-
-                        message = $"Motion detect started for camera {camera.Camera.Description.Name}";
+                            })))
+                            message = $"Motion detect started for camera {camera.Camera.Description.Name}";
+                        else
+                            throw new Exception($"Motion detect not started");
                     }
                     catch (Exception ex)
                     {

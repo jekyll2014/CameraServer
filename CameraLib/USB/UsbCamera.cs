@@ -11,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 
 namespace CameraLib.USB
 {
@@ -19,6 +20,8 @@ namespace CameraLib.USB
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
+        public double CurrentFps { get; private set; }
+        public int CameraTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -32,9 +35,14 @@ namespace CameraLib.USB
         private readonly object _getPictureThreadLock = new();
         private VideoCapture? _captureDevice;
         private Mat? _frame;
-        private readonly Stopwatch _timer = new();
+        private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
-        public double CurrentFps { get; private set; }
+
+        private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
+        private int _width = 0;
+        private int _height = 0;
+        private string _format = string.Empty;
+        private CancellationToken _token = CancellationToken.None;
 
         private bool _disposedValue;
 
@@ -51,6 +59,18 @@ namespace CameraLib.USB
 
             Description = new CameraDescription(CameraType.USB, path, name, GetAllAvailableResolution(_usbCamera));
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
+
+            _keepAliveTimer.Elapsed += CameraDisconnected;
+        }
+
+        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        {
+            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            {
+                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                Stop(false);
+                Start(_width, _height, _format, _token);
+            }
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -158,10 +178,15 @@ namespace CameraLib.USB
                     }
                 }
 
+                _width = width;
+                _height = height;
+                _format = format;
+                _token = token;
+
                 _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ExceptionMode = false;
                 _captureDevice.ImageGrabbed += ImageCaptured;
-                _timer.Reset();
+                _fpsTimer.Reset();
                 _frameCount = 0;
                 _captureDevice.Start();
                 IsRunning = true;
@@ -201,9 +226,9 @@ namespace CameraLib.USB
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
-                    if (!_timer.IsRunning)
+                    if (!_fpsTimer.IsRunning)
                     {
-                        _timer.Start();
+                        _fpsTimer.Start();
                         _frameCount = 0;
                     }
                     else
@@ -211,10 +236,10 @@ namespace CameraLib.USB
                         _frameCount++;
                         if (_frameCount >= 100)
                         {
-                            if (_timer.ElapsedMilliseconds > 0)
-                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+                            if (_fpsTimer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
 
-                            _timer.Reset();
+                            _fpsTimer.Reset();
                             _frameCount = 0;
                         }
                     }
@@ -229,12 +254,21 @@ namespace CameraLib.USB
 
         public void Stop()
         {
+            Stop(true);
+        }
+
+        public void Stop(bool cancellation)
+        {
             if (!IsRunning)
                 return;
 
             lock (_getPictureThreadLock)
             {
-                _cancellationTokenSource?.Cancel();
+                _keepAliveTimer.Stop();
+
+                if (cancellation)
+                    _cancellationTokenSource?.Cancel();
+
                 if (_captureDevice != null)
                 {
                     _captureDevice.Stop();
@@ -242,7 +276,7 @@ namespace CameraLib.USB
                 }
 
                 CurrentFrameFormat = null;
-                _timer.Reset();
+                _fpsTimer.Reset();
                 IsRunning = false;
             }
         }

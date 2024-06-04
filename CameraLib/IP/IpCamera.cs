@@ -13,6 +13,7 @@ using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 
 using IPAddress = System.Net.IPAddress;
 
@@ -23,6 +24,8 @@ namespace CameraLib.IP
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; } = false;
         public FrameFormat? CurrentFrameFormat { get; private set; }
+        public double CurrentFps { get; private set; }
+        public int CameraTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -33,9 +36,14 @@ namespace CameraLib.IP
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
         private Mat? _frame = new Mat();
-        private readonly Stopwatch _timer = new();
+        private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
-        public double CurrentFps { get; private set; }
+
+        private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
+        private int _width = 0;
+        private int _height = 0;
+        private string _format = string.Empty;
+        private CancellationToken _token = CancellationToken.None;
 
         private bool _disposedValue;
 
@@ -71,6 +79,18 @@ namespace CameraLib.IP
 
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
+
+            _keepAliveTimer.Elapsed += CameraDisconnected;
+        }
+
+        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        {
+            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            {
+                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                Stop(false);
+                Start(_width, _height, _format, _token);
+            }
         }
 
         public static async Task<List<CameraDescription>> DiscoverOnvifCamerasAsync(int discoveryTimeout,
@@ -173,11 +193,18 @@ namespace CameraLib.IP
                     return false;
                 }
 
+                _width = width;
+                _height = height;
+                _format = format;
+                _token = token;
+
                 _cancellationTokenSource = new CancellationTokenSource();
                 _captureDevice.ExceptionMode = false;
                 _captureDevice.ImageGrabbed += ImageCaptured;
-                _timer.Reset();
                 _frameCount = 0;
+                _fpsTimer.Reset();
+                _keepAliveTimer.Interval = CameraTimeout;
+                _keepAliveTimer.Start();
                 _captureDevice.Start();
                 IsRunning = true;
             }
@@ -205,9 +232,9 @@ namespace CameraLib.IP
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
-                    if (!_timer.IsRunning)
+                    if (!_fpsTimer.IsRunning)
                     {
-                        _timer.Start();
+                        _fpsTimer.Start();
                         _frameCount = 0;
                     }
                     else
@@ -215,10 +242,10 @@ namespace CameraLib.IP
                         _frameCount++;
                         if (_frameCount >= 100)
                         {
-                            if (_timer.ElapsedMilliseconds > 0)
-                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+                            if (_fpsTimer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
 
-                            _timer.Reset();
+                            _fpsTimer.Reset();
                             _frameCount = 0;
                         }
                     }
@@ -233,12 +260,21 @@ namespace CameraLib.IP
 
         public void Stop()
         {
+            Stop(true);
+        }
+
+        public void Stop(bool cancellation)
+        {
             if (!IsRunning)
                 return;
 
             lock (_getPictureThreadLock)
             {
-                _cancellationTokenSource?.Cancel();
+                _keepAliveTimer.Stop();
+
+                if (cancellation)
+                    _cancellationTokenSource?.Cancel();
+
                 if (_captureDevice != null)
                 {
                     _captureDevice.Stop();
@@ -246,7 +282,7 @@ namespace CameraLib.IP
                 }
 
                 CurrentFrameFormat = null;
-                _timer.Reset();
+                _fpsTimer.Reset();
                 IsRunning = false;
             }
         }

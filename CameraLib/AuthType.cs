@@ -1,4 +1,4 @@
-﻿namespace CameraLib.IP;
+﻿namespace CameraLib;
 
 public enum AuthType
 {

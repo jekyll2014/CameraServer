@@ -59,11 +59,14 @@ namespace CameraServer.Services.MotionDetection
                 try
                 {
                     Console.WriteLine($"Starting motion detector for: {record.CameraId}");
-                    Start(record.CameraId,
+                    if (!string.IsNullOrEmpty(Start(record.CameraId,
                         record.User,
                         record.FrameFormat,
                         record.MotionDetectParameters ?? Settings.DefaultMotionDetectParameters,
-                        record.Notifications);
+                        record.Notifications)))
+                    {
+                        throw new Exception("Motion detector not started");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -119,8 +122,10 @@ namespace CameraServer.Services.MotionDetection
                      detectorParams,
                      notificationParams));
 
-            _detectorTasks.TryAdd(taskId, t);
-            t.Start();
+            if (_detectorTasks.TryAdd(taskId, t))
+                t.Start();
+            else
+                taskId = string.Empty;
 
             return taskId;
         }
@@ -138,7 +143,7 @@ namespace CameraServer.Services.MotionDetection
             FrameFormatDto frameFormat,
             string taskId,
             MotionDetectorParameters detectorParams,
-            List<NotificationParameters> notificationParams)
+            IReadOnlyCollection<NotificationParameters> notificationParams)
         {
             var imageQueue = new ConcurrentQueue<Mat>();
             var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
@@ -238,9 +243,9 @@ namespace CameraServer.Services.MotionDetection
                 SendMovementTextMulti(textNotifications);
         }
 
-        private void SendMovementTextMulti(NotificationParameters[] notificationParams)
+        private void SendMovementTextMulti(IReadOnlyCollection<NotificationParameters> notificationParams)
         {
-            if (notificationParams.Length == 0)
+            if (notificationParams.Count == 0)
                 return;
 
             Task.Run(async () =>
@@ -336,11 +341,11 @@ namespace CameraServer.Services.MotionDetection
         }
 
         private void SendMovementVideoMulti(ServerCamera camera,
-            NotificationParameters[] notificationParams,
+            IReadOnlyCollection<NotificationParameters> notificationParams,
             ConcurrentQueue<Mat> bufferedImages,
             byte quality)
         {
-            if (notificationParams.Length == 0)
+            if (notificationParams.Count == 0)
                 return;
 
             var destinationTotal = notificationParams.Select(n => n.Destination).Aggregate((n, m) => m += $" {n}");

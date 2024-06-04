@@ -254,3 +254,5 @@ The parameters are self-explanatory except for:
 ## Planned features:
 - Serilog logging
 - Web-based configuration interface
+- Save media on movement detection
+- save metadata along with video record

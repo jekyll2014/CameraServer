@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 
 namespace CameraLib.FlashCap
 {
@@ -18,6 +19,8 @@ namespace CameraLib.FlashCap
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
+        public double CurrentFps { get; private set; }
+        public int CameraTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -29,9 +32,14 @@ namespace CameraLib.FlashCap
         private CaptureDevice? _captureDevice;
         private Mat? _frame = null;
         private readonly object _getPictureThreadLock = new();
-        private readonly Stopwatch _timer = new();
+        private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
-        public double CurrentFps { get; private set; }
+
+        private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
+        private int _width = 0;
+        private int _height = 0;
+        private string _format = string.Empty;
+        private CancellationToken _token = CancellationToken.None;
 
         private bool _disposedValue;
 
@@ -52,6 +60,18 @@ namespace CameraLib.FlashCap
 
             Description = new CameraDescription(CameraType.USB_FC, path, name, GetAllAvailableResolution(_usbCamera));
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
+
+            _keepAliveTimer.Elapsed += CameraDisconnected;
+        }
+
+        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        {
+            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            {
+                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                Stop(false);
+                Start(_width, _height, _format, _token);
+            }
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
@@ -106,9 +126,17 @@ namespace CameraLib.FlashCap
                     return false;
                 }
 
+                _width = width;
+                _height = height;
+                _format = format;
+                _token = token;
+
                 _cancellationTokenSource = new CancellationTokenSource();
-                _timer.Reset();
                 _frameCount = 0;
+                _fpsTimer.Reset();
+                _keepAliveTimer.Interval = CameraTimeout;
+                _keepAliveTimer.Start();
+
                 await _captureDevice.StartAsync(token);
 
                 IsRunning = true;
@@ -171,9 +199,9 @@ namespace CameraLib.FlashCap
                     }
 
                     ImageCapturedEvent?.Invoke(this, _frame.Clone());
-                    if (!_timer.IsRunning)
+                    if (!_fpsTimer.IsRunning)
                     {
-                        _timer.Start();
+                        _fpsTimer.Start();
                         _frameCount = 0;
                     }
                     else
@@ -181,10 +209,10 @@ namespace CameraLib.FlashCap
                         _frameCount++;
                         if (_frameCount >= 100)
                         {
-                            if (_timer.ElapsedMilliseconds > 0)
-                                CurrentFps = (double)_frameCount / ((double)_timer.ElapsedMilliseconds / (double)1000);
+                            if (_fpsTimer.ElapsedMilliseconds > 0)
+                                CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
 
-                            _timer.Reset();
+                            _fpsTimer.Reset();
                             _frameCount = 0;
                         }
                     }
@@ -202,19 +230,28 @@ namespace CameraLib.FlashCap
 
         public void Stop()
         {
+            Stop(true);
+        }
+
+        public void Stop(bool cancellation)
+        {
             if (!IsRunning)
                 return;
 
             lock (_getPictureThreadLock)
             {
-                _cancellationTokenSource?.Cancel();
+                _keepAliveTimer.Stop();
+
+                if (cancellation)
+                    _cancellationTokenSource?.Cancel();
+
                 if (_captureDevice != null)
                 {
                     _captureDevice.StopAsync().Wait();
                 }
 
                 CurrentFrameFormat = null;
-                _timer.Reset();
+                _fpsTimer.Reset();
                 IsRunning = false;
             }
         }
