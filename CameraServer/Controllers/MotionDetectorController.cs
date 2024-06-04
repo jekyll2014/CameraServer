@@ -65,7 +65,7 @@ namespace CameraServer.Controllers
             var cameraNumber = -1;
             for (var i = 0; i < cameras.Length; i++)
             {
-                if (cameras[i].Camera.Description.Name == cameraName)
+                if (cameras[i].CameraStream.Description.Name == cameraName)
                 {
                     cameraNumber = i;
                     break;
@@ -147,7 +147,7 @@ namespace CameraServer.Controllers
 
             try
             {
-                var taskId = _motionDetector.Start(camera.Camera.Description.Path,
+                var taskId = _motionDetector.Start(camera.CameraStream.Description.Path,
                     HttpContext.User.Identity?.Name ?? string.Empty,
                     new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty },
                     new MotionDetectorParameters()

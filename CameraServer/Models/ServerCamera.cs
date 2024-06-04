@@ -6,13 +6,13 @@ namespace CameraServer.Models;
 
 public class ServerCamera : IServerCamera
 {
-    public ICamera Camera { get; }
+    public ICamera CameraStream { get; }
     public bool Custom { get; }
     public List<Roles> AllowedRoles { get; }
 
-    public ServerCamera(ICamera camera, List<Roles> allowedRoles, bool custom = false)
+    public ServerCamera(ICamera cameraStream, List<Roles> allowedRoles, bool custom = false)
     {
-        Camera = camera;
+        CameraStream = cameraStream;
         AllowedRoles = allowedRoles;
         Custom = custom;
     }

@@ -64,7 +64,7 @@ namespace CameraServer.Controllers
                 .Where(n => n.AllowedRoles.Intersect(userRoles).Any());
 
             var i = 0;
-            return Ok(cameras.Select(n => new Dictionary<int, string>() { { i++, n.Camera.Description.Name } }));
+            return Ok(cameras.Select(n => new Dictionary<int, string>() { { i++, n.CameraStream.Description.Name } }));
         }
 
         [HttpGet]
@@ -83,7 +83,7 @@ namespace CameraServer.Controllers
             if (!cam.AllowedRoles.Intersect(userRoles).Any())
                 return BadRequest("No such camera");
 
-            return Ok(new CameraDescriptionDto(cam.Camera.Description));
+            return Ok(new CameraDescriptionDto(cam.CameraStream.Description));
         }
 
         [HttpGet]
@@ -98,7 +98,7 @@ namespace CameraServer.Controllers
             var cameraNumber = -1;
             for (var i = 0; i < cameras.Length; i++)
             {
-                if (cameras[i].Camera.Description.Name == cameraName)
+                if (cameras[i].CameraStream.Description.Name == cameraName)
                 {
                     cameraNumber = i;
                     break;
@@ -154,7 +154,7 @@ namespace CameraServer.Controllers
                 Format = format ?? string.Empty
             };
 
-            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
+            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
                 Request.HttpContext.TraceIdentifier,
                 imageQueue,
                 frameFormat);
@@ -219,7 +219,7 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            await _collection.UnHookCamera(camera.Camera.Description.Path,
+            await _collection.UnHookCamera(camera.CameraStream.Description.Path,
                 Request.HttpContext.TraceIdentifier,
                 frameFormat);
 

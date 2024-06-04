@@ -116,7 +116,7 @@ namespace CameraServer.Services.MotionDetection
             if (detectorParams.ChangeLimit <= 0)
                 detectorParams.ChangeLimit = Settings.DefaultMotionDetectParameters.ChangeLimit;
 
-            var taskId = GenerateTaskId(camera.Camera.Description.Path, user);
+            var taskId = GenerateTaskId(camera.CameraStream.Description.Path, user);
             var t = new Task(async () => await MotionDetectorTask(camera, frameFormat,
                      taskId,
                      detectorParams,
@@ -146,14 +146,14 @@ namespace CameraServer.Services.MotionDetection
             IReadOnlyCollection<NotificationParameters> notificationParams)
         {
             var imageQueue = new ConcurrentQueue<Mat>();
-            var cameraCancellationToken = await _collection.HookCamera(camera.Camera.Description.Path,
+            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
                 MotionDetectionStreamId + taskId,
                 imageQueue,
                 frameFormat);
 
             if (cameraCancellationToken == CancellationToken.None)
             {
-                Console.WriteLine($"Can not connect to camera [{camera.Camera.Description.Path}]");
+                Console.WriteLine($"Can not connect to camera [{camera.CameraStream.Description.Path}]");
 
                 return;
             }
@@ -198,7 +198,7 @@ namespace CameraServer.Services.MotionDetection
                 }
             }
 
-            await _collection.UnHookCamera(camera.Camera.Description.Path, MotionDetectionStreamId + taskId, frameFormat);
+            await _collection.UnHookCamera(camera.CameraStream.Description.Path, MotionDetectionStreamId + taskId, frameFormat);
             while (imageQueue.TryDequeue(out var image))
             {
                 image?.Dispose();
@@ -325,7 +325,7 @@ namespace CameraServer.Services.MotionDetection
                 if (notificationParams.Any(n => n.SaveNotificationContent))
                 {
                     var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                                   $"{VideoRecorder.SanitizeFileName($"{camera.Camera.Description.Name}-{currentTime.ToString("yyyy-MM-dd")}-{currentTime.ToString("HH-mm-ss")}.jpg")}";
+                                   $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime.ToString("yyyy-MM-dd")}-{currentTime.ToString("HH-mm-ss")}.jpg")}";
                     try
                     {
                         await File.WriteAllBytesAsync(fileName, image.ToImage<Rgb, byte>().ToJpegData());
@@ -350,7 +350,7 @@ namespace CameraServer.Services.MotionDetection
 
             var destinationTotal = notificationParams.Select(n => n.Destination).Aggregate((n, m) => m += $" {n}");
             var tmpRecordtaskId =
-                $"{TmpVideoStreamId}-{destinationTotal}-{camera.Camera.Description.Path}";
+                $"{TmpVideoStreamId}-{destinationTotal}-{camera.CameraStream.Description.Path}";
             if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
                 return;
 

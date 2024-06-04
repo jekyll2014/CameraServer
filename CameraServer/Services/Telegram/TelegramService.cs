@@ -364,7 +364,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, n))
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.CameraStream, n))
                     {
                         CallbackData = $"{SnapShotCommand} {n}"
                     });
@@ -394,10 +394,10 @@ namespace CameraServer.Services.Telegram
                     return;
                 }
 
-                var image = await camera.Camera.GrabFrame(cancellationToken);
+                var image = await camera.CameraStream.GrabFrame(cancellationToken);
                 if (image != null)
                 {
-                    await SendImage(chatId, image, $"Camera[{n}]: {camera.Camera.Description.Name}", cancellationToken);
+                    await SendImage(chatId, image, $"CameraStream[{n}]: {camera.CameraStream.Description.Name}", cancellationToken);
                     image.Dispose();
                 }
                 else
@@ -426,7 +426,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, cameraNumber))
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.CameraStream, cameraNumber))
                     {
                         CallbackData = $"{VideoCommand} {cameraNumber} {Settings.DefaultVideoTime}"
                     });
@@ -473,7 +473,7 @@ namespace CameraServer.Services.Telegram
                         recordTime,
                         null,
                         Settings.DefaultVideoQuality);
-                    await SendVideo(chatId, fileName, $"Camera#{cameraNumber} record",
+                    await SendVideo(chatId, fileName, $"CameraStream#{cameraNumber} record",
                         cancellationToken: cancellationToken);
                     System.IO.File.Delete(fileName);
                 }
@@ -502,7 +502,7 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.Camera, n))
+                    buttonsRow.Add(new InlineKeyboardButton(GetCameraMenuLine(camera.CameraStream, n))
                     {
                         CallbackData = $"{LinkCommand} {n}"
                     });
@@ -539,7 +539,7 @@ namespace CameraServer.Services.Telegram
                     return;
                 }
 
-                var linklabel = $"Url: {camera.Camera.Description.Name}";
+                var linklabel = $"Url: {camera.CameraStream.Description.Name}";
                 var linkUrl = _externalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
                 var keyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl(linklabel, linkUrl));
                 await SendMenu(
@@ -577,10 +577,10 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    var taskId = VideoRecorderService.GenerateTaskId(camera.Camera.Description.Path, 0, 0);
+                    var taskId = VideoRecorderService.GenerateTaskId(camera.CameraStream.Description.Path, 0, 0);
                     var running = videoRecorderService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
                     var action = videoRecorderService.TaskList.Any(n => n == taskId) ? "stop" : "start";
-                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.Camera, cameraNumber)}")
+                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.CameraStream, cameraNumber)}")
                     {
                         CallbackData = $"{VideoRecordCommand} {cameraNumber} {action}"
                     });
@@ -614,9 +614,9 @@ namespace CameraServer.Services.Telegram
                 {
                     try
                     {
-                        videoRecorderService.Start(camera.Camera.Description.Path, user.Login, new FrameFormatDto(),
+                        videoRecorderService.Start(camera.CameraStream.Description.Path, user.Login, new FrameFormatDto(),
                             95);
-                        message = $"Record started for camera {camera.Camera.Description.Name}";
+                        message = $"Record started for camera {camera.CameraStream.Description.Name}";
                     }
                     catch (Exception ex)
                     {
@@ -626,9 +626,9 @@ namespace CameraServer.Services.Telegram
                 }
                 else if (tokens[2] == "stop")
                 {
-                    var taskId = VideoRecorderService.GenerateTaskId(camera.Camera.Description.Path, 0, 0);
+                    var taskId = VideoRecorderService.GenerateTaskId(camera.CameraStream.Description.Path, 0, 0);
                     videoRecorderService.Stop(taskId);
-                    message = $"Record stopped for camera {camera.Camera.Description.Name}";
+                    message = $"Record stopped for camera {camera.CameraStream.Description.Name}";
                 }
 
                 await SendText(chatId, message, cancellationToken);
@@ -662,10 +662,10 @@ namespace CameraServer.Services.Telegram
                                  .Intersect(user.Roles)
                                  .Any()))
                 {
-                    var taskId = MotionDetectionService.GenerateTaskId(camera.Camera.Description.Path, user.Login);
+                    var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
                     var running = motionDetectionService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
                     var action = motionDetectionService.TaskList.Any(n => n == taskId) ? " stop" : " start";
-                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.Camera, cameraNumber)}")
+                    buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.CameraStream, cameraNumber)}")
                     {
                         CallbackData = $"{MotionDetectorCommand} {cameraNumber}{action}"
                     });
@@ -695,12 +695,12 @@ namespace CameraServer.Services.Telegram
                     return;
                 }
 
-                var taskId = MotionDetectionService.GenerateTaskId(camera.Camera.Description.Path, user.Login);
+                var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
 
                 if (tokens[2] == "stop")
                 {
                     motionDetectionService.Stop(taskId);
-                    await SendText(chatId, $"Motion detect stopped for camera {camera.Camera.Description.Name}", cancellationToken);
+                    await SendText(chatId, $"Motion detect stopped for camera {camera.CameraStream.Description.Name}", cancellationToken);
                 }
                 else if (tokens[2] == "start")
                 {
@@ -761,7 +761,7 @@ namespace CameraServer.Services.Telegram
 
                     try
                     {
-                        if (!string.IsNullOrEmpty(motionDetectionService.Start(camera.Camera.Description.Path,
+                        if (!string.IsNullOrEmpty(motionDetectionService.Start(camera.CameraStream.Description.Path,
                             user.Login,
                             new FrameFormatDto(),
                             motionDetectionService.Settings.DefaultMotionDetectParameters,
@@ -769,14 +769,14 @@ namespace CameraServer.Services.Telegram
                             {
                             new NotificationParameters()
                             {
-                                Message = $"Movement detected at camera {camera.Camera.Description.Name}",
+                                Message = $"Movement detected at camera {camera.CameraStream.Description.Name}",
                                 MessageType = messageType,
                                 Destination = chatId.ToString(),
                                 Transport = NotificationTransport.Telegram,
                                 VideoLengthSec = Settings.DefaultVideoTime
                             }
                             })))
-                            message = $"Motion detect started for camera {camera.Camera.Description.Name}";
+                            message = $"Motion detect started for camera {camera.CameraStream.Description.Name}";
                         else
                             throw new Exception($"Motion detect not started");
                     }
@@ -788,9 +788,9 @@ namespace CameraServer.Services.Telegram
                 }
                 else if (tokens[2] == "stop")
                 {
-                    var taskId = MotionDetectionService.GenerateTaskId(camera.Camera.Description.Path, user.Login);
+                    var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
                     motionDetectionService.Stop(taskId);
-                    message = $"Motion detect stopped for camera {camera.Camera.Description.Name}";
+                    message = $"Motion detect stopped for camera {camera.CameraStream.Description.Name}";
                 }
 
                 await SendText(chatId, message, cancellationToken);
@@ -807,9 +807,9 @@ namespace CameraServer.Services.Telegram
         {
             if (user.Roles.Contains(Roles.Admin))
             {
-                await SendText(chatId, "Camera list refreshing...", cancellationToken);
+                await SendText(chatId, "CameraStream list refreshing...", cancellationToken);
                 await _collection.RefreshCameraCollection(cancellationToken);
-                await SendText(chatId, "Camera list refreshed!", cancellationToken);
+                await SendText(chatId, "CameraStream list refreshed!", cancellationToken);
             }
             else
             {

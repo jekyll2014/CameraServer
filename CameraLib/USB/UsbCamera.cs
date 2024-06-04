@@ -21,7 +21,7 @@ namespace CameraLib.USB
         public bool IsRunning { get; private set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
-        public int CameraTimeout { get; set; } = 30000;
+        public int FrameTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -29,7 +29,6 @@ namespace CameraLib.USB
 
         private CancellationTokenSource? _cancellationTokenSource;
 
-        //private const VideoCapture.API CaptureSource = VideoCapture.API.DShow;
         private readonly DsDevice? _usbCamera;
 
         private readonly object _getPictureThreadLock = new();
@@ -65,7 +64,7 @@ namespace CameraLib.USB
 
         private void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
-            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
                 Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
@@ -257,7 +256,7 @@ namespace CameraLib.USB
             Stop(true);
         }
 
-        public void Stop(bool cancellation)
+        private void Stop(bool cancellation)
         {
             if (!IsRunning)
                 return;

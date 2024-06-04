@@ -25,7 +25,7 @@ namespace CameraLib.IP
         public bool IsRunning { get; private set; } = false;
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
-        public int CameraTimeout { get; set; } = 30000;
+        public int FrameTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -35,7 +35,7 @@ namespace CameraLib.IP
         private static List<CameraDescription> _lastCamerasFound = new List<CameraDescription>();
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice; //create a usbCamera capture
-        private Mat? _frame = new Mat();
+        private Mat? _frame;
         private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
 
@@ -85,7 +85,7 @@ namespace CameraLib.IP
 
         private void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
-            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
                 Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
@@ -158,7 +158,7 @@ namespace CameraLib.IP
             return DiscoverOnvifCamerasAsync(discoveryTimeout, token).Result;
         }
 
-        private async Task<bool> PingAddress(string host, int pingTimeout = 3000)
+        private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
         {
             if (!IPAddress.TryParse(host, out var destIp))
                 return false;
@@ -203,7 +203,7 @@ namespace CameraLib.IP
                 _captureDevice.ImageGrabbed += ImageCaptured;
                 _frameCount = 0;
                 _fpsTimer.Reset();
-                _keepAliveTimer.Interval = CameraTimeout;
+                _keepAliveTimer.Interval = FrameTimeout;
                 _keepAliveTimer.Start();
                 _captureDevice.Start();
                 IsRunning = true;
@@ -263,7 +263,7 @@ namespace CameraLib.IP
             Stop(true);
         }
 
-        public void Stop(bool cancellation)
+        private void Stop(bool cancellation)
         {
             if (!IsRunning)
                 return;

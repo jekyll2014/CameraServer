@@ -20,7 +20,7 @@ namespace CameraLib.FlashCap
         public bool IsRunning { get; private set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
-        public int CameraTimeout { get; set; } = 30000;
+        public int FrameTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -30,7 +30,7 @@ namespace CameraLib.FlashCap
 
         private readonly CaptureDeviceDescriptor _usbCamera;
         private CaptureDevice? _captureDevice;
-        private Mat? _frame = null;
+        private Mat? _frame;
         private readonly object _getPictureThreadLock = new();
         private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
@@ -66,7 +66,7 @@ namespace CameraLib.FlashCap
 
         private void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
-            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
                 Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
@@ -134,7 +134,7 @@ namespace CameraLib.FlashCap
                 _cancellationTokenSource = new CancellationTokenSource();
                 _frameCount = 0;
                 _fpsTimer.Reset();
-                _keepAliveTimer.Interval = CameraTimeout;
+                _keepAliveTimer.Interval = FrameTimeout;
                 _keepAliveTimer.Start();
 
                 await _captureDevice.StartAsync(token);
@@ -233,7 +233,7 @@ namespace CameraLib.FlashCap
             Stop(true);
         }
 
-        public void Stop(bool cancellation)
+        private void Stop(bool cancellation)
         {
             if (!IsRunning)
                 return;

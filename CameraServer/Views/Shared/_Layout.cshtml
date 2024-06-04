@@ -23,7 +23,7 @@
                         <span class="icon-bar"></span>
                         <span class="icon-bar"></span>
                     </button>
-                    <a class="navbar-brand">Home Camera Server</a>
+                    <a class="navbar-brand">Home CameraStream Server</a>
                 </div>
 
                 <!-- Collect the nav links, forms, and other content for toggling -->
@@ -31,7 +31,7 @@
                     <ul class="nav navbar-nav">
                         @if (User.Identity?.IsAuthenticated ?? false)
                         {
-                            <li><a asp-controller="Home" asp-action="Index">Cameras</a></li>
+                            <li><a asp-controller="Home" asp-action="Index">CameraStreams</a></li>
                             @if (UserManager.HasAdminRole(UserManager.GetUserInfo(User.Identity.Name ?? string.Empty)?? new UserDto()))
                             {
                                 <li><a asp-controller="Home" asp-action="ConfidentialData">User data</a></li>

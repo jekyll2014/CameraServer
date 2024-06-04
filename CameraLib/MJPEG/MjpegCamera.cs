@@ -33,7 +33,7 @@ namespace CameraLib.MJPEG
         public bool IsRunning { get; set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
-        public int CameraTimeout { get; set; } = 30000;
+        public int FrameTimeout { get; set; } = 30000;
 
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
 
@@ -93,7 +93,7 @@ namespace CameraLib.MJPEG
 
         private void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
-            if (_fpsTimer.ElapsedMilliseconds > CameraTimeout)
+            if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
                 Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
@@ -101,13 +101,13 @@ namespace CameraLib.MJPEG
             }
         }
 
-        // not implemented
+        // can not be implemented
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return new List<CameraDescription>();
+            return [];
         }
 
-        private async Task<bool> PingAddress(string host, int pingTimeout = 3000)
+        private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
         {
             if (!IPAddress.TryParse(host, out var destIp))
                 return false;
@@ -158,7 +158,7 @@ namespace CameraLib.MJPEG
             Stop(true);
         }
 
-        public void Stop(bool cancellation)
+        private void Stop(bool cancellation)
         {
             if (!IsRunning)
                 return;
