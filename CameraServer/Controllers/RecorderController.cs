@@ -99,16 +99,21 @@ namespace CameraServer.Controllers
 
             try
             {
-                var taskId = _recorder.Start(camera.CameraStream.Description.Path,
-                    HttpContext.User.Identity?.Name ?? string.Empty,
-                    new FrameFormatDto
+                var recordTask = new RecordCameraSettingDto()
+                {
+                    CameraId = camera.CameraStream.Description.Path,
+                    User = HttpContext.User.Identity?.Name ?? string.Empty,
+                    FrameFormat = new FrameFormatDto
                     {
                         Width = width ?? 0,
                         Height = height ?? 0,
                         Format = format ?? string.Empty,
                         Fps = fps ?? 0
                     },
-                    quality ?? 0);
+                    Quality = quality ?? 0,
+                };
+
+                var taskId = _recorder.Start(recordTask);
                 return Ok(taskId);
             }
             catch (Exception ex)

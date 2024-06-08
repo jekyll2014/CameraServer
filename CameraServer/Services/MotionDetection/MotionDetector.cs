@@ -21,13 +21,13 @@ namespace CameraServer.Services.MotionDetection
 
         private bool _disposedValue;
 
-        public MotionDetector(MotionDetectorParameters parameters)
+        public MotionDetector(MotionDetectorParametersDto parametersDto)
         {
-            _changeLimit = parameters.ChangeLimit;
-            _width = parameters.Width;
-            _height = parameters.Height;
-            _noiseThreshold = parameters.NoiseThreshold;
-            _detectorDelayMs = parameters.DetectorDelayMs;
+            _changeLimit = parametersDto.ChangeLimit;
+            _width = parametersDto.Width;
+            _height = parametersDto.Height;
+            _noiseThreshold = parametersDto.NoiseThreshold;
+            _detectorDelayMs = parametersDto.DetectorDelayMs;
         }
 
         public bool DetectMovement(Mat? frame)

@@ -377,8 +377,8 @@ namespace CameraLib.IP
 
             var result = Description.FrameFormats
                 .Where(n =>
-                    n.Width == selectedFormat?.Width
-                    && n.Height == selectedFormat.Height)
+                    n.Width == (selectedFormat?.Width ?? 0)
+                    && n.Height == (selectedFormat?.Height ?? 0))
                 .ToArray();
 
             if (result.Length != 0)
@@ -405,6 +405,8 @@ namespace CameraLib.IP
                 if (disposing)
                 {
                     Stop();
+                    _keepAliveTimer.Close();
+                    _keepAliveTimer.Dispose();
                     _captureDevice?.Dispose();
                     _cancellationTokenSource?.Dispose();
                     _frame?.Dispose();

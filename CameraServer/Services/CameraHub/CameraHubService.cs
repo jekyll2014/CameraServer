@@ -196,7 +196,7 @@ namespace CameraServer.Services.CameraHub
             var camera = _cameras
                 .FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraId);
 
-            if (!camera.Value.TryAdd(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), srcImageQueue))
+            if (camera.Key == null || !camera.Value.TryAdd(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), srcImageQueue))
                 return CancellationToken.None;
 
             if (camera.Value.Count == 1)
@@ -217,7 +217,7 @@ namespace CameraServer.Services.CameraHub
             var camera = _cameras.FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraId);
 
             camera.Value.TryRemove(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), out _);
-            if (camera.Value.Count <= 0)
+            if (camera.Key != null && camera.Value.Count <= 0)
             {
                 camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
                 camera.Key.CameraStream.Stop();

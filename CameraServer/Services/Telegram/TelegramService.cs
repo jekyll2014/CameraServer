@@ -614,9 +614,20 @@ namespace CameraServer.Services.Telegram
                 {
                     try
                     {
-                        videoRecorderService.Start(camera.CameraStream.Description.Path, user.Login, new FrameFormatDto(),
-                            95);
-                        message = $"Record started for camera {camera.CameraStream.Description.Name}";
+                        var recordTask = new RecordCameraSettingDto()
+                        {
+                            CameraId = camera.CameraStream.Description.Path,
+                            User = user.Login,
+                            FrameFormat = new FrameFormatDto(),
+                            Quality = 95,
+                        };
+
+                        if (!string.IsNullOrEmpty(videoRecorderService.Start(recordTask)))
+                        {
+                            message = $"Record started for camera {camera.CameraStream.Description.Name}";
+                        }
+                        else
+                            throw new Exception($"Record not started");
                     }
                     catch (Exception ex)
                     {
@@ -761,24 +772,29 @@ namespace CameraServer.Services.Telegram
 
                     try
                     {
-                        if (!string.IsNullOrEmpty(motionDetectionService.Start(camera.CameraStream.Description.Path,
-                            user.Login,
-                            new FrameFormatDto(),
-                            motionDetectionService.Settings.DefaultMotionDetectParameters,
-                            new List<NotificationParameters>()
+                        var motionTask = new MotionDetectionCameraSettingDto()
+                        {
+                            CameraId = camera.CameraStream.Description.Path,
+                            User = user.Login,
+                            FrameFormat = new FrameFormatDto(),
+                            MotionDetectParameters = null,
+                            Notifications = new List<NotificationParametersDto>()
                             {
-                            new NotificationParameters()
-                            {
-                                Message = $"Movement detected at camera {camera.CameraStream.Description.Name}",
-                                MessageType = messageType,
-                                Destination = chatId.ToString(),
-                                Transport = NotificationTransport.Telegram,
-                                VideoLengthSec = Settings.DefaultVideoTime
+                                new NotificationParametersDto()
+                                {
+                                    Message = $"Movement detected at camera {camera.CameraStream.Description.Name}",
+                                    MessageType = messageType,
+                                    Destination = chatId.ToString(),
+                                    Transport = NotificationTransport.Telegram,
+                                    VideoLengthSec = Settings.DefaultVideoTime
+                                }
                             }
-                            })))
+                        };
+
+                        if (!string.IsNullOrEmpty(motionDetectionService.Start(motionTask)))
                             message = $"Motion detect started for camera {camera.CameraStream.Description.Name}";
                         else
-                            throw new Exception($"Motion detect not started");
+                            throw new Exception($"Motion detection not started");
                     }
                     catch (Exception ex)
                     {
@@ -844,7 +860,7 @@ namespace CameraServer.Services.Telegram
                 if (disposing)
                 {
                     if (!(_cts?.IsCancellationRequested ?? true))
-                        _cts.Cancel();
+                        _cts?.Cancel();
 
                     _botClient?.CloseAsync();
                     _botClient = null;

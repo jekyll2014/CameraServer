@@ -82,6 +82,7 @@ namespace CameraServer.Services.VideoRecording
                 if (disposing)
                 {
                     Stop();
+                    _videoWriter?.Dispose();
                 }
 
                 _disposedValue = true;

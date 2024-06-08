@@ -4,7 +4,7 @@ using CameraServer.Auth;
 
 namespace CameraServer.Models;
 
-public class CustomCamera
+public class CustomCameraDto
 {
     public CameraType Type { get; set; } = CameraType.Unknown;
     public string Name { get; set; } = string.Empty;

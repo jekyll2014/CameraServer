@@ -45,7 +45,7 @@ namespace CameraLib.MJPEG
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
         private readonly Stopwatch _fpsTimer = new();
-        private byte _frameCount;
+        private volatile byte _frameCount;
 
         private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
         private int _width = 0;
@@ -150,10 +150,10 @@ namespace CameraLib.MJPEG
                     return false;
                 }
 
+                _cancellationTokenSource = new CancellationTokenSource();
+
                 if (!IsRunning)
                     return false;
-
-                _cancellationTokenSource = new CancellationTokenSource();
             }
 
             return true;
@@ -417,8 +417,8 @@ namespace CameraLib.MJPEG
 
             var result = Description.FrameFormats
                 .Where(n =>
-                    n.Width == selectedFormat?.Width
-                    && n.Height == selectedFormat.Height)
+                    n.Width == (selectedFormat?.Width ?? 0)
+                    && n.Height == (selectedFormat?.Height ?? 0))
                 .ToArray();
 
             if (result.Length != 0)
@@ -445,6 +445,8 @@ namespace CameraLib.MJPEG
                 if (disposing)
                 {
                     Stop();
+                    _keepAliveTimer.Close();
+                    _keepAliveTimer.Dispose();
                     _imageGrabber?.Dispose();
                     _cancellationTokenSource?.Dispose();
                     _frame?.Dispose();

@@ -1,6 +1,6 @@
 ﻿namespace CameraServer.Services.MotionDetection;
 
-public class NotificationParameters
+public class NotificationParametersDto
 {
     public NotificationTransport Transport { get; set; } = NotificationTransport.Telegram;
     public MessageType MessageType { get; set; } = MessageType.Image;

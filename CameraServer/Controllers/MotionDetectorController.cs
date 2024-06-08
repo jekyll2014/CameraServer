@@ -147,10 +147,12 @@ namespace CameraServer.Controllers
 
             try
             {
-                var taskId = _motionDetector.Start(camera.CameraStream.Description.Path,
-                    HttpContext.User.Identity?.Name ?? string.Empty,
-                    new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty },
-                    new MotionDetectorParameters()
+                var motionTask = new MotionDetectionCameraSettingDto()
+                {
+                    CameraId = camera.CameraStream.Description.Path,
+                    User = HttpContext.User.Identity?.Name ?? string.Empty,
+                    FrameFormat = new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty },
+                    MotionDetectParameters = new MotionDetectorParametersDto()
                     {
                         Width = width ?? 0,
                         Height = height ?? 0,
@@ -158,16 +160,19 @@ namespace CameraServer.Controllers
                         NoiseThreshold = noiseThreshold ?? 0,
                         DetectorDelayMs = detectorDelayMs ?? 0
                     },
-                    new List<NotificationParameters>()
+                    Notifications = new List<NotificationParametersDto>()
+                    {
+                        new NotificationParametersDto()
                         {
-                            new NotificationParameters()
-                            {
-                                Transport = transport ?? NotificationTransport.None,
-                                Destination = destination ?? string.Empty,
-                                MessageType = messageType ?? MessageType.Text,
-                                Message = message ?? string.Empty
-                            }
-                        });
+                            Transport = transport ?? NotificationTransport.None,
+                            Destination = destination ?? string.Empty,
+                            MessageType = messageType ?? MessageType.Text,
+                            Message = message ?? string.Empty
+                        }
+                    }
+                };
+
+                var taskId = _motionDetector.Start(motionTask);
 
                 return Ok(taskId);
             }

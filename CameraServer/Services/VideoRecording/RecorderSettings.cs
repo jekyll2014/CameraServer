@@ -2,7 +2,7 @@
 
 public class RecorderSettings
 {
-    public List<RecordCameraSetting> RecordCameras { get; set; } = new List<RecordCameraSetting>();
+    public List<RecordCameraSettingDto> RecordCameras { get; set; } = new List<RecordCameraSettingDto>();
 
     public string StoragePath { get; set; } = ".\\Records";
 
