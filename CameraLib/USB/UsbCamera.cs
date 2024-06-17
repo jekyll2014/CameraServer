@@ -18,7 +18,7 @@ namespace CameraLib.USB
     public class UsbCamera : ICamera, IDisposable
     {
         public CameraDescription Description { get; set; }
-        public bool IsRunning { get; private set; }
+        public bool IsRunning { get; private set; } = false;
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
         public int FrameTimeout { get; set; } = 30000;
@@ -30,10 +30,9 @@ namespace CameraLib.USB
         private CancellationTokenSource? _cancellationTokenSource;
 
         private readonly DsDevice? _usbCamera;
-
-        private readonly object _getPictureThreadLock = new();
         private VideoCapture? _captureDevice;
         private Mat? _frame;
+        private readonly object _getPictureThreadLock = new();
         private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
 
@@ -390,9 +389,9 @@ namespace CameraLib.USB
                     Stop();
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();
+                    _cancellationTokenSource?.Dispose();
                     _usbCamera?.Dispose();
                     _captureDevice?.Dispose();
-                    _cancellationTokenSource?.Dispose();
                     _frame?.Dispose();
                 }
 

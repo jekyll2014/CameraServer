@@ -132,8 +132,8 @@ namespace CameraLib.FlashCap
                 _token = token;
 
                 _cancellationTokenSource = new CancellationTokenSource();
+               _fpsTimer.Reset();
                 _frameCount = 0;
-                _fpsTimer.Reset();
                 _keepAliveTimer.Interval = FrameTimeout;
                 _keepAliveTimer.Start();
 
