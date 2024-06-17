@@ -6,11 +6,8 @@ using CameraServer.Services.CameraHub;
 using CameraServer.Services.Telegram;
 using CameraServer.Services.VideoRecording;
 
-using Emgu.CV;
-using Emgu.CV.Structure;
-
 using System.Collections.Concurrent;
-
+using OpenCvSharp;
 using Telegram.Bot.Types;
 
 using File = System.IO.File;
@@ -216,11 +213,12 @@ namespace CameraServer.Services.MotionDetection
                 throw new ApplicationException($"User [{newTask.User}] not authorised to start recording.");
             }
 
-            var imageQueue = new ConcurrentQueue<Mat>();
-            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
+            var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 MotionDetectionStreamId + newTask.TaskId,
-                imageQueue,
                 newTask.FrameFormat);
+
+            var imageQueue = new ConcurrentQueue<Mat>();
+            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
             if (cameraCancellationToken == CancellationToken.None)
             {
@@ -269,8 +267,7 @@ namespace CameraServer.Services.MotionDetection
                 }
             }
 
-            await _collection.UnHookCamera(camera.CameraStream.Description.Path,
-                MotionDetectionStreamId + newTask.TaskId, newTask.FrameFormat);
+            _collection.UnHookCamera(newCameraItem);
             while (imageQueue.TryDequeue(out var image))
             {
                 image?.Dispose();
@@ -278,7 +275,7 @@ namespace CameraServer.Services.MotionDetection
 
             imageQueue.Clear();
             _detectorTasks.TryRemove(newTask, out _);
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
 
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
@@ -397,13 +394,16 @@ namespace CameraServer.Services.MotionDetection
                 if (notificationParams.Any(n => n.SaveNotificationContent))
                 {
                     var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                                   $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-" +
-                                                                     $"{currentTime.ToString("yyyy-MM-dd")}_" +
-                                                                     $"{currentTime.ToString("HH-mm-ss")}.jpg")}";
+                                   $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime.ToString("yyyy-MM-dd")}_{currentTime.ToString("HH-mm-ss")}.jpg")}";
                     try
                     {
                         if (image != null)
-                            await File.WriteAllBytesAsync(fileName, image.ToImage<Rgb, byte>().ToJpegData());
+                            await File.WriteAllBytesAsync(fileName, image.ToBytes(".jpg",
+                                new ImageEncodingParam[]
+                                {
+                                    new(ImwriteFlags.JpegOptimize, 1),
+                                    new(ImwriteFlags.JpegQuality, _videoRecorderService.Settings.DefaultVideoQuality)
+                                }));
                     }
                     catch (Exception ex)
                     {

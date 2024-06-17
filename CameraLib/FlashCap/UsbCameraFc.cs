@@ -1,7 +1,4 @@
-﻿using Emgu.CV;
-using Emgu.CV.CvEnum;
-
-using FlashCap;
+﻿using FlashCap;
 
 using System;
 using System.Collections.Generic;
@@ -11,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using OpenCvSharp;
 
 namespace CameraLib.FlashCap
 {
@@ -112,35 +110,35 @@ namespace CameraLib.FlashCap
 
         public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
-            if (!IsRunning)
+            if (IsRunning)
+                return true;
+
+            var cameraCharacteristics = GetCaptureDevice(width, height, format);
+            if (cameraCharacteristics == null)
+                return false;
+
+            _captureDevice = await _usbCamera.OpenAsync(cameraCharacteristics, OnPixelBufferArrived, token);
+            if (_captureDevice == null)
             {
-                var cameraCharacteristics = GetCaptureDevice(width, height, format);
-                if (cameraCharacteristics == null)
-                    return false;
+                IsRunning = false;
 
-                _captureDevice = await _usbCamera.OpenAsync(cameraCharacteristics, OnPixelBufferArrived, token);
-                if (_captureDevice == null)
-                {
-                    IsRunning = false;
-
-                    return false;
-                }
-
-                _width = width;
-                _height = height;
-                _format = format;
-                _token = token;
-
-                _cancellationTokenSource = new CancellationTokenSource();
-               _fpsTimer.Reset();
-                _frameCount = 0;
-                _keepAliveTimer.Interval = FrameTimeout;
-                _keepAliveTimer.Start();
-
-                await _captureDevice.StartAsync(token);
-
-                IsRunning = true;
+                return false;
             }
+
+            _width = width;
+            _height = height;
+            _format = format;
+            _token = token;
+
+            _cancellationTokenSource = new CancellationTokenSource();
+            _frameCount = 0;
+            _fpsTimer.Reset();
+            _keepAliveTimer.Interval = FrameTimeout;
+            _keepAliveTimer.Start();
+
+            await _captureDevice.StartAsync(token);
+
+            IsRunning = true;
 
             return true;
         }
@@ -191,7 +189,7 @@ namespace CameraLib.FlashCap
                 {
                     var image = bufferScope.Buffer.CopyImage();
                     bufferScope.ReleaseNow();
-                    CvInvoke.Imdecode(image, ImreadModes.Color, _frame);
+                    _frame = Cv2.ImDecode(image, ImreadModes.Color);
 
                     if (CurrentFrameFormat == null)
                     {
@@ -281,7 +279,7 @@ namespace CameraLib.FlashCap
 
                     var imageData = await _usbCamera.TakeOneShotAsync(cameraCharacteristics, token);
 
-                    CvInvoke.Imdecode(imageData, ImreadModes.Color, image);
+                    image = Cv2.ImDecode(imageData, ImreadModes.Color);
                     CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
                 }
                 catch (Exception ex)

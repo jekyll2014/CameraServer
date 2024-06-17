@@ -1,4 +1,4 @@
-﻿using Emgu.CV;
+﻿using OpenCvSharp;
 
 namespace CameraServer.Services.VideoRecording;
 

@@ -4,9 +4,8 @@ using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
-using Emgu.CV;
-
 using System.Collections.Concurrent;
+using OpenCvSharp;
 
 namespace CameraServer.Services.VideoRecording
 {
@@ -15,6 +14,7 @@ namespace CameraServer.Services.VideoRecording
         private const string VideoRecorderTempConfig = "appsettings-recorder";
         private const string RecorderConfigSection = "Recorder";
         private const string RecorderStreamId = "Recorder";
+        private const string DefaultVideoFileExtencion = "mp4";
 
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
@@ -74,7 +74,7 @@ namespace CameraServer.Services.VideoRecording
             Dispose();
         }
 
-        public string Start(RecordCameraSettingDto recordTask)//string cameraId, string user, FrameFormatDto frameFormat, byte quality = 0)
+        public string Start(RecordCameraSettingDto recordTask)
         {
             var userDto = _manager.GetUserInfo(recordTask.User);
             if (userDto == null)
@@ -149,7 +149,7 @@ namespace CameraServer.Services.VideoRecording
             return cameraPath + width + height;
         }
 
-        private async Task RecordingTask(RecordCameraTask newTask)//IServerCamera camera, FrameFormatDto frameFormat, string taskId, byte quality)
+        private async Task RecordingTask(RecordCameraTask newTask)
         {
             var userDto = _manager.GetUserInfo(newTask.User);
             ServerCamera camera;
@@ -163,11 +163,12 @@ namespace CameraServer.Services.VideoRecording
                 throw new ApplicationException($"User [{newTask.User}] not authorised to start recording.");
             }
 
-            var imageQueue = new ConcurrentQueue<Mat>();
-            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
+            var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 RecorderStreamId,
-                imageQueue,
                 newTask.FrameFormat);
+
+            var imageQueue = new ConcurrentQueue<Mat>();
+            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
             if (cameraCancellationToken == CancellationToken.None)
             {
@@ -176,16 +177,12 @@ namespace CameraServer.Services.VideoRecording
                 return;
             }
 
-            //record video
             var stopTask = false;
             while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
             {
                 var currentTime = DateTime.Now;
                 var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-" +
-                                                                 $"{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}-" +
-                                                                 $"{currentTime.ToString("yyyy-MM-dd")}-" +
-                                                                 $"{currentTime.ToString("HH-mm-ss")}.mp4")}";
+                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}-{currentTime.ToString("yyyy-MM-dd")}-{currentTime.ToString("HH-mm-ss")}.mp4")}";
                 using (var recorder = new VideoRecorder(fileName,
                            new FrameFormatDto { Width = 0, Height = 0, Format = string.Empty, Fps = camera.CameraStream.CurrentFps },
                            newTask.Quality))
@@ -217,7 +214,7 @@ namespace CameraServer.Services.VideoRecording
                 stopTask = !_recorderTasks.TryGetValue(newTask, out _);
             }
 
-            await _collection.UnHookCamera(camera.CameraStream.Description.Path, RecorderStreamId, newTask.FrameFormat);
+            _collection.UnHookCamera(newCameraItem);
 
             while (imageQueue.TryDequeue(out var image))
             {
@@ -226,7 +223,7 @@ namespace CameraServer.Services.VideoRecording
             imageQueue.Clear();
 
             _recorderTasks.TryRemove(newTask, out _);
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
 
         public async Task<string> RecordVideoFile(ServerCamera camera,
@@ -240,14 +237,15 @@ namespace CameraServer.Services.VideoRecording
         {
             var currentTime = DateTime.Now;
 
-            var imageBuffer = bufferedImages?.ToArray().Select(n => n?.Clone()).ToArray() ?? [];
+            var imageBuffer = bufferedImages?.ToArray().Select(n => n?.Clone()).ToArray() ?? Array.Empty<Mat?>();
 
             frameFormat ??= new FrameFormatDto();
-            var tmpImageQueue = new ConcurrentQueue<Mat>();
-            var tmpCameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
+            var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 streamId,
-                tmpImageQueue,
                 frameFormat);
+
+            var tmpImageQueue = new ConcurrentQueue<Mat>();
+            var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
             if (tmpCameraCancellationToken == CancellationToken.None)
             {
                 throw new ApplicationException($"Can not connect to camera#{camera.CameraStream.Description.Name}");
@@ -259,7 +257,7 @@ namespace CameraServer.Services.VideoRecording
                     $"Cam{camera.CameraStream.Description.Name}-" +
                     $"{streamId}-" +
                     $"{currentTime.ToString("yyyy-MM-dd")}_" +
-                    $"{currentTime.ToString("HH-mm-ss")}.mp4");
+                    $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtencion}");
 
             if (frameFormat.Fps <= 0)
                 frameFormat.Fps = camera.CameraStream.CurrentFps;
@@ -300,9 +298,7 @@ namespace CameraServer.Services.VideoRecording
                         await Task.Delay(10, CancellationToken.None);
                 }
 
-                await _collection.UnHookCamera(
-                    camera.CameraStream.Description.Path,
-                    streamId, frameFormat);
+                _collection.UnHookCamera(newCameraItem);
             }
 
             while (tmpImageQueue.TryDequeue(out var image))
@@ -311,7 +307,7 @@ namespace CameraServer.Services.VideoRecording
             }
 
             tmpImageQueue.Clear();
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
             if (!File.Exists(fileName))
                 throw new ApplicationException($"Can't write file {fileName}");

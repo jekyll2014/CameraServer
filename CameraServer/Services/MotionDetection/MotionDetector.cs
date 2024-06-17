@@ -1,8 +1,7 @@
-﻿using Emgu.CV;
-using Emgu.CV.CvEnum;
-using Emgu.CV.Structure;
+﻿using OpenCvSharp;
 
-using System.Drawing;
+using Point = OpenCvSharp.Point;
+using Size = OpenCvSharp.Size;
 
 namespace CameraServer.Services.MotionDetection
 {
@@ -16,7 +15,7 @@ namespace CameraServer.Services.MotionDetection
         private readonly int _height;
         private readonly uint _changeLimit;
 
-        private Image<Gray, byte>? _prevFrame;
+        private Mat? _prevFrame;
         private DateTime _nextFrameProcessTime = DateTime.Now;
 
         private bool _disposedValue;
@@ -39,40 +38,43 @@ namespace CameraServer.Services.MotionDetection
             var currentTime = DateTime.Now;
             if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DetectorRestartMs - _detectorDelayMs))
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
+
             // movement detection
             if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
             {
                 // resize
-                var currFrame = frame.ToImage<Gray, byte>().Resize(_width, _height, Inter.Nearest);
+                var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
                 // compare
-                var imgAbsDiff = new Image<Gray, byte>(currFrame.Width, currFrame.Height);
-                CvInvoke.AbsDiff(currFrame, _prevFrame, imgAbsDiff);
+                var imgAbsDiff = new Mat();
+                Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
 #if DEBUG
-                //File.WriteAllBytes("diff.jpg", imgAbsDiff.ToJpegData());
+                File.WriteAllBytes("diff.jpg", imgAbsDiff.ToBytes(".jpg"));
 #endif
 
                 // filter out the noise
-                var imgThreshold = new Image<Gray, byte>(currFrame.Width, currFrame.Height);
-                CvInvoke.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdType.Binary);
+                var imgThreshold = new Mat();
+                Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
 
                 // Find contours around the blobs
-                var contours = new Emgu.CV.Util.VectorOfVectorOfPoint();
-                CvInvoke.FindContours(imgThreshold, contours, null, RetrType.External, ChainApproxMethod.ChainApproxTc89L1);
+                var imgThreshold2 = new Mat();
+                Cv2.CvtColor(imgThreshold, imgThreshold2, ColorConversionCodes.BGR2GRAY); //COLOR_BGR2GRAY
+
+                Cv2.FindContours(imgThreshold2, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxTC89L1);
 #if DEBUG
-                var colorFrame = imgThreshold.Convert<Rgb, byte>();
+                var colorFrame = imgThreshold.Clone();
 #endif
                 //Find big blobs to activate alarm
                 var n = 0;
-                foreach (var c in contours?.ToArrayOfArray())
+                foreach (var c in contours)
                 {
-                    var r = CvInvoke.BoundingRectangle(c);
-                    var pixelCount = CountPixels(imgThreshold, r);
+                    var r = Cv2.BoundingRect(c);
+                    var pixelCount = CountPixels(imgThreshold2, r);
                     if (pixelCount >= _changeLimit)
                     {
 #if DEBUG
-                        CvInvoke.DrawContours(colorFrame, contours, n, new MCvScalar(0, 255, 0));
-                        CvInvoke.Rectangle(colorFrame, r, new MCvScalar(0, 255, 0));
+                        Cv2.DrawContours(colorFrame, contours, n, Scalar.Green);
+                        Cv2.Rectangle(colorFrame, r, Scalar.Green);
 #endif
                         result = true;
                         break;
@@ -80,20 +82,20 @@ namespace CameraServer.Services.MotionDetection
 #if DEBUG
                     else
                     {
-                        CvInvoke.Rectangle(colorFrame, r, new MCvScalar(255, 0, 0));
+                        Cv2.Rectangle(colorFrame, r, Scalar.Red);
+                        Cv2.Rectangle(colorFrame, r, Scalar.Red);
                     }
 
                     for (var i = 1; i < c.Length; i++)
                     {
-                        CvInvoke.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), new MCvScalar(0, 0, 255));
+                        Cv2.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), Scalar.Blue);
                     }
 #endif
                     n++;
                 }
 
-                contours.Dispose();
 #if DEBUG
-                File.WriteAllBytes("threshold_cnt.jpg", colorFrame.ToJpegData());
+                File.WriteAllBytes("threshold_cnt.jpg", colorFrame.ToBytes(".jpg"));
                 colorFrame.Dispose();
 #endif
                 _prevFrame.Dispose();
@@ -102,17 +104,16 @@ namespace CameraServer.Services.MotionDetection
 
                 imgAbsDiff.Dispose();
                 imgThreshold.Dispose();
+                imgThreshold2.Dispose();
             }
-            else _prevFrame ??= frame.ToImage<Gray, byte>().Resize(_width, _height, Inter.Nearest);
+            else _prevFrame ??= frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
             return result;
         }
 
-        private static int CountPixels(Image<Gray, byte> image, Rectangle r)
+        private static int CountPixels(Mat image, Rect r)
         {
-            image.ROI = r;
-            var count = image.CountNonzero()[0];
-            image.ROI = Rectangle.Empty;
+            var count = image.Clone(r).CountNonZero();
 
             return count;
         }

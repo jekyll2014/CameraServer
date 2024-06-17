@@ -4,10 +4,6 @@ using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
-using Emgu.CV;
-using Emgu.CV.CvEnum;
-using Emgu.CV.Structure;
-
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,12 +13,11 @@ using Swashbuckle.AspNetCore.Annotations;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
-
+using OpenCvSharp;
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
 namespace CameraServer.Controllers
 {
-    //[Authorize]
     [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
     [Authorize(AuthenticationSchemes = Program.BasicAuthenticationSchemeName)]
     [ApiController]
@@ -154,10 +149,10 @@ namespace CameraServer.Controllers
                 Format = format ?? string.Empty
             };
 
-            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
+            var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 Request.HttpContext.TraceIdentifier,
-                imageQueue,
                 frameFormat);
+            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#",
@@ -180,22 +175,26 @@ namespace CameraServer.Controllers
                 {
                     if (imageQueue.TryDequeue(out var image))
                     {
-                        Image<Rgb, byte> outImage;
+                        Mat outImage;
                         if (frameFormat.Width > 0
                             && frameFormat.Height > 0
                             && image.Width > frameFormat.Width
                             && image.Height > frameFormat.Height)
                         {
                             outImage = image
-                                .ToImage<Rgb, byte>()
-                                .Resize(frameFormat.Width, frameFormat.Height, Inter.Nearest);
+                                .Resize(new Size(frameFormat.Width, frameFormat.Height), interpolation: InterpolationFlags.Nearest);
                         }
                         else
-                            outImage = image.ToImage<Rgb, byte>();
+                            outImage = image.Clone();
 
                         if (outImage != null)
                         {
-                            var jpegBuffer = outImage.ToJpegData(qlt);
+                            var jpegBuffer = outImage.ToBytes(".jpg",
+                                new ImageEncodingParam[]
+                                {
+                                    new(ImwriteFlags.JpegOptimize, 1),
+                                    new(ImwriteFlags.JpegQuality, qlt)
+                                });
                             var header = $"\r\n{Boundary}\r\n" +
                                          $"Content-Type: image/jpeg\r\n" +
                                          $"Content-Length: {jpegBuffer.Length}\r\n" +
@@ -219,9 +218,7 @@ namespace CameraServer.Controllers
                 Console.WriteLine(ex);
             }
 
-            await _collection.UnHookCamera(camera.CameraStream.Description.Path,
-                Request.HttpContext.TraceIdentifier,
-                frameFormat);
+            _collection.UnHookCamera(newCameraItem);
 
             while (imageQueue.TryDequeue(out var image))
             {
@@ -230,7 +227,7 @@ namespace CameraServer.Controllers
 
             imageQueue.Clear();
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
             return new EmptyResult();
         }

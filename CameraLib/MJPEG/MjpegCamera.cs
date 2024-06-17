@@ -1,7 +1,4 @@
-﻿using Emgu.CV;
-using Emgu.CV.CvEnum;
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -13,6 +10,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+
+using OpenCvSharp;
 
 using IPAddress = System.Net.IPAddress;
 
@@ -110,7 +109,7 @@ namespace CameraLib.MJPEG
         // can not be implemented
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return [];
+            return new List<CameraDescription>();
         }
 
         private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
@@ -129,32 +128,34 @@ namespace CameraLib.MJPEG
 
         public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
-            if (!IsRunning)
+            if (IsRunning)
+                return true;
+
+            _width = width;
+            _height = height;
+            _format = format;
+            _token = token;
+
+            _cancellationTokenSource = new CancellationTokenSource();
+            _frameCount = 0;
+            _fpsTimer.Reset();
+            _keepAliveTimer.Interval = FrameTimeout;
+            _keepAliveTimer.Start();
+
+            _stopCapture = false;
+            try
             {
-                try
-                {
-                    _width = width;
-                    _height = height;
-                    _format = format;
-                    _token = token;
-
-                    _stopCapture = false;
-                    _fpsTimer.Reset();
-                    _frameCount = 0;
-                    _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-
-                    return false;
-                }
-
-                _cancellationTokenSource = new CancellationTokenSource();
-
-                if (!IsRunning)
-                    return false;
+                _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+
+                return false;
+            }
+
+
+            IsRunning = true;
 
             return true;
         }
@@ -179,7 +180,7 @@ namespace CameraLib.MJPEG
                 _stopCapture = true;
                 var timeOut = DateTime.Now.AddSeconds(100);
                 while (IsRunning && DateTime.Now < timeOut)
-                    Task.Delay(10).Wait();
+                    Task.Delay(10);
 
                 _imageGrabber?.Dispose();
                 _frame?.Dispose();
@@ -357,7 +358,7 @@ namespace CameraLib.MJPEG
                         _frame = new Mat();
                         try
                         {
-                            CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
+                            _frame = Cv2.ImDecode(frameBuffer, ImreadModes.Color);
                             CurrentFrameFormat ??= new FrameFormat(_frame.Width, _frame.Height);
                             ImageCapturedEvent?.Invoke(this, _frame.Clone());
                             if (!_fpsTimer.IsRunning)

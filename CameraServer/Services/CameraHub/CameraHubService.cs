@@ -7,9 +7,8 @@ using CameraLib.USB;
 using CameraServer.Auth;
 using CameraServer.Models;
 
-using Emgu.CV;
-
 using System.Collections.Concurrent;
+using OpenCvSharp;
 
 namespace CameraServer.Services.CameraHub
 {
@@ -20,7 +19,7 @@ namespace CameraServer.Services.CameraHub
         private readonly int _maxBuffer;
         public IEnumerable<ServerCamera> Cameras => _cameras.Keys;
 
-        private readonly ConcurrentDictionary<ServerCamera, ConcurrentDictionary<string, ConcurrentQueue<Mat>>> _cameras = new();
+        private readonly ConcurrentDictionary<ServerCamera, ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>> _cameras = new();
 
         public CameraHubService(IConfiguration configuration)
         {
@@ -32,7 +31,6 @@ namespace CameraServer.Services.CameraHub
         public async Task RefreshCameraCollection(CancellationToken cancellationToken)
         {
             // remove predefined cameras from collection
-            Console.WriteLine("Adding predefined cameras...");
             var cameras = _cameras.AsQueryable().ToArray();
             for (var i = 0; i < cameras.Length; i++)
             {
@@ -44,14 +42,23 @@ namespace CameraServer.Services.CameraHub
 
             List<CameraDescription> ipCameras = new();
             if (_cameraSettings.AutoSearchIp)
-                ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_cameraSettings.DiscoveryTimeOut, cancellationToken);
+            {
+                Console.WriteLine("Detecting IP cameras...");
+                ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_cameraSettings.DiscoveryTimeOut);
+            }
+
+            Console.WriteLine("Adding predefined cameras...");
 
             // add custom cameras again
-            foreach (var c in _cameraSettings.CustomCameras)
+            Parallel.ForEach(_cameraSettings.CustomCameras, (c) =>
             {
+                Console.WriteLine($"\t{c.Name}");
+
                 ServerCamera serverCamera;
                 if (c.Type == CameraType.IP)
-                    serverCamera = new ServerCamera(new IpCamera(
+                {
+                    serverCamera = new ServerCamera(
+                        new IpCamera(
                             path: c.Path,
                             name: c.Name,
                             authenicationType: c.AuthenicationType,
@@ -59,9 +66,13 @@ namespace CameraServer.Services.CameraHub
                             password: c.Password,
                             discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
                             forceCameraConnect: _cameraSettings.ForceCameraConnect),
-                        c.AllowedRoles, true);
+                        c.AllowedRoles, 
+                        true);
+                }
                 else if (c.Type == CameraType.MJPEG)
-                    serverCamera = new ServerCamera(new MjpegCamera(
+                {
+                    serverCamera = new ServerCamera(
+                        new MjpegCamera(
                             path: c.Path,
                             name: c.Name,
                             authenicationType: c.AuthenicationType,
@@ -69,37 +80,46 @@ namespace CameraServer.Services.CameraHub
                             password: c.Password,
                             discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
                             forceCameraConnect: _cameraSettings.ForceCameraConnect),
-                        c.AllowedRoles, true);
+                        c.AllowedRoles, 
+                        true);
+                }
                 else if (c.Type == CameraType.USB)
                 {
                     try
                     {
-                        serverCamera = new ServerCamera(new UsbCamera(c.Path, c.Name), c.AllowedRoles, true);
+                        serverCamera = new ServerCamera(
+                            new UsbCamera(c.Path, c.Name),
+                            c.AllowedRoles, 
+                            true);
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine(ex);
-                        continue;
+                        return;
                     }
                 }
                 else if (c.Type == CameraType.USB_FC)
                 {
                     try
                     {
-                        serverCamera = new ServerCamera(new UsbCameraFc(c.Path, c.Name), c.AllowedRoles, true);
+                        serverCamera = new ServerCamera(
+                            new UsbCameraFc(c.Path, c.Name),
+                            c.AllowedRoles, 
+                            true);
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine(ex);
-                        continue;
+                        return;
                     }
                 }
                 else
-                    continue;
+                    return;
 
                 serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
-                _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
-            }
+                _cameras.TryAdd(serverCamera,
+                    new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
+            });
 
             if (_cameraSettings.AutoSearchUsb)
             {
@@ -115,7 +135,7 @@ namespace CameraServer.Services.CameraHub
                 {
                     var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
                     serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
-                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -142,7 +162,7 @@ namespace CameraServer.Services.CameraHub
                 {
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
                     serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
-                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -159,16 +179,17 @@ namespace CameraServer.Services.CameraHub
             {
                 Console.WriteLine("Autodetecting IP cameras...");
                 foreach (var c in ipCameras)
-                    Console.WriteLine($"IP-CameraStream: {c.Name} - [{c.Path}]");
+                    Console.WriteLine($"IP-Camera: {c.Name} - [{c.Path}]");
 
                 // add newly discovered cameras
                 foreach (var c in ipCameras
                              .Where(c => _cameras
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
+                    Console.WriteLine($"Adding IP-Camera: {c.Name} - [{c.Path}]");
                     var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
                     serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
-                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<string, ConcurrentQueue<Mat>>());
+                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -185,38 +206,41 @@ namespace CameraServer.Services.CameraHub
         }
 
         public async Task<CancellationToken> HookCamera(
-            string cameraId,
-            string queueId,
-            ConcurrentQueue<Mat> srcImageQueue,
-            FrameFormatDto frameFormat)
+            CameraQueueItem cameraItem,
+            ConcurrentQueue<Mat> srcImageQueue)
         {
-            if (_cameras.All(n => n.Key.CameraStream.Description.Path != cameraId))
+            if (_cameras.All(n => n.Key.CameraStream.Description.Path != cameraItem.CameraId))
                 return CancellationToken.None;
 
             var camera = _cameras
-                .FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraId);
+                .FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraItem.CameraId);
 
-            if (camera.Key == null || !camera.Value.TryAdd(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), srcImageQueue))
+            if (camera.Key == null || !camera.Value.TryAdd(
+                    cameraItem,
+                    srcImageQueue))
                 return CancellationToken.None;
 
             if (camera.Value.Count == 1)
             {
                 camera.Key.CameraStream.ImageCapturedEvent += GetImageFromCameraStream;
-                if (!await camera.Key.CameraStream.Start(0, 0, frameFormat.Format, CancellationToken.None))
+                if (!await camera.Key.CameraStream.Start(cameraItem.FrameFormat.Width,
+                        cameraItem.FrameFormat.Height,
+                        cameraItem.FrameFormat.Format,
+                        CancellationToken.None))
                     return CancellationToken.None;
             }
 
             return camera.Key.CameraStream.CancellationToken;
         }
 
-        public async Task<bool> UnHookCamera(string cameraId, string queueId, FrameFormatDto frameFormat)
+        public bool UnHookCamera(CameraQueueItem cameraItem)
         {
-            if (_cameras.All(n => n.Key.CameraStream.Description.Path != cameraId))
+            if (_cameras.All(n => n.Key.CameraStream.Description.Path != cameraItem.CameraId))
                 return false;
 
-            var camera = _cameras.FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraId);
+            var camera = _cameras.FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraItem.CameraId);
 
-            camera.Value.TryRemove(GenerateImageQueueId(cameraId, queueId, frameFormat.Width, frameFormat.Height), out _);
+            camera.Value.TryRemove(cameraItem, out _);
             if (camera.Key != null && camera.Value.Count <= 0)
             {
                 camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
@@ -254,23 +278,20 @@ namespace CameraServer.Services.CameraHub
             {
                 foreach (var clientStream in clientStreams)
                 {
-                    if (clientStream.Value.Count > _maxBuffer)
+                    if (clientStream.Value.Count >= _maxBuffer)
                     {
-                        clientStream.Value.TryDequeue(out var frame);
-                        frame?.Dispose();
-
-                        /*foreach (var frame in clientStream.Value)
-                            frame.Dispose();
-
-                        clientStream.Value.Clear();
+                        while (clientStream.Value.TryDequeue(out var frame))
+                            frame?.Dispose();
 
                         // stop streaming if consumer can't cosume fast enough
-                        //clientStreams.TryRemove(clientStream.Key);
+                        UnHookCamera(clientStream.Key);
+                        break;
+                        //clientStreams.TryRemove(clientStream);
                         //if (clientStreams.Count <= 0)
                         //{
                         //    cameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
                         //    cameraStream.Stop(CancellationToken.None);
-                        //}*/
+                        //}
                     }
 
                     clientStream.Value.Enqueue(image.Clone());
@@ -278,11 +299,6 @@ namespace CameraServer.Services.CameraHub
             }
 
             image.Dispose();
-        }
-
-        public static string GenerateImageQueueId(string cameraId, string queueId, int width, int height)
-        {
-            return cameraId + queueId + width + height;
         }
     }
 }

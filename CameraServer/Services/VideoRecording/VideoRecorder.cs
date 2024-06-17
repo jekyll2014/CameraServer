@@ -1,10 +1,6 @@
 ﻿using CameraLib;
 
-using Emgu.CV;
-using Emgu.CV.CvEnum;
-using Emgu.CV.Structure;
-
-using System.Drawing;
+using OpenCvSharp;
 
 namespace CameraServer.Services.VideoRecording
 {
@@ -12,7 +8,7 @@ namespace CameraServer.Services.VideoRecording
     {
         private const double DefaultFps = 20.0;
         private readonly string _fileName;
-        private readonly int _fourcc = VideoWriter.Fourcc('a', 'v', 'c', '1');
+        private readonly FourCC _fourcc = FourCC.MP4V;// FourCC.FromFourChars('a', 'v', 'c', '1'), FourCC.AVC, +FourCC.MP4V, +FourCC.XVID
         private VideoWriter? _videoWriter;
         private readonly int _width;
         private readonly int _height;
@@ -37,18 +33,16 @@ namespace CameraServer.Services.VideoRecording
             if (frame == null)
                 return;
 
-            Image<Rgb, byte> outImage;
+            Mat outImage;
             if (_width > 0 && _height > 0 && frame.Width > _width && frame.Height > _height)
             {
                 outImage = frame
-                    .ToImage<Rgb, byte>()
-                    .Resize(_width, _height, Inter.Nearest);
+                    .Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
             }
             else
-                outImage = frame.ToImage<Rgb, byte>();
+                outImage = frame.Clone();
 
 
-            // video stream record to file
             if (_videoWriter == null)
             {
                 _videoWriter = new VideoWriter(_fileName,
@@ -56,7 +50,7 @@ namespace CameraServer.Services.VideoRecording
                     _fps,
                     new Size(outImage.Width, outImage.Height),
                     true);
-                _videoWriter.Set(VideoWriter.WriterProperty.Quality, _compressionQuality);
+                _videoWriter.Set(VideoWriterProperties.Quality, _compressionQuality);
             }
 
             _videoWriter.Write(outImage);
