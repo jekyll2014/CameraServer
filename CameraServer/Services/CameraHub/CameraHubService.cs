@@ -2,7 +2,6 @@
 using CameraLib.FlashCap;
 using CameraLib.IP;
 using CameraLib.MJPEG;
-using CameraLib.USB;
 
 using CameraServer.Auth;
 using CameraServer.Models;
@@ -66,7 +65,7 @@ namespace CameraServer.Services.CameraHub
                             password: c.Password,
                             discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
                             forceCameraConnect: _cameraSettings.ForceCameraConnect),
-                        c.AllowedRoles, 
+                        c.AllowedRoles,
                         true);
                 }
                 else if (c.Type == CameraType.MJPEG)
@@ -80,23 +79,8 @@ namespace CameraServer.Services.CameraHub
                             password: c.Password,
                             discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
                             forceCameraConnect: _cameraSettings.ForceCameraConnect),
-                        c.AllowedRoles, 
+                        c.AllowedRoles,
                         true);
-                }
-                else if (c.Type == CameraType.USB)
-                {
-                    try
-                    {
-                        serverCamera = new ServerCamera(
-                            new UsbCamera(c.Path, c.Name),
-                            c.AllowedRoles, 
-                            true);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex);
-                        return;
-                    }
                 }
                 else if (c.Type == CameraType.USB_FC)
                 {
@@ -104,7 +88,7 @@ namespace CameraServer.Services.CameraHub
                     {
                         serverCamera = new ServerCamera(
                             new UsbCameraFc(c.Path, c.Name),
-                            c.AllowedRoles, 
+                            c.AllowedRoles,
                             true);
                     }
                     catch (Exception ex)
@@ -120,33 +104,6 @@ namespace CameraServer.Services.CameraHub
                 _cameras.TryAdd(serverCamera,
                     new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
             });
-
-            if (_cameraSettings.AutoSearchUsb)
-            {
-                Console.WriteLine("Autodetecting USB cameras...");
-                var usbCameras = UsbCamera.DiscoverUsbCameras();
-                foreach (var c in usbCameras)
-                    Console.WriteLine($"USB-CameraStream: {c.Name} - [{c.Path}]");
-
-                // add newly discovered cameras
-                foreach (var c in usbCameras
-                             .Where(c => _cameras
-                                 .All(n => n.Key.CameraStream.Description.Path != c.Path)))
-                {
-                    var serverCamera = new ServerCamera(new UsbCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
-                    _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
-                }
-
-                // remove cameras not found by search (to not lose connection if any clients are connected)
-                foreach (var c in _cameras
-                             .Where(n => n.Key.CameraStream is UsbCamera && !n.Key.Custom)
-                             .Where(c => !usbCameras
-                                 .Exists(n => n.Path == c.Key.CameraStream.Description.Path)))
-                {
-                    _cameras.TryRemove(c.Key, out _);
-                }
-            }
 
             if (_cameraSettings.AutoSearchUsbFC)
             {

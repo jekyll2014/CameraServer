@@ -1,11 +1,11 @@
 #See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
-FROM mcr.microsoft.com/dotnet/aspnet:6.0-jammy AS base
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV OPENCV_VERSION=4.8.0
 
-WORKDIR /app
+WORKDIR /
 EXPOSE 80
 EXPOSE 443
 
@@ -104,10 +104,9 @@ RUN mkdir /opencvsharp/make && cd /opencvsharp/make && \
     mkdir /artifacts && \
     cp /opencvsharp/make/OpenCvSharpExtern/libOpenCvSharpExtern.so /artifacts/
 
-
 ########## Test native .so file ##########
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0-jammy
+FROM base
 RUN apt-get update && apt-get -y install --no-install-recommends gcc
 # /usr/lib/libOpenCvSharpExtern.so
 # /usr/local/lib/libopencv_*.a
@@ -123,12 +122,11 @@ int main(){ \n\
   return 0; \n\
 }" > /test.c && \
     gcc -I./ -L./ test.c -o test -lOpenCvSharpExtern && \
-    LD_LIBRARY_PATH=. ./test 
-
+    LD_LIBRARY_PATH=. ./test
 
 ########## Test .NET class libraries ##########
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0-jammy
+FROM base
 COPY --from=builder /usr/lib /usr/lib
 # Install Build the C# part of OpenCvSharp
 RUN git clone https://github.com/shimat/opencvsharp.git && cd opencvsharp
@@ -139,7 +137,7 @@ RUN cd /opencvsharp/src/OpenCvSharp && \
 
 RUN dotnet test /opencvsharp/test/OpenCvSharp.Tests/OpenCvSharp.Tests.csproj -c Release -f net6.0 --runtime ubuntu.20.04-x64 --logger "trx;LogFileName=test-results.trx" < /dev/null
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0-jammy AS build
+FROM base AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["CameraServer/CameraServer.csproj", "CameraServer/"]
