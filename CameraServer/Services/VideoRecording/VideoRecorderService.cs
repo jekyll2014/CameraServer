@@ -233,11 +233,11 @@ namespace CameraServer.Services.VideoRecording
             uint recordLengthSec,
             FrameFormatDto? frameFormat = null,
             byte quality = 90,
-            ConcurrentQueue<Mat>? bufferedImages = null)
+            Mat?[]? imageBuffer = null)
         {
             var currentTime = DateTime.Now;
 
-            var imageBuffer = bufferedImages?.ToArray().Select(n => n?.Clone()).ToArray() ?? Array.Empty<Mat?>();
+            imageBuffer ??= Array.Empty<Mat?>();
 
             frameFormat ??= new FrameFormatDto();
             var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
@@ -268,7 +268,7 @@ namespace CameraServer.Services.VideoRecording
                 {
                     foreach (var img in imageBuffer)
                     {
-                        if (img != null)
+                        if (img != null && !img.IsDisposed)
                         {
                             recorder.SaveFrame(img);
                             img.Dispose();

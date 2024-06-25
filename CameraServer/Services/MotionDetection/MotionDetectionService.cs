@@ -241,10 +241,12 @@ namespace CameraServer.Services.MotionDetection
                         if (motionDetector.DetectMovement(image))
                         {
                             Console.WriteLine("Motion detected!!!");
+                            var imageBuffer = lastImagesQueue?.ToArray().Select(n => n?.Clone()).ToArray() ?? Array.Empty<Mat?>();
+
                             SendNotifications(newTask.Notifications,
                                 camera,
                                 image,
-                                lastImagesQueue,
+                                imageBuffer,
                                 cameraCancellationToken);
                         }
 
@@ -281,7 +283,7 @@ namespace CameraServer.Services.MotionDetection
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
             ServerCamera camera,
             Mat image,
-            ConcurrentQueue<Mat> bufferedImages,
+            Mat?[]? bufferedImages,
             CancellationToken cameraCancellationToken)
         {
             var imageNotifications = notificationParams
@@ -417,7 +419,7 @@ namespace CameraServer.Services.MotionDetection
 
         private void SendMovementVideoMulti(ServerCamera camera,
             IReadOnlyCollection<NotificationParametersDto> notificationParams,
-            ConcurrentQueue<Mat> bufferedImages,
+            Mat?[]? bufferedImages,
             byte quality)
         {
             if (notificationParams.Count == 0)
