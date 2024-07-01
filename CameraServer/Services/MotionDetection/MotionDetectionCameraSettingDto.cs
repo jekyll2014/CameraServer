@@ -10,9 +10,9 @@ public class MotionDetectionCameraSettingDto
     public MotionDetectorParametersDto? MotionDetectParameters { get; set; }
     public List<NotificationParametersDto> Notifications { get; set; } = new();
 
-    public void Merge(List<NotificationParametersDto> notifications)
+    public void Merge(MotionDetectionCameraSettingDto newTask)
     {
-        foreach (var notification in notifications)
+        foreach (var notification in newTask.Notifications)
         {
             if (Notifications.All(n => !n.Equals(notification)))
             {

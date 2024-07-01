@@ -1,13 +1,13 @@
-﻿using CameraLib;
-
-using CameraServer.Auth;
+﻿using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.Telegram;
 using CameraServer.Services.VideoRecording;
 
-using System.Collections.Concurrent;
 using OpenCvSharp;
+
+using System.Collections.Concurrent;
+
 using Telegram.Bot.Types;
 
 using File = System.IO.File;
@@ -150,7 +150,7 @@ namespace CameraServer.Services.MotionDetection
                 }
                 else
                 {
-                    existingTask.Merge(task.Notifications);
+                    existingTask.Merge(task);
                 }
 
                 CleanEmptyTasks();
@@ -202,6 +202,12 @@ namespace CameraServer.Services.MotionDetection
         private async Task MotionDetectorTask(MotionDetectionCameraTask newTask)
         {
             var userDto = _manager.GetUserInfo(newTask.User);
+            if (userDto == null)
+            {
+                Console.WriteLine($"User [{newTask.User}] not found");
+                throw new ApplicationException($"User [{newTask.User}] not found.");
+            }
+
             ServerCamera camera;
             try
             {
@@ -245,6 +251,7 @@ namespace CameraServer.Services.MotionDetection
 
                             SendNotifications(newTask.Notifications,
                                 camera,
+                                userDto,
                                 image,
                                 imageBuffer,
                                 cameraCancellationToken);
@@ -282,6 +289,7 @@ namespace CameraServer.Services.MotionDetection
 
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
             ServerCamera camera,
+            ICameraUser user,
             Mat image,
             Mat?[]? bufferedImages,
             CancellationToken cameraCancellationToken)
@@ -301,7 +309,7 @@ namespace CameraServer.Services.MotionDetection
 
             if (videoNotifications.Length != 0)
             {
-                SendMovementVideoMulti(camera, videoNotifications, bufferedImages,
+                SendMovementVideoMulti(camera, videoNotifications, user.DefaultCodec, bufferedImages,
                     _telegramService.Settings.DefaultVideoQuality);
             }
 
@@ -419,6 +427,7 @@ namespace CameraServer.Services.MotionDetection
 
         private void SendMovementVideoMulti(ServerCamera camera,
             IReadOnlyCollection<NotificationParametersDto> notificationParams,
+            string codec,
             Mat?[]? bufferedImages,
             byte quality)
         {
@@ -446,6 +455,7 @@ namespace CameraServer.Services.MotionDetection
                         notificationParams.Max(n => n.VideoLengthSec),
                         null,
                         quality,
+                        codec,
                         bufferedImages);
 
                     foreach (var notificationParam in notificationParams)

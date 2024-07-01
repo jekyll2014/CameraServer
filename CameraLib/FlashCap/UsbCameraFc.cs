@@ -1,5 +1,7 @@
 ﻿using FlashCap;
 
+using OpenCvSharp;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using OpenCvSharp;
 
 namespace CameraLib.FlashCap
 {

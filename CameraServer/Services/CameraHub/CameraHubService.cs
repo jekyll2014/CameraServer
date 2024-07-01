@@ -3,11 +3,11 @@ using CameraLib.FlashCap;
 using CameraLib.IP;
 using CameraLib.MJPEG;
 
-using CameraServer.Auth;
 using CameraServer.Models;
 
-using System.Collections.Concurrent;
 using OpenCvSharp;
+
+using System.Collections.Concurrent;
 
 namespace CameraServer.Services.CameraHub
 {
@@ -175,7 +175,11 @@ namespace CameraServer.Services.CameraHub
             if (camera.Key == null || !camera.Value.TryAdd(
                     cameraItem,
                     srcImageQueue))
+            {
+                Console.WriteLine($"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
+
                 return CancellationToken.None;
+            }
 
             if (camera.Value.Count == 1)
             {
@@ -184,8 +188,15 @@ namespace CameraServer.Services.CameraHub
                         cameraItem.FrameFormat.Height,
                         cameraItem.FrameFormat.Format,
                         CancellationToken.None))
+                {
+                    Console.WriteLine($"Faild to connect to camera {cameraItem.CameraId}");
+
                     return CancellationToken.None;
+                }
+
+                Console.WriteLine($"Camera {cameraItem.CameraId} connected");
             }
+            Console.WriteLine($"Client {cameraItem.QueueId} attached to camera {cameraItem.CameraId}");
 
             return camera.Key.CameraStream.CancellationToken;
         }
@@ -197,11 +208,21 @@ namespace CameraServer.Services.CameraHub
 
             var camera = _cameras.FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraItem.CameraId);
 
-            camera.Value.TryRemove(cameraItem, out _);
-            if (camera.Key != null && camera.Value.Count <= 0)
+
+            if (camera.Value.TryRemove(cameraItem, out _))
             {
-                camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
-                camera.Key.CameraStream.Stop();
+                Console.WriteLine($"Client {cameraItem.QueueId} detached from camera {cameraItem.CameraId}");
+
+                if (camera.Key != null && camera.Value.Count <= 0)
+                {
+                    camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
+                    camera.Key.CameraStream.Stop();
+                    Console.WriteLine($"Camera {cameraItem.CameraId} disconnected");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Failed to detach client {cameraItem.QueueId} from camera {cameraItem.CameraId}");
             }
 
             return true;
@@ -239,16 +260,10 @@ namespace CameraServer.Services.CameraHub
                     {
                         while (clientStream.Value.TryDequeue(out var frame))
                             frame?.Dispose();
-
+                        Console.WriteLine($"Camera {clientStream.Key.CameraId} queue is full");
                         // stop streaming if consumer can't cosume fast enough
-                        UnHookCamera(clientStream.Key);
-                        break;
-                        //clientStreams.TryRemove(clientStream);
-                        //if (clientStreams.Count <= 0)
-                        //{
-                        //    cameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
-                        //    cameraStream.Stop(CancellationToken.None);
-                        //}
+                        //UnHookCamera(clientStream.Key);
+                        //break;
                     }
 
                     clientStream.Value.Enqueue(image.Clone());

@@ -1,6 +1,4 @@
-﻿using CameraServer.Auth;
-
-namespace CameraServer.Models;
+﻿namespace CameraServer.Models;
 
 public class CameraSettings
 {

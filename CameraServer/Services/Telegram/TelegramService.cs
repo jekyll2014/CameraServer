@@ -1,5 +1,4 @@
 ﻿using CameraLib;
-
 using CameraServer.Auth;
 using CameraServer.Controllers;
 using CameraServer.Models;
@@ -482,7 +481,8 @@ namespace CameraServer.Services.Telegram
                         TelegramStreamId,
                         recordTime,
                         null,
-                        Settings.DefaultVideoQuality);
+                        Settings.DefaultVideoQuality,
+                        user.DefaultCodec);
                     await SendVideo(chatId, fileName, $"CameraStream#{cameraNumber} record",
                         cancellationToken: cancellationToken);
                     File.Delete(fileName);
@@ -630,6 +630,7 @@ namespace CameraServer.Services.Telegram
                             User = user.Login,
                             FrameFormat = new FrameFormatDto(),
                             Quality = 95,
+                            Codec = user.DefaultCodec
                         };
 
                         if (!string.IsNullOrEmpty(videoRecorderService.Start(recordTask)))

@@ -1,4 +1,6 @@
-﻿using QuickNV.Onvif;
+﻿using OpenCvSharp;
+
+using QuickNV.Onvif;
 using QuickNV.Onvif.Discovery;
 using QuickNV.Onvif.Media;
 
@@ -12,7 +14,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using OpenCvSharp;
+
 using IPAddress = System.Net.IPAddress;
 
 namespace CameraLib.IP
@@ -299,7 +301,7 @@ namespace CameraLib.IP
                 {
                     _cancellationTokenSourceCameraGrabber?.Cancel();
                     _captureTask?.Wait(5000);
-                    _captureDevice.Release();
+                    _captureDevice?.Release();
                 }
 
                 CurrentFrameFormat = null;

@@ -1,6 +1,5 @@
 ﻿using OpenCvSharp;
 
-using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 
 namespace CameraServer.Services.MotionDetection

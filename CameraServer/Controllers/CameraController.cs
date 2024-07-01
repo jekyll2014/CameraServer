@@ -1,5 +1,4 @@
 ﻿using CameraLib;
-
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
@@ -8,12 +7,14 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using OpenCvSharp;
+
 using Swashbuckle.AspNetCore.Annotations;
 
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
-using OpenCvSharp;
+
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
 namespace CameraServer.Controllers

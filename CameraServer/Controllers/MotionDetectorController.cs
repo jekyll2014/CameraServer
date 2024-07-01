@@ -1,5 +1,4 @@
 ﻿using CameraLib;
-
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
@@ -125,7 +124,8 @@ namespace CameraServer.Controllers
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            var userinfo = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+            var userRoles = userinfo?.Roles;
             if (userRoles == null || userRoles.Count == 0)
                 return BadRequest("No such camera");
 

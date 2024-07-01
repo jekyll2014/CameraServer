@@ -1,4 +1,4 @@
-﻿using CameraServer.Auth;
+﻿using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
 using Microsoft.AspNetCore.Authorization;

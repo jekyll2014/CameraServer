@@ -1,8 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using OpenCvSharp;
+
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-
-using OpenCvSharp;
 
 namespace CameraLib
 {

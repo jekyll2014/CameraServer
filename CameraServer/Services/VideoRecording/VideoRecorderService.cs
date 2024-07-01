@@ -4,8 +4,9 @@ using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 
-using System.Collections.Concurrent;
 using OpenCvSharp;
+
+using System.Collections.Concurrent;
 
 namespace CameraServer.Services.VideoRecording
 {
@@ -182,10 +183,23 @@ namespace CameraServer.Services.VideoRecording
             {
                 var currentTime = DateTime.Now;
                 var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}-{currentTime.ToString("yyyy-MM-dd")}-{currentTime.ToString("HH-mm-ss")}.mp4")}";
+                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
+                                                                 $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
+                                                                 $"-{currentTime.ToString("yyyy-MM-dd")}" +
+                                                                 $"-{currentTime.ToString("HH-mm-ss")}" +
+                                                                 $".{DefaultVideoFileExtencion}")}";
                 using (var recorder = new VideoRecorder(fileName,
-                           new FrameFormatDto { Width = 0, Height = 0, Format = string.Empty, Fps = camera.CameraStream.CurrentFps },
-                           newTask.Quality))
+                           new FrameFormatDto
+                           {
+                               Width = 0,
+                               Height = 0,
+                               Format = string.Empty,
+                               Fps = camera.CameraStream.CurrentFps
+                           },
+                           newTask.Quality)
+                {
+                    Codec = newTask.Codec
+                })
                 {
                     var timeOut = DateTime.Now.AddSeconds(Settings.VideoFileLengthSeconds);
                     while (DateTime.Now < timeOut && !cameraCancellationToken.IsCancellationRequested &&
@@ -195,14 +209,17 @@ namespace CameraServer.Services.VideoRecording
                         {
                             try
                             {
-                                recorder.SaveFrame(image);
+                                using (var img = image?.Clone())
+                                    recorder.SaveFrame(img);
                             }
                             catch (Exception ex)
                             {
                                 Console.WriteLine($"Exception while video file recording: {ex}");
                             }
-
-                            image?.Dispose();
+                            finally
+                            {
+                                image?.Dispose();
+                            }
                         }
                         else
                             await Task.Delay(10, CancellationToken.None);
@@ -233,12 +250,11 @@ namespace CameraServer.Services.VideoRecording
             uint recordLengthSec,
             FrameFormatDto? frameFormat = null,
             byte quality = 90,
+            string codec = "",
             Mat?[]? imageBuffer = null)
         {
             var currentTime = DateTime.Now;
-
             imageBuffer ??= Array.Empty<Mat?>();
-
             frameFormat ??= new FrameFormatDto();
             var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 streamId,
@@ -262,7 +278,7 @@ namespace CameraServer.Services.VideoRecording
             if (frameFormat.Fps <= 0)
                 frameFormat.Fps = camera.CameraStream.CurrentFps;
 
-            using (var recorder = new VideoRecorder(fileName, frameFormat, quality))
+            using (var recorder = new VideoRecorder(fileName, frameFormat, quality) { Codec = codec ?? "AVC" })
             {
                 if (imageBuffer.Length > 0)
                 {
@@ -270,8 +286,18 @@ namespace CameraServer.Services.VideoRecording
                     {
                         if (img != null && !img.IsDisposed)
                         {
-                            recorder.SaveFrame(img);
-                            img.Dispose();
+                            try
+                            {
+                                recorder.SaveFrame(img);
+                            }
+                            catch (Exception ex)
+                            {
+                            }
+                            finally
+                            {
+                                img?.Dispose();
+                            }
+
                         }
                     }
                 }

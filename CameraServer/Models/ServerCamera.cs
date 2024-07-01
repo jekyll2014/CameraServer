@@ -1,7 +1,5 @@
 ﻿using CameraLib;
 
-using CameraServer.Auth;
-
 namespace CameraServer.Models;
 
 public class ServerCamera : IServerCamera

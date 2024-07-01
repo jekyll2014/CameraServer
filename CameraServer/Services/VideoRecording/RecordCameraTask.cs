@@ -13,6 +13,7 @@ public class RecordCameraTask : RecordCameraSettingDto
         User = dto.User;
         FrameFormat = dto.FrameFormat;
         Quality = dto.Quality;
+        Codec = dto.Codec;
     }
 
     public override bool Equals(object? obj)
@@ -24,7 +25,8 @@ public class RecordCameraTask : RecordCameraSettingDto
                 && setting.CameraId == CameraId
                 && setting.User == User
                 && setting.FrameFormat.Equals(FrameFormat)
-                && setting.Quality == Quality)
+                && setting.Quality == Quality
+                && setting.Codec == Codec)
                 result = true;
         }
 
