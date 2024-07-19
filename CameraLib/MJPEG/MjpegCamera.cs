@@ -1,4 +1,6 @@
-﻿using OpenCvSharp;
+﻿using Microsoft.Extensions.Logging;
+
+using OpenCvSharp;
 
 using System;
 using System.Collections.Generic;
@@ -14,6 +16,7 @@ using System.Threading.Tasks;
 using System.Timers;
 
 using IPAddress = System.Net.IPAddress;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraLib.MJPEG
 {
@@ -39,6 +42,7 @@ namespace CameraLib.MJPEG
         public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
         private CancellationTokenSource? _cancellationTokenSource;
 
+        private readonly ILogger<MjpegCamera>? _logger;
         private readonly object _getPictureThreadLock = new object();
         private Mat? _frame;
         private Task? _imageGrabber;
@@ -60,8 +64,10 @@ namespace CameraLib.MJPEG
             string login = "",
             string password = "",
             int discoveryTimeout = 1000,
-            bool forceCameraConnect = false)
+            bool forceCameraConnect = false,
+            ILogger<MjpegCamera>? logger = null)
         {
+            _logger = logger;
             AuthenicationType = authenicationType;
             Login = login;
             Password = password;
@@ -96,13 +102,13 @@ namespace CameraLib.MJPEG
             _keepAliveTimer.Elapsed += CameraDisconnected;
         }
 
-        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        private async void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
             if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
-                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                _logger?.Log(LogLevel.Information, $"Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
-                Start(_width, _height, _format, _token);
+                await Start(_width, _height, _format, _token);
             }
         }
 
@@ -149,11 +155,10 @@ namespace CameraLib.MJPEG
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                _logger?.Log(LogLevel.Information, $"Can't connect to the camera: {ex}");
 
                 return false;
             }
-
 
             IsRunning = true;
 
@@ -180,7 +185,7 @@ namespace CameraLib.MJPEG
                 _stopCapture = true;
                 var timeOut = DateTime.Now.AddSeconds(100);
                 while (IsRunning && DateTime.Now < timeOut)
-                    Task.Delay(10);
+                    Thread.Sleep(10);
 
                 _imageGrabber?.Dispose();
                 _frame?.Dispose();
@@ -194,7 +199,7 @@ namespace CameraLib.MJPEG
             if (IsRunning)
             {
                 while (IsRunning && _frame == null && !token.IsCancellationRequested)
-                    await Task.Delay(10, token);
+                    Thread.Sleep(10);
 
                 lock (_getPictureThreadLock)
                 {
@@ -226,7 +231,7 @@ namespace CameraLib.MJPEG
                 var image = await GrabFrame(token);
                 if (image == null)
                 {
-                    await Task.Delay(100, token);
+                    Thread.Sleep(100);
                 }
                 else
                 {
@@ -286,7 +291,7 @@ namespace CameraLib.MJPEG
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
+                        _logger?.Log(LogLevel.Information, $"Can't get the image from camera: {ex}");
                     }
                     finally
                     {

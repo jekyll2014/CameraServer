@@ -12,13 +12,9 @@ public class MotionDetectionCameraSettingDto
 
     public void Merge(MotionDetectionCameraSettingDto newTask)
     {
-        foreach (var notification in newTask.Notifications)
-        {
-            if (Notifications.All(n => !n.Equals(notification)))
-            {
-                Notifications.Add(notification);
-            }
-        }
+        Notifications.AddRange(newTask.Notifications
+                 .Where(notification =>
+                     Notifications.All(n => !n.Equals(notification))));
     }
 
     public void TryRemove(NotificationParametersDto notification)

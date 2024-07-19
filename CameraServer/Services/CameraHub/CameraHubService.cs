@@ -9,21 +9,25 @@ using OpenCvSharp;
 
 using System.Collections.Concurrent;
 
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+
 namespace CameraServer.Services.CameraHub
 {
     public class CameraHubService
     {
         private const string CameraSettingsSection = "CameraSettings";
-        private readonly CameraSettings _cameraSettings;
+        private readonly ILogger<CameraHubService> _logger;
+        private readonly CameraSettings _settings;
         private readonly int _maxBuffer;
         public IEnumerable<ServerCamera> Cameras => _cameras.Keys;
 
         private readonly ConcurrentDictionary<ServerCamera, ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>> _cameras = new();
 
-        public CameraHubService(IConfiguration configuration)
+        public CameraHubService(IConfiguration configuration, ILogger<CameraHubService> logger)
         {
-            _cameraSettings = configuration.GetSection(CameraSettingsSection).Get<CameraSettings>() ?? new CameraSettings();
-            _maxBuffer = _cameraSettings.MaxFrameBuffer;
+            _logger = logger;
+            _settings = configuration.GetSection(CameraSettingsSection).Get<CameraSettings>() ?? new CameraSettings();
+            _maxBuffer = _settings.MaxFrameBuffer;
             RefreshCameraCollection(CancellationToken.None).Wait();
         }
 
@@ -40,18 +44,18 @@ namespace CameraServer.Services.CameraHub
             }
 
             List<CameraDescription> ipCameras = new();
-            if (_cameraSettings.AutoSearchIp)
+            if (_settings.AutoSearchIp)
             {
-                Console.WriteLine("Detecting IP cameras...");
-                ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_cameraSettings.DiscoveryTimeOut);
+                _logger.Log(LogLevel.Information, "Detecting IP cameras...");
+                ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
             }
 
-            Console.WriteLine("Adding predefined cameras...");
+            _logger.Log(LogLevel.Information, "Adding predefined cameras...");
 
             // add custom cameras again
-            Parallel.ForEach(_cameraSettings.CustomCameras, (c) =>
+            Parallel.ForEach(_settings.CustomCameras, (c) =>
             {
-                Console.WriteLine($"\t{c.Name}");
+                _logger.Log(LogLevel.Information, $"{c.Name}");
 
                 ServerCamera serverCamera;
                 if (c.Type == CameraType.IP)
@@ -63,8 +67,8 @@ namespace CameraServer.Services.CameraHub
                             authenicationType: c.AuthenicationType,
                             login: c.Login,
                             password: c.Password,
-                            discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
-                            forceCameraConnect: _cameraSettings.ForceCameraConnect),
+                            discoveryTimeout: _settings.DiscoveryTimeOut,
+                            forceCameraConnect: _settings.ForceCameraConnect),
                         c.AllowedRoles,
                         true);
                 }
@@ -77,8 +81,8 @@ namespace CameraServer.Services.CameraHub
                             authenicationType: c.AuthenicationType,
                             login: c.Login,
                             password: c.Password,
-                            discoveryTimeout: _cameraSettings.DiscoveryTimeOut,
-                            forceCameraConnect: _cameraSettings.ForceCameraConnect),
+                            discoveryTimeout: _settings.DiscoveryTimeOut,
+                            forceCameraConnect: _settings.ForceCameraConnect),
                         c.AllowedRoles,
                         true);
                 }
@@ -93,32 +97,32 @@ namespace CameraServer.Services.CameraHub
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
+                        _logger.Log(LogLevel.Error, ex.ToString());
                         return;
                     }
                 }
                 else
                     return;
 
-                serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                 _cameras.TryAdd(serverCamera,
                     new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
             });
 
-            if (_cameraSettings.AutoSearchUsbFC)
+            if (_settings.AutoSearchUsbFC)
             {
-                Console.WriteLine("Autodetecting USB_FC cameras...");
+                _logger.Log(LogLevel.Information, "Autodetecting USB_FC cameras...");
                 var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
                 foreach (var c in usbFcCameras)
-                    Console.WriteLine($"USB_FC-CameraStream: {c.Name} - [{c.Path}]");
+                    _logger.Log(LogLevel.Information, $"USB_FC-CameraStream: {c.Name} - [{c.Path}]");
 
                 // add newly discovered cameras
                 foreach (var c in usbFcCameras
                              .Where(c => _cameras
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
-                    var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                    var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _settings.DefaultAllowedRoles);
+                    serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                     _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
                 }
 
@@ -132,20 +136,20 @@ namespace CameraServer.Services.CameraHub
                 }
             }
 
-            if (_cameraSettings.AutoSearchIp)
+            if (_settings.AutoSearchIp)
             {
-                Console.WriteLine("Autodetecting IP cameras...");
+                _logger.Log(LogLevel.Information, "Autodetecting IP cameras...");
                 foreach (var c in ipCameras)
-                    Console.WriteLine($"IP-Camera: {c.Name} - [{c.Path}]");
+                    _logger.Log(LogLevel.Information, $"IP-Camera: {c.Name} - [{c.Path}]");
 
                 // add newly discovered cameras
                 foreach (var c in ipCameras
                              .Where(c => _cameras
                                  .All(n => n.Key.CameraStream.Description.Path != c.Path)))
                 {
-                    Console.WriteLine($"Adding IP-Camera: {c.Name} - [{c.Path}]");
-                    var serverCamera = new ServerCamera(new IpCamera(c.Path), _cameraSettings.DefaultAllowedRoles);
-                    serverCamera.CameraStream.FrameTimeout = _cameraSettings.FrameTimeout;
+                    _logger.Log(LogLevel.Information, $"Adding IP-Camera: {c.Name} - [{c.Path}]");
+                    var serverCamera = new ServerCamera(new IpCamera(c.Path), _settings.DefaultAllowedRoles);
+                    serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                     _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
                 }
 
@@ -159,7 +163,7 @@ namespace CameraServer.Services.CameraHub
                 }
             }
 
-            Console.WriteLine("Done.");
+            _logger.Log(LogLevel.Information, "Done.");
         }
 
         public async Task<CancellationToken> HookCamera(
@@ -176,7 +180,7 @@ namespace CameraServer.Services.CameraHub
                     cameraItem,
                     srcImageQueue))
             {
-                Console.WriteLine($"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
+                _logger.Log(LogLevel.Error, $"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
 
                 return CancellationToken.None;
             }
@@ -189,14 +193,14 @@ namespace CameraServer.Services.CameraHub
                         cameraItem.FrameFormat.Format,
                         CancellationToken.None))
                 {
-                    Console.WriteLine($"Faild to connect to camera {cameraItem.CameraId}");
+                    _logger.Log(LogLevel.Error, $"Failed to connect to camera {cameraItem.CameraId}");
 
                     return CancellationToken.None;
                 }
 
-                Console.WriteLine($"Camera {cameraItem.CameraId} connected");
+                _logger.Log(LogLevel.Information, $"Camera {cameraItem.CameraId} connected");
             }
-            Console.WriteLine($"Client {cameraItem.QueueId} attached to camera {cameraItem.CameraId}");
+            _logger.Log(LogLevel.Information, $"Client {cameraItem.QueueId} attached to camera {cameraItem.CameraId}");
 
             return camera.Key.CameraStream.CancellationToken;
         }
@@ -211,18 +215,18 @@ namespace CameraServer.Services.CameraHub
 
             if (camera.Value.TryRemove(cameraItem, out _))
             {
-                Console.WriteLine($"Client {cameraItem.QueueId} detached from camera {cameraItem.CameraId}");
+                _logger.Log(LogLevel.Information, $"Client {cameraItem.QueueId} detached from camera {cameraItem.CameraId}");
 
                 if (camera.Key != null && camera.Value.Count <= 0)
                 {
                     camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
                     camera.Key.CameraStream.Stop();
-                    Console.WriteLine($"Camera {cameraItem.CameraId} disconnected");
+                    _logger.Log(LogLevel.Information, $"Camera {cameraItem.CameraId} disconnected");
                 }
             }
             else
             {
-                Console.WriteLine($"Failed to detach client {cameraItem.QueueId} from camera {cameraItem.CameraId}");
+                _logger.Log(LogLevel.Error, $"Failed to detach client {cameraItem.QueueId} from camera {cameraItem.CameraId}");
             }
 
             return true;
@@ -260,7 +264,9 @@ namespace CameraServer.Services.CameraHub
                     {
                         while (clientStream.Value.TryDequeue(out var frame))
                             frame?.Dispose();
-                        Console.WriteLine($"Camera {clientStream.Key.CameraId} queue is full");
+
+                        _logger.Log(LogLevel.Information, $"Camera {clientStream.Key.CameraId} queue is full");
+
                         // stop streaming if consumer can't cosume fast enough
                         //UnHookCamera(clientStream.Key);
                         //break;

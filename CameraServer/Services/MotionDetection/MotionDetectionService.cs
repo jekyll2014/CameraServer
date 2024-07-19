@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using Telegram.Bot.Types;
 
 using File = System.IO.File;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Services.MotionDetection
 {
@@ -25,6 +26,7 @@ namespace CameraServer.Services.MotionDetection
         private readonly CameraHubService _collection;
         private readonly VideoRecorderService _videoRecorderService;
         private readonly TelegramService _telegramService;
+        private readonly ILogger<MotionDetectionService> _logger;
         public readonly MotionDetectionSettings Settings;
         public readonly Config<List<MotionDetectionCameraSettingDto>> TaskConfig = new Config<List<MotionDetectionCameraSettingDto>>(MotioDetectorTempConfig);
 
@@ -41,8 +43,10 @@ namespace CameraServer.Services.MotionDetection
             IUserManager manager,
             CameraHubService collection,
             VideoRecorderService videoRecorderService,
-            TelegramService telegramService)
+            TelegramService telegramService,
+            ILogger<MotionDetectionService> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
             _videoRecorderService = videoRecorderService;
@@ -58,7 +62,7 @@ namespace CameraServer.Services.MotionDetection
             {
                 try
                 {
-                    Console.WriteLine($"Starting motion detector for: {record.CameraId}");
+                    _logger.Log(LogLevel.Information, $"Starting motion detector for: {record.CameraId}");
                     if (!string.IsNullOrEmpty(Start(record)))
                     {
                         throw new Exception("Motion detector not started");
@@ -66,7 +70,7 @@ namespace CameraServer.Services.MotionDetection
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't start motion detection: {ex}");
+                    _logger.Log(LogLevel.Error, $"Can't start motion detection: {ex}");
                 }
             }
 
@@ -76,7 +80,7 @@ namespace CameraServer.Services.MotionDetection
             {
                 try
                 {
-                    Console.WriteLine($"Restoring motion detector for: {record.CameraId}");
+                    _logger.Log(LogLevel.Information, $"Restoring motion detector for: {record.CameraId}");
 
                     if (string.IsNullOrEmpty(Start(record)))
                     {
@@ -85,7 +89,7 @@ namespace CameraServer.Services.MotionDetection
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't restore motion detection: {ex}");
+                    _logger.Log(LogLevel.Error, $"Can't restore motion detection: {ex}");
                 }
             }
         }
@@ -128,7 +132,8 @@ namespace CameraServer.Services.MotionDetection
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error finding camera: {ex.Message}");
+                _logger.Log(LogLevel.Error, $"Error finding camera: {ex.Message}");
+
                 throw new ApplicationException($"User [{detectTask.User}] not authorised to start recording.");
             }
 
@@ -204,7 +209,7 @@ namespace CameraServer.Services.MotionDetection
             var userDto = _manager.GetUserInfo(newTask.User);
             if (userDto == null)
             {
-                Console.WriteLine($"User [{newTask.User}] not found");
+                _logger.Log(LogLevel.Error, $"User [{newTask.User}] not found");
                 throw new ApplicationException($"User [{newTask.User}] not found.");
             }
 
@@ -215,7 +220,7 @@ namespace CameraServer.Services.MotionDetection
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error finding camera: {ex.Message}");
+                _logger.Log(LogLevel.Error, $"Error finding camera: {ex.Message}");
                 throw new ApplicationException($"User [{newTask.User}] not authorised to start recording.");
             }
 
@@ -228,26 +233,27 @@ namespace CameraServer.Services.MotionDetection
 
             if (cameraCancellationToken == CancellationToken.None)
             {
-                Console.WriteLine($"Can not connect to camera [{camera.CameraStream.Description.Path}]");
+                _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
 
                 return;
             }
 
             //start looking for motion
             var stopTask = false;
+            newTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
             using (var motionDetector = new MotionDetector(newTask.MotionDetectParameters))
             {
                 var lastImagesQueue = new ConcurrentQueue<Mat>();
                 var maxBufferCount = Settings.DefaultMotionDetectParametersDto.KeepImageBuffer;
                 while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
                 {
-                    if (imageQueue.TryDequeue(out var image) && image != null)
+                    if (imageQueue.TryDequeue(out var image))
                     {
                         lastImagesQueue.Enqueue(image);
                         if (motionDetector.DetectMovement(image))
                         {
-                            Console.WriteLine("Motion detected!!!");
-                            var imageBuffer = lastImagesQueue?.ToArray().Select(n => n?.Clone()).ToArray() ?? Array.Empty<Mat?>();
+                            _logger.Log(LogLevel.Information, "Motion detected!!!");
+                            var imageBuffer = lastImagesQueue.ToArray().Select(n => n?.Clone()).ToArray();
 
                             SendNotifications(newTask.Notifications,
                                 camera,
@@ -264,7 +270,7 @@ namespace CameraServer.Services.MotionDetection
                         }
                     }
                     else
-                        await Task.Delay(10, CancellationToken.None);
+                        Thread.Sleep(10);
 
                     stopTask = !_detectorTasks.TryGetValue(newTask, out _);
                 }
@@ -310,7 +316,7 @@ namespace CameraServer.Services.MotionDetection
             if (videoNotifications.Length != 0)
             {
                 SendMovementVideoMulti(camera, videoNotifications, user.DefaultCodec, bufferedImages,
-                    _telegramService.Settings.DefaultVideoQuality);
+                    _telegramService._settings.DefaultVideoQuality);
             }
 
             var textNotifications = notificationParams
@@ -365,7 +371,7 @@ namespace CameraServer.Services.MotionDetection
 
         private void SendMovementImageMulti(IServerCamera camera, Mat image, NotificationParametersDto[] notificationParams)
         {
-            if (notificationParams == null || !notificationParams.Any())
+            if (notificationParams.Length <= 0)
                 return;
 
             Task.Run(async () =>
@@ -412,12 +418,12 @@ namespace CameraServer.Services.MotionDetection
                                 new ImageEncodingParam[]
                                 {
                                     new(ImwriteFlags.JpegOptimize, 1),
-                                    new(ImwriteFlags.JpegQuality, _videoRecorderService.Settings.DefaultVideoQuality)
+                                    new(ImwriteFlags.JpegQuality, _videoRecorderService._settings.DefaultVideoQuality)
                                 }));
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error saving image file: {ex}");
+                        _logger.Log(LogLevel.Error, $"Error saving image file: {ex}");
                     }
                 }
 

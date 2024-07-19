@@ -6,7 +6,7 @@ namespace CameraServer.Services.MotionDetection
 {
     public class MotionDetector : IDisposable
     {
-        private const int DetectorRestartMs = 10000;
+        private const int DETECTOR_RESTART_MS = 10000;
 
         private readonly uint _detectorDelayMs;
         private readonly byte _noiseThreshold;
@@ -30,91 +30,69 @@ namespace CameraServer.Services.MotionDetection
 
         public bool DetectMovement(Mat? frame)
         {
-            if (frame == null)
-                return false;
-
-            var result = false;
-            var currentTime = DateTime.Now;
-            if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DetectorRestartMs - _detectorDelayMs))
-                _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
-
-            // movement detection
-            if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
+            using (var image = frame?.Clone())
             {
-                // resize
-                var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+                if (image == null)
+                    return false;
 
-                // compare
-                var imgAbsDiff = new Mat();
-                Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
-#if DEBUG
-                File.WriteAllBytes("diff.jpg", imgAbsDiff.ToBytes(".jpg"));
-#endif
+                var result = false;
+                var currentTime = DateTime.Now;
+                if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DETECTOR_RESTART_MS - _detectorDelayMs))
+                    _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
 
-                // filter out the noise
-                var imgThreshold = new Mat();
-                Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
-
-                // Find contours around the blobs
-                var imgThreshold2 = new Mat();
-                Cv2.CvtColor(imgThreshold, imgThreshold2, ColorConversionCodes.BGR2GRAY); //COLOR_BGR2GRAY
-
-                Cv2.FindContours(imgThreshold2, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxTC89L1);
-#if DEBUG
-                var colorFrame = imgThreshold.Clone();
-#endif
-                //Find big blobs to activate alarm
-                var n = 0;
-                foreach (var c in contours)
+                // movement detection
+                if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
                 {
-                    var r = Cv2.BoundingRect(c);
-                    var pixelCount = CountPixels(imgThreshold2, r);
-                    if (pixelCount >= _changeLimit)
-                    {
-#if DEBUG
-                        Cv2.DrawContours(colorFrame, contours, n, Scalar.Green);
-                        Cv2.Rectangle(colorFrame, r, Scalar.Green);
-#endif
-                        result = true;
-                        break;
-                    }
-#if DEBUG
-                    else
-                    {
-                        Cv2.Rectangle(colorFrame, r, Scalar.Red);
-                        Cv2.Rectangle(colorFrame, r, Scalar.Red);
-                    }
+                    // resize
+                    var currFrame = image.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
-                    for (var i = 1; i < c.Length; i++)
+                    // compare
+                    var imgAbsDiff = new Mat();
+                    Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
+
+                    // filter out the noise
+                    var imgThreshold = new Mat();
+                    Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
+                    imgAbsDiff.Dispose();
+
+                    // Find contours around the blobs
+                    var imgGrayscale = new Mat();
+                    Cv2.CvtColor(imgThreshold, imgGrayscale, ColorConversionCodes.BGR2GRAY);
+                    imgThreshold.Dispose();
+                    Cv2.FindContours(imgGrayscale, out var contours, out _, RetrievalModes.External,
+                        ContourApproximationModes.ApproxTC89L1);
+
+                    //Find big blobs to activate alarm
+                    foreach (var c in contours)
                     {
-                        Cv2.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), Scalar.Blue);
+                        var r = Cv2.BoundingRect(c);
+                        var pixelCount = CountPixels(imgGrayscale, r);
+                        if (pixelCount >= _changeLimit)
+                        {
+                            result = true;
+                            break;
+                        }
                     }
-#endif
-                    n++;
+                    imgGrayscale.Dispose();
+
+                    _prevFrame.Dispose();
+                    _prevFrame = currFrame;
+                    _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
                 }
+                else
+                    _prevFrame = image.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
-#if DEBUG
-                File.WriteAllBytes("threshold_cnt.jpg", colorFrame.ToBytes(".jpg"));
-                colorFrame.Dispose();
-#endif
-                _prevFrame.Dispose();
-                _prevFrame = currFrame;
-                _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
-
-                imgAbsDiff.Dispose();
-                imgThreshold.Dispose();
-                imgThreshold2.Dispose();
+                return result;
             }
-            else _prevFrame ??= frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
-
-            return result;
         }
 
         private static int CountPixels(Mat image, Rect r)
         {
-            var count = image.Clone(r).CountNonZero();
+            var region = image.Clone(r);
+            var count = region?.CountNonZero();
+            region?.Dispose();
 
-            return count;
+            return count ?? 0;
         }
 
         protected virtual void Dispose(bool disposing)

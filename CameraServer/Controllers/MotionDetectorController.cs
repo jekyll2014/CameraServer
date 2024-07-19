@@ -1,4 +1,5 @@
 ﻿using CameraLib;
+
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
@@ -25,9 +26,15 @@ namespace CameraServer.Controllers
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
         private readonly MotionDetectionService _motionDetector;
+        private readonly ILogger<MotionDetectorController> _logger;
 
-        public MotionDetectorController(IUserManager manager, CameraHubService collection, MotionDetectionService motionDetector)
+        public MotionDetectorController(
+            IUserManager manager,
+            CameraHubService collection,
+            MotionDetectionService motionDetector,
+            ILogger<MotionDetectorController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
             _motionDetector = motionDetector;
@@ -140,7 +147,8 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception happened during finding the camera[{cameraNumber}]: {e}");
+
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             }
 
@@ -177,7 +185,7 @@ namespace CameraServer.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Can't start recording: {ex}");
+                _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
                 return BadRequest(ex);
             }
         }

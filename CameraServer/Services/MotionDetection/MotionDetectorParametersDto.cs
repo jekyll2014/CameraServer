@@ -13,7 +13,7 @@ public class MotionDetectorParametersDto
     public override bool Equals(object? obj)
     {
         var result = false;
-        if (obj != null && obj is MotionDetectorParametersDto setting)
+        if (obj is MotionDetectorParametersDto setting)
         {
             if (setting.Width == Width
                 && setting.Height == Height

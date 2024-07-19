@@ -8,6 +8,8 @@ using OpenCvSharp;
 
 using System.Collections.Concurrent;
 
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+
 namespace CameraServer.Services.VideoRecording
 {
     public class VideoRecorderService : IHostedService, IDisposable
@@ -19,7 +21,8 @@ namespace CameraServer.Services.VideoRecording
 
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
-        public readonly RecorderSettings Settings;
+        private readonly ILogger<VideoRecorderService> _logger;
+        public readonly RecorderSettings _settings;
         public readonly Config<List<RecordCameraSettingDto>> TaskConfig = new Config<List<RecordCameraSettingDto>>(VideoRecorderTempConfig);
 
         public IEnumerable<string> TaskList => _recorderTasks.Select(n => n.Key.TaskId);
@@ -27,26 +30,31 @@ namespace CameraServer.Services.VideoRecording
 
         private bool _disposedValue;
 
-        public VideoRecorderService(IConfiguration configuration, IUserManager manager, CameraHubService collection)
+        public VideoRecorderService(
+            IConfiguration configuration,
+            IUserManager manager,
+            CameraHubService collection,
+            ILogger<VideoRecorderService> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
-            Settings = configuration.GetSection(RecorderConfigSection)?.Get<RecorderSettings>() ?? new RecorderSettings();
-            Directory.CreateDirectory(Settings.StoragePath);
+            _settings = configuration.GetSection(RecorderConfigSection)?.Get<RecorderSettings>() ?? new RecorderSettings();
+            Directory.CreateDirectory(_settings.StoragePath);
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            foreach (var record in Settings.RecordCameras)
+            foreach (var record in _settings.RecordCameras)
             {
                 try
                 {
-                    Console.WriteLine($"Starting recording for: {record.CameraId}");
+                    _logger.Log(Microsoft.Extensions.Logging.LogLevel.Information, $"Starting recording for: {record.CameraId}");
                     Start(record);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't start recording: {ex}");
+                    _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
                 }
             }
 
@@ -56,7 +64,7 @@ namespace CameraServer.Services.VideoRecording
             {
                 try
                 {
-                    Console.WriteLine($"Restoring recording for: {record.CameraId}");
+                    _logger.Log(LogLevel.Information, $"Restoring recording for: {record.CameraId}");
 
                     if (string.IsNullOrEmpty(Start(record)))
                     {
@@ -65,7 +73,7 @@ namespace CameraServer.Services.VideoRecording
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Can't restore recording: {ex}");
+                    _logger.Log(LogLevel.Error, $"Can't restore recording: {ex}");
                 }
             }
         }
@@ -82,7 +90,7 @@ namespace CameraServer.Services.VideoRecording
                 throw new ApplicationException($"User [{recordTask.User}] not authorised to start recording.");
 
             if (recordTask.Quality <= 0)
-                recordTask.Quality = Settings.DefaultVideoQuality;
+                recordTask.Quality = _settings.DefaultVideoQuality;
 
             ServerCamera camera;
             try
@@ -91,7 +99,7 @@ namespace CameraServer.Services.VideoRecording
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error finding camera: {ex.Message}");
+                _logger.Log(LogLevel.Error, $"Error finding camera: {ex.Message}");
                 throw new ApplicationException($"User [{recordTask.User}] not authorised to start recording.");
             }
 
@@ -153,6 +161,9 @@ namespace CameraServer.Services.VideoRecording
         private async Task RecordingTask(RecordCameraTask newTask)
         {
             var userDto = _manager.GetUserInfo(newTask.User);
+            if (userDto == null)
+                throw new Exception($"User {newTask.User} info not found");
+
             ServerCamera camera;
             try
             {
@@ -160,7 +171,7 @@ namespace CameraServer.Services.VideoRecording
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error finding camera: {ex.Message}");
+                _logger.Log(LogLevel.Error, $"Error finding camera: {ex.Message}");
                 throw new ApplicationException($"User [{newTask.User}] not authorised to start recording.");
             }
 
@@ -173,7 +184,7 @@ namespace CameraServer.Services.VideoRecording
 
             if (cameraCancellationToken == CancellationToken.None)
             {
-                Console.WriteLine($"Can not connect to camera [{camera.CameraStream.Description.Path}]");
+                _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
 
                 return;
             }
@@ -182,7 +193,7 @@ namespace CameraServer.Services.VideoRecording
             while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
             {
                 var currentTime = DateTime.Now;
-                var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
+                var fileName = $"{_settings.StoragePath.TrimEnd('\\')}\\" +
                                $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
                                                                  $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
                                                                  $"-{currentTime.ToString("yyyy-MM-dd")}" +
@@ -196,12 +207,13 @@ namespace CameraServer.Services.VideoRecording
                                Format = string.Empty,
                                Fps = camera.CameraStream.CurrentFps
                            },
-                           newTask.Quality)
+                           newTask.Quality,
+                           _logger)
                 {
                     Codec = newTask.Codec
                 })
                 {
-                    var timeOut = DateTime.Now.AddSeconds(Settings.VideoFileLengthSeconds);
+                    var timeOut = DateTime.Now.AddSeconds(_settings.VideoFileLengthSeconds);
                     while (DateTime.Now < timeOut && !cameraCancellationToken.IsCancellationRequested &&
                            !stopTask)
                     {
@@ -209,12 +221,11 @@ namespace CameraServer.Services.VideoRecording
                         {
                             try
                             {
-                                using (var img = image?.Clone())
-                                    recorder.SaveFrame(img);
+                                recorder.SaveFrame(image);
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Exception while video file recording: {ex}");
+                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
                             }
                             finally
                             {
@@ -222,7 +233,7 @@ namespace CameraServer.Services.VideoRecording
                             }
                         }
                         else
-                            await Task.Delay(10, CancellationToken.None);
+                            Thread.Sleep(10);
 
                         stopTask = !_recorderTasks.TryGetValue(newTask, out _);
                     }
@@ -278,26 +289,24 @@ namespace CameraServer.Services.VideoRecording
             if (frameFormat.Fps <= 0)
                 frameFormat.Fps = camera.CameraStream.CurrentFps;
 
-            using (var recorder = new VideoRecorder(fileName, frameFormat, quality) { Codec = codec ?? "AVC" })
+            using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
             {
+                recorder.Codec = codec;
                 if (imageBuffer.Length > 0)
                 {
-                    foreach (var img in imageBuffer)
+                    foreach (var image in imageBuffer)
                     {
-                        if (img != null && !img.IsDisposed)
+                        try
                         {
-                            try
-                            {
-                                recorder.SaveFrame(img);
-                            }
-                            catch (Exception ex)
-                            {
-                            }
-                            finally
-                            {
-                                img?.Dispose();
-                            }
-
+                            recorder.SaveFrame(image);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                        }
+                        finally
+                        {
+                            image?.Dispose();
                         }
                     }
                 }
@@ -309,11 +318,13 @@ namespace CameraServer.Services.VideoRecording
                     {
                         try
                         {
-                            recorder.SaveFrame(image);
+                            using (var img = image?.Clone())
+                                recorder.SaveFrame(img);
                         }
                         catch (Exception ex)
                         {
                             timeOut = DateTime.Now;
+                            _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
                         }
                         finally
                         {
@@ -321,7 +332,7 @@ namespace CameraServer.Services.VideoRecording
                         }
                     }
                     else
-                        await Task.Delay(10, CancellationToken.None);
+                        Thread.Sleep(10);
                 }
 
                 _collection.UnHookCamera(newCameraItem);

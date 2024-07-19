@@ -20,11 +20,10 @@ namespace CameraServer.Auth.BasicAuth
             IOptionsMonitor<AuthenticationSchemeOptions> options,
             IConfiguration configuration,
             ILoggerFactory logger,
-            ISystemClock systemClock,
             UrlEncoder encoder,
             IUserManager manager,
             IHttpContextAccessor accessor) :
-            base(options, logger, encoder, systemClock)
+            base(options, logger, encoder)
         {
             _configuration = configuration;
             _manager = manager;
@@ -82,22 +81,26 @@ namespace CameraServer.Auth.BasicAuth
 
                         var identity = new ClaimsIdentity(authClaims, "Basic");
                         var claimsPrincipal = new ClaimsPrincipal(identity);
+
                         return await Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(claimsPrincipal, Scheme.Name)));
                     }
                     else
                     {
                         Response.StatusCode = 401;
+
                         return await Task.FromResult(AuthenticateResult.Fail(LoginFailedMessage));
                     }
                 }
                 catch (AuthenticationException ex)
                 {
                     Response.StatusCode = 401;
+
                     return await Task.FromResult(AuthenticateResult.Fail(ex.Message));
                 }
             }
 
             Response.StatusCode = 401;
+
             return await Task.FromResult(AuthenticateResult.Fail("Invalid Authorization Header"));
         }
     }

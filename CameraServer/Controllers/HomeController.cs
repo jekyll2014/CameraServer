@@ -9,9 +9,11 @@ namespace CameraServer.Controllers
     public class HomeController : Controller
     {
         private readonly CameraHubService _collection;
+        private readonly ILogger<HomeController> _logger;
 
-        public HomeController(CameraHubService collection)
+        public HomeController(CameraHubService collection, ILogger<HomeController> logger)
         {
+            _logger = logger;
             _collection = collection;
         }
 

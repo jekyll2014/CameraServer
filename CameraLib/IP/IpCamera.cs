@@ -1,4 +1,6 @@
-﻿using OpenCvSharp;
+﻿using Microsoft.Extensions.Logging;
+
+using OpenCvSharp;
 
 using QuickNV.Onvif;
 using QuickNV.Onvif.Discovery;
@@ -16,6 +18,7 @@ using System.Threading.Tasks;
 using System.Timers;
 
 using IPAddress = System.Net.IPAddress;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraLib.IP
 {
@@ -33,6 +36,7 @@ namespace CameraLib.IP
         private CancellationTokenSource? _cancellationTokenSource;
         private CancellationTokenSource? _cancellationTokenSourceCameraGrabber;
 
+        private static ILogger<IpCamera>? _logger;
         private static List<CameraDescription> _lastCamerasFound = new List<CameraDescription>();
         private readonly object _getPictureThreadLock = new object();
         private VideoCapture? _captureDevice;
@@ -55,8 +59,10 @@ namespace CameraLib.IP
             string login = "",
             string password = "",
             int discoveryTimeout = 1000,
-            bool forceCameraConnect = false)
+            bool forceCameraConnect = false,
+            ILogger<IpCamera>? logger = null)
         {
+            _logger = logger;
             if (authenicationType == AuthType.Plain)
                 path = string.Format(path, login, password);
 
@@ -65,7 +71,7 @@ namespace CameraLib.IP
                 : name;
 
             if (_lastCamerasFound.Count == 0)
-                _lastCamerasFound = DiscoverOnvifCamerasAsync(discoveryTimeout).Result;
+                _lastCamerasFound = DiscoverOnvifCameraAsync(path).Result;
 
             var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? new List<FrameFormat>();
 
@@ -95,7 +101,7 @@ namespace CameraLib.IP
         {
             if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
-                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                _logger?.Log(LogLevel.Information, $"Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
                 await Start(_width, _height, _format, _token);
             }
@@ -108,7 +114,7 @@ namespace CameraLib.IP
             var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
             var devices = await discovery.RunDiscovery();
 
-            Console.WriteLine($"Found {devices.Length} cameras");
+            _logger?.Log(LogLevel.Information, $"Found {devices.Length} cameras");
 
             if (devices.Length == 0)
             {
@@ -117,7 +123,7 @@ namespace CameraLib.IP
 
             foreach (var device in devices)
             {
-                Console.WriteLine($"Detecting media size: {device.ServiceAddresses[0]}");
+                _logger?.Log(LogLevel.Information, $"Detecting media size: {device.ServiceAddresses[0]}");
 
                 var uri = new Uri(device.ServiceAddresses[0]);
                 var client = new OnvifClient(new OnvifClientOptions
@@ -133,7 +139,7 @@ namespace CameraLib.IP
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
+                    _logger?.Log(LogLevel.Information, $"Can not connect to camera: {uri}; {ex}");
 
                     //continue;
                 }
@@ -158,14 +164,57 @@ namespace CameraLib.IP
                 }
             }
 
-            _lastCamerasFound = result;
-
             return result;
         }
 
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
             return DiscoverOnvifCamerasAsync(discoveryTimeout).Result;
+        }
+
+        public static async Task<List<CameraDescription>> DiscoverOnvifCameraAsync(string deviceUrl)
+        {
+            var result = new List<CameraDescription>();
+
+            var uri = new Uri(deviceUrl);
+            var client = new OnvifClient(new OnvifClientOptions
+            {
+                Scheme = "http",
+                Host = uri.Host,
+                Port = 8899
+            });
+
+            try
+            {
+                await client.ConnectAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log(LogLevel.Information, $"Can not connect to camera: {uri}; {ex.Message}");
+
+                return result;
+            }
+
+            var mediaClient = new MediaClient(client);
+            var profilesResponse = await mediaClient.GetProfilesAsync();
+
+            foreach (var profile in profilesResponse.Profiles)
+            {
+                var stream = await mediaClient.QuickOnvif_GetStreamUriAsync(profile.token, true);
+                result.Add(new CameraDescription(
+                    CameraType.IP,
+                    stream,
+                    $"{client.DeviceInformation.Manufacturer} {client.DeviceInformation.Model} [{deviceUrl}]",
+                    new FrameFormat[]
+                    {
+                            new(profile.VideoEncoderConfiguration.Resolution.Width,
+                                profile.VideoEncoderConfiguration.Resolution.Height,
+                                profile.VideoEncoderConfiguration.Encoding.ToString(),
+                                profile.VideoEncoderConfiguration.RateControl.FrameRateLimit)
+                    }));
+            }
+
+            return result;
         }
 
         private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
@@ -194,7 +243,7 @@ namespace CameraLib.IP
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                _logger?.Log(LogLevel.Information, $"Can't get the image from camera: {ex}");
 
                 return false;
             }
@@ -225,7 +274,7 @@ namespace CameraLib.IP
                     if (_captureDevice.Grab())
                         ImageCaptured();
                     else
-                        Task.Delay(10, _cancellationTokenSourceCameraGrabber.Token);
+                        Thread.Sleep(10);
                 }
             }, _cancellationTokenSourceCameraGrabber.Token);
 
@@ -315,7 +364,7 @@ namespace CameraLib.IP
             if (IsRunning)
             {
                 while (IsRunning && _frame == null && !token.IsCancellationRequested)
-                    await Task.Delay(10, token);
+                    Thread.Sleep(10);
 
                 lock (_getPictureThreadLock)
                 {
@@ -342,7 +391,7 @@ namespace CameraLib.IP
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    _logger?.Log(LogLevel.Information, $"Can't get the image from camera: {ex}");
                 }
 
                 _captureDevice.Release();
@@ -359,7 +408,7 @@ namespace CameraLib.IP
                 var image = await GrabFrame(token);
                 if (image == null)
                 {
-                    await Task.Delay(100, token);
+                    Thread.Sleep(100);
                 }
                 else
                 {

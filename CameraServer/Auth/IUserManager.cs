@@ -1,6 +1,6 @@
-﻿using System.Net;
+﻿using CameraServer.Models;
 
-using CameraServer.Models;
+using System.Net;
 
 namespace CameraServer.Auth;
 

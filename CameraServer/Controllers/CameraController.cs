@@ -1,4 +1,5 @@
 ﻿using CameraLib;
+
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
@@ -16,6 +17,7 @@ using System.Net;
 using System.Text;
 
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Controllers
 {
@@ -28,9 +30,14 @@ namespace CameraServer.Controllers
         private const string Boundary = "--boundary";
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
+        private readonly ILogger<CameraController> _logger;
 
-        public CameraController(IUserManager manager, CameraHubService collection)
+        public CameraController(
+            IUserManager manager,
+            CameraHubService collection,
+            ILogger<CameraController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
         }
@@ -137,7 +144,7 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception happened during finding the camera[{cameraNumber}]: {e}");
                 return Problem("Can not find camera#",
                     cameraNumber.ToString(),
                     StatusCodes.Status204NoContent);
@@ -167,7 +174,6 @@ namespace CameraServer.Controllers
                 qlt = 100;
             try
             {
-
                 Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
                 while (!Request.HttpContext.RequestAborted.IsCancellationRequested
                        && !Response.HttpContext.RequestAborted.IsCancellationRequested
@@ -210,13 +216,13 @@ namespace CameraServer.Controllers
                     }
                     else
                     {
-                        await Task.Delay(10, Response.HttpContext.RequestAborted);
+                        Thread.Sleep(10);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                _logger.Log(LogLevel.Error, ex.ToString());
             }
 
             _collection.UnHookCamera(newCameraItem);

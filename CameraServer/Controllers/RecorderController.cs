@@ -1,4 +1,5 @@
 ﻿using CameraLib;
+
 using CameraServer.Auth;
 using CameraServer.Models;
 using CameraServer.Services.CameraHub;
@@ -25,9 +26,15 @@ namespace CameraServer.Controllers
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
         private readonly VideoRecorderService _recorder;
+        private readonly ILogger<RecorderController> _logger;
 
-        public RecorderController(IUserManager manager, CameraHubService collection, VideoRecorderService recorder)
+        public RecorderController(
+            IUserManager manager,
+            CameraHubService collection,
+            VideoRecorderService recorder,
+            ILogger<RecorderController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
             _recorder = recorder;
@@ -92,7 +99,7 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception finding the camera[{cameraNumber}]: {e}");
 
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             }
@@ -115,11 +122,13 @@ namespace CameraServer.Controllers
                 };
 
                 var taskId = _recorder.Start(recordTask);
+
                 return Ok(taskId);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Can't start recording: {ex}");
+                _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
+
                 return BadRequest(ex);
             }
         }

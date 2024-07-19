@@ -1,5 +1,7 @@
 ﻿using FlashCap;
 
+using Microsoft.Extensions.Logging;
+
 using OpenCvSharp;
 
 using System;
@@ -10,6 +12,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraLib.FlashCap
 {
@@ -27,6 +31,7 @@ namespace CameraLib.FlashCap
 
         private CancellationTokenSource? _cancellationTokenSource;
 
+        private readonly ILogger<UsbCameraFc>? _logger;
         private readonly CaptureDeviceDescriptor _usbCamera;
         private CaptureDevice? _captureDevice;
         private Mat? _frame;
@@ -42,8 +47,9 @@ namespace CameraLib.FlashCap
 
         private bool _disposedValue;
 
-        public UsbCameraFc(string path, string name = "")
+        public UsbCameraFc(string path, string name = "", ILogger<UsbCameraFc>? logger = null)
         {
+            _logger = logger;
             var devices = new CaptureDevices();
             var descriptors = devices
                 .EnumerateDescriptors()
@@ -63,13 +69,13 @@ namespace CameraLib.FlashCap
             _keepAliveTimer.Elapsed += CameraDisconnected;
         }
 
-        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        private async void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
             if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
-                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                _logger?.Log(LogLevel.Information, $"Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
-                Start(_width, _height, _format, _token);
+                await Start(_width, _height, _format, _token);
             }
         }
 
@@ -260,7 +266,7 @@ namespace CameraLib.FlashCap
             if (IsRunning)
             {
                 while (IsRunning && _frame == null && !token.IsCancellationRequested)
-                    await Task.Delay(10, token);
+                    Thread.Sleep(10);
 
                 lock (_getPictureThreadLock)
                 {
@@ -285,7 +291,7 @@ namespace CameraLib.FlashCap
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex);
+                    _logger?.Log(LogLevel.Information, $"Can't get the image from camera: {ex}");
                 }
             }, token);
 
@@ -299,7 +305,7 @@ namespace CameraLib.FlashCap
                 var image = await GrabFrame(token);
                 if (image == null)
                 {
-                    await Task.Delay(100, token);
+                    Thread.Sleep(100);
                 }
                 else
                 {
