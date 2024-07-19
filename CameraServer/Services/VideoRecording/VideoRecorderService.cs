@@ -180,78 +180,88 @@ namespace CameraServer.Services.VideoRecording
                 newTask.FrameFormat);
 
             var imageQueue = new ConcurrentQueue<Mat>();
-            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
-
-            if (cameraCancellationToken == CancellationToken.None)
+            try
             {
-                _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
+                var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
-                return;
-            }
-
-            var stopTask = false;
-            while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
-            {
-                var currentTime = DateTime.Now;
-                var fileName = $"{_settings.StoragePath.TrimEnd('\\')}\\" +
-                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
-                                                                 $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
-                                                                 $"-{currentTime.ToString("yyyy-MM-dd")}" +
-                                                                 $"-{currentTime.ToString("HH-mm-ss")}" +
-                                                                 $".{DefaultVideoFileExtencion}")}";
-                using (var recorder = new VideoRecorder(fileName,
-                           new FrameFormatDto
-                           {
-                               Width = 0,
-                               Height = 0,
-                               Format = string.Empty,
-                               Fps = camera.CameraStream.CurrentFps
-                           },
-                           newTask.Quality,
-                           _logger)
+                if (cameraCancellationToken == CancellationToken.None)
                 {
-                    Codec = newTask.Codec
-                })
-                {
-                    var timeOut = DateTime.Now.AddSeconds(_settings.VideoFileLengthSeconds);
-                    while (DateTime.Now < timeOut && !cameraCancellationToken.IsCancellationRequested &&
-                           !stopTask)
-                    {
-                        if (imageQueue.TryDequeue(out var image))
-                        {
-                            try
-                            {
-                                recorder.SaveFrame(image);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                            }
-                            finally
-                            {
-                                image?.Dispose();
-                            }
-                        }
-                        else
-                            Thread.Sleep(10);
+                    _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
 
-                        stopTask = !_recorderTasks.TryGetValue(newTask, out _);
-                    }
+                    return;
                 }
 
-                stopTask = !_recorderTasks.TryGetValue(newTask, out _);
+                var stopTask = false;
+                while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
+                {
+                    var currentTime = DateTime.Now;
+                    var fileName = $"{_settings.StoragePath.TrimEnd('\\')}\\" +
+                                   $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
+                                                                     $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
+                                                                     $"-{currentTime.ToString("yyyy-MM-dd")}" +
+                                                                     $"-{currentTime.ToString("HH-mm-ss")}" +
+                                                                     $".{DefaultVideoFileExtencion}")}";
+                    using (var recorder = new VideoRecorder(fileName,
+                               new FrameFormatDto
+                               {
+                                   Width = 0,
+                                   Height = 0,
+                                   Format = string.Empty,
+                                   Fps = camera.CameraStream.CurrentFps
+                               },
+                               newTask.Quality,
+                               _logger)
+                    {
+                        Codec = newTask.Codec
+                    })
+                    {
+                        var timeOut = DateTime.Now.AddSeconds(_settings.VideoFileLengthSeconds);
+                        while (DateTime.Now < timeOut && !cameraCancellationToken.IsCancellationRequested &&
+                               !stopTask)
+                        {
+                            if (imageQueue.TryDequeue(out var image))
+                            {
+                                try
+                                {
+                                    recorder.SaveFrame(image);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                                }
+                                finally
+                                {
+                                    image?.Dispose();
+                                }
+                            }
+                            else
+                                Thread.Sleep(10);
+
+                            stopTask = !_recorderTasks.TryGetValue(newTask, out _);
+                        }
+                    }
+
+                    stopTask = !_recorderTasks.TryGetValue(newTask, out _);
+                }
+
+                _collection.UnHookCamera(newCameraItem);
             }
-
-            _collection.UnHookCamera(newCameraItem);
-
-            while (imageQueue.TryDequeue(out var image))
+            catch (Exception ex)
             {
-                image?.Dispose();
+                _logger.Log(LogLevel.Error, $"Exception in VideoRecorder task: {ex}");
             }
-            imageQueue.Clear();
+            finally
+            {
+                while (imageQueue.TryDequeue(out var image))
+                {
+                    image?.Dispose();
+                }
 
-            _recorderTasks.TryRemove(newTask, out _);
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+                imageQueue.Clear();
+
+                _recorderTasks.TryRemove(newTask, out _);
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            }
         }
 
         public async Task<string> RecordVideoFile(ServerCamera camera,
@@ -271,80 +281,90 @@ namespace CameraServer.Services.VideoRecording
                 streamId,
                 frameFormat);
 
-            var tmpImageQueue = new ConcurrentQueue<Mat>();
-            var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
-            if (tmpCameraCancellationToken == CancellationToken.None)
-            {
-                throw new ApplicationException($"Can not connect to camera#{camera.CameraStream.Description.Name}");
-            }
-
             var fileName = VideoRecorder.SanitizeFileName(
-                    $"{fileStoragePath.TrimEnd('\\')}\\" +
-                    $"{filePrefix}-" +
-                    $"Cam{camera.CameraStream.Description.Name}-" +
-                    $"{streamId}-" +
-                    $"{currentTime.ToString("yyyy-MM-dd")}_" +
-                    $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtencion}");
+                $"{fileStoragePath.TrimEnd('\\')}\\" +
+                $"{filePrefix}-" +
+                $"Cam{camera.CameraStream.Description.Name}-" +
+                $"{streamId}-" +
+                $"{currentTime.ToString("yyyy-MM-dd")}_" +
+                $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtencion}");
 
-            if (frameFormat.Fps <= 0)
-                frameFormat.Fps = camera.CameraStream.CurrentFps;
-
-            using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
+            var tmpImageQueue = new ConcurrentQueue<Mat>();
+            try
             {
-                recorder.Codec = codec;
-                if (imageBuffer.Length > 0)
+                var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
+                if (tmpCameraCancellationToken == CancellationToken.None)
                 {
-                    foreach (var image in imageBuffer)
-                    {
-                        try
-                        {
-                            recorder.SaveFrame(image);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                        }
-                        finally
-                        {
-                            image?.Dispose();
-                        }
-                    }
+                    throw new ApplicationException($"Can not connect to camera#{camera.CameraStream.Description.Name}");
                 }
 
-                var timeOut = DateTime.Now.AddSeconds(recordLengthSec);
-                while (DateTime.Now < timeOut)
+
+                if (frameFormat.Fps <= 0)
+                    frameFormat.Fps = camera.CameraStream.CurrentFps;
+
+                using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
                 {
-                    if (tmpImageQueue.TryDequeue(out var image))
+                    recorder.Codec = codec;
+                    if (imageBuffer.Length > 0)
                     {
-                        try
+                        foreach (var image in imageBuffer)
                         {
-                            using (var img = image?.Clone())
-                                recorder.SaveFrame(img);
-                        }
-                        catch (Exception ex)
-                        {
-                            timeOut = DateTime.Now;
-                            _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                        }
-                        finally
-                        {
-                            image?.Dispose();
+                            try
+                            {
+                                if (image!=null)
+                                    recorder.SaveFrame(image);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                            }
+                            finally
+                            {
+                                image?.Dispose();
+                            }
                         }
                     }
-                    else
-                        Thread.Sleep(10);
+
+                    var timeOut = DateTime.Now.AddSeconds(recordLengthSec);
+                    while (DateTime.Now < timeOut)
+                    {
+                        if (tmpImageQueue.TryDequeue(out var image))
+                        {
+                            try
+                            {
+                                recorder.SaveFrame(image);
+                            }
+                            catch (Exception ex)
+                            {
+                                timeOut = DateTime.Now;
+                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                            }
+                            finally
+                            {
+                                image?.Dispose();
+                            }
+                        }
+                        else
+                            Thread.Sleep(10);
+                    }
+
+                    _collection.UnHookCamera(newCameraItem);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Error, $"Exception in video file recorder: {ex}");
+            }
+            finally
+            {
+                while (tmpImageQueue.TryDequeue(out var image))
+                {
+                    image.Dispose();
                 }
 
-                _collection.UnHookCamera(newCameraItem);
+                tmpImageQueue.Clear();
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             }
-
-            while (tmpImageQueue.TryDequeue(out var image))
-            {
-                image.Dispose();
-            }
-
-            tmpImageQueue.Clear();
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
             if (!File.Exists(fileName))
                 throw new ApplicationException($"Can't write file {fileName}");
@@ -358,8 +378,9 @@ namespace CameraServer.Services.VideoRecording
             {
                 if (disposing)
                 {
-                    foreach (var k in _recorderTasks.Select(n => n.Key).ToArray())
-                        Stop(k);
+                    _logger.Log(LogLevel.Information, "Disposing VideoRecorderService");
+                    /*foreach (var k in _recorderTasks.Select(n => n.Key).ToArray())
+                        Stop(k);*/
                 }
 
                 _disposedValue = true;

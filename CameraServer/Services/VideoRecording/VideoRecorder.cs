@@ -6,7 +6,7 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Services.VideoRecording
 {
-    public class VideoRecorder : iVideoRecorder, IDisposable
+    public class VideoRecorder : IVideoRecorder, IDisposable
     {
         public string Codec
         {

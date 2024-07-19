@@ -28,20 +28,10 @@ namespace CameraServer
                 .Enrich.FromLogContext()
                 //.WriteTo.Console()
                 .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(WithProperty("EventId", 1001))
-                    .WriteTo.File(
-                    "telegram_api.log",
-                    rollingInterval: RollingInterval.Day,
-                    fileSizeLimitBytes: 10 * 1024 * 1024,
-                    retainedFileCountLimit: 10,
-                    rollOnFileSizeLimit: true,
-                    shared: false,
-                    flushToDiskInterval: TimeSpan.FromSeconds(2)))
-                .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(n => n.Level != LogEventLevel.Debug)
+                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
                     .WriteTo.File(
                         new CompactJsonFormatter(),
-                        "CameraServer.log",
+                        "telegram_api.log.json",
                         rollingInterval: RollingInterval.Day,
                         fileSizeLimitBytes: 10 * 1024 * 1024,
                         retainedFileCountLimit: 10,
@@ -49,10 +39,23 @@ namespace CameraServer
                         shared: false,
                         flushToDiskInterval: TimeSpan.FromSeconds(2)))
                 .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug)
+                    .Filter.ByIncludingOnly(n => n.Level != LogEventLevel.Debug
+                                                 && n.Level != LogEventLevel.Verbose)
                     .WriteTo.File(
                         new CompactJsonFormatter(),
-                        path: "CameraServer_debug.log",
+                        "CameraServer.log.json",
+                        rollingInterval: RollingInterval.Day,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        retainedFileCountLimit: 10,
+                        rollOnFileSizeLimit: true,
+                        shared: false,
+                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
+                .WriteTo.Logger(l => l
+                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug
+                                                 && n.Level != LogEventLevel.Verbose)
+                    .WriteTo.File(
+                        new CompactJsonFormatter(),
+                        path: "CameraServer_debug.log.json",
                         rollingInterval: RollingInterval.Day,
                         fileSizeLimitBytes: 10 * 1024 * 1024,
                         retainedFileCountLimit: 10,
@@ -157,7 +160,9 @@ namespace CameraServer
 
         public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
         {
-            if (propertyName == null) throw new ArgumentNullException(nameof(propertyName));
+            if (propertyName == null)
+                throw new ArgumentNullException(nameof(propertyName));
+
             var scalar = new ScalarValue(scalarValue);
             return e =>
             {

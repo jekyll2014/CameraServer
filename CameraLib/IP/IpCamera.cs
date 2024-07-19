@@ -58,7 +58,6 @@ namespace CameraLib.IP
             AuthType authenicationType = AuthType.None,
             string login = "",
             string password = "",
-            int discoveryTimeout = 1000,
             bool forceCameraConnect = false,
             ILogger<IpCamera>? logger = null)
         {

@@ -142,7 +142,7 @@ namespace CameraServer.Services.Telegram
                 _logger.Log(LogLevel.Error, $"...connection failed: {ex}");
                 if (ex is ApiRequestException apiEx && apiEx.ErrorCode == 401)
                 {
-                    _logger.Log(LogLevel.Error, $"Check your Telegram  token.");
+                    _logger.Log(LogLevel.Error, $"Check your Telegram token.");
                 }
             }
         }
@@ -197,17 +197,15 @@ namespace CameraServer.Services.Telegram
                         new(ImwriteFlags.JpegOptimize, 1),
                         new(ImwriteFlags.JpegQuality, _settings.DefaultImageQuality)
                     });
-                    if (jpegBuffer != null)
-                    {
-                        await ms.WriteAsync(jpegBuffer, cancellationToken);
-                        ms.Position = 0;
-                        var pic = InputFile.FromStream(ms);
 
-                        return await _botClient.SendPhotoAsync(chatId: chatId,
-                            photo: pic,
-                            caption: caption,
-                            cancellationToken: cancellationToken);
-                    }
+                    await ms.WriteAsync(jpegBuffer, cancellationToken);
+                    ms.Position = 0;
+                    var pic = InputFile.FromStream(ms);
+
+                    return await _botClient.SendPhotoAsync(chatId: chatId,
+                        photo: pic,
+                        caption: caption,
+                        cancellationToken: cancellationToken);
                 }
             }
             catch (Exception ex)
@@ -357,7 +355,9 @@ namespace CameraServer.Services.Telegram
                 _ => exception.ToString()
             };
 
-            _logger.Log(LogLevel.Debug, new EventId(1001, "Telegram API connection failed"), errorMessage);
+            Thread.Sleep(_settings.ReconnectTimeout * 1000);
+
+            _logger.Log(LogLevel.Trace, errorMessage);
 
             return Task.CompletedTask;
         }

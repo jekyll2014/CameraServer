@@ -2,7 +2,7 @@
 
 namespace CameraServer.Services.VideoRecording;
 
-public interface iVideoRecorder
+public interface IVideoRecorder
 {
     public void SaveFrame(Mat? frame);
     public void Stop();

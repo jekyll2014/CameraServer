@@ -67,7 +67,6 @@ namespace CameraServer.Services.CameraHub
                             authenicationType: c.AuthenicationType,
                             login: c.Login,
                             password: c.Password,
-                            discoveryTimeout: _settings.DiscoveryTimeOut,
                             forceCameraConnect: _settings.ForceCameraConnect),
                         c.AllowedRoles,
                         true);
@@ -217,7 +216,7 @@ namespace CameraServer.Services.CameraHub
             {
                 _logger.Log(LogLevel.Information, $"Client {cameraItem.QueueId} detached from camera {cameraItem.CameraId}");
 
-                if (camera.Key != null && camera.Value.Count <= 0)
+                if (camera.Key != null && camera.Value.IsEmpty)
                 {
                     camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
                     camera.Key.CameraStream.Stop();
@@ -277,6 +276,7 @@ namespace CameraServer.Services.CameraHub
             }
 
             image.Dispose();
+            GC.Collect();
         }
     }
 }
