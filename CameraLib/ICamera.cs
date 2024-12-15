@@ -1,12 +1,13 @@
 ﻿using OpenCvSharp;
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace CameraLib
 {
-    public interface ICamera
+    public interface ICamera : IDisposable
     {
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; }

@@ -12,9 +12,11 @@ namespace CameraServer.Services.MotionDetection
         private readonly byte _noiseThreshold;
         private readonly int _width;
         private readonly int _height;
-        private readonly uint _changeLimit;
+        private readonly double _changeLimit;
 
         private Mat? _prevFrame;
+        public Mat ProcessedFrame = new();
+
         private DateTime _nextFrameProcessTime = DateTime.Now;
 
         private bool _disposedValue;
@@ -30,60 +32,58 @@ namespace CameraServer.Services.MotionDetection
 
         public bool DetectMovement(Mat? frame)
         {
-            using (var image = frame?.Clone())
+            if (frame == null)
+                return false;
+
+            var result = false;
+            var currentTime = DateTime.Now;
+            if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DETECTOR_RESTART_MS - _detectorDelayMs))
+                _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
+
+            // movement detection
+            if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
             {
-                if (image == null)
-                    return false;
+                // resize
+                var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
-                var result = false;
-                var currentTime = DateTime.Now;
-                if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DETECTOR_RESTART_MS - _detectorDelayMs))
-                    _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
+                // compare
+                var imgAbsDiff = new Mat();
+                Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
 
-                // movement detection
-                if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
+                // filter out the noise
+                var imgThreshold = new Mat();
+                Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
+                imgAbsDiff.Dispose();
+
+                // Find contours around the blobs
+                Cv2.CvtColor(imgThreshold, ProcessedFrame, ColorConversionCodes.BGR2GRAY);
+                imgThreshold.Dispose();
+                Cv2.FindContours(ProcessedFrame, out var contours, out _, RetrievalModes.External,
+                    ContourApproximationModes.ApproxTC89L1);
+
+                //Find big blobs to activate alarm
+                foreach (var c in contours)
                 {
-                    // resize
-                    var currFrame = image.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
-
-                    // compare
-                    var imgAbsDiff = new Mat();
-                    Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
-
-                    // filter out the noise
-                    var imgThreshold = new Mat();
-                    Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
-                    imgAbsDiff.Dispose();
-
-                    // Find contours around the blobs
-                    var imgGrayscale = new Mat();
-                    Cv2.CvtColor(imgThreshold, imgGrayscale, ColorConversionCodes.BGR2GRAY);
-                    imgThreshold.Dispose();
-                    Cv2.FindContours(imgGrayscale, out var contours, out _, RetrievalModes.External,
-                        ContourApproximationModes.ApproxTC89L1);
-
-                    //Find big blobs to activate alarm
-                    foreach (var c in contours)
+                    var r = Cv2.BoundingRect(c);
+                    //var r2 = Cv2.MinAreaRect(c);
+                    var pixelCount = CountPixels(ProcessedFrame, r);
+                    //var pixelCount = Cv2.ContourArea(c);
+                    if (((double)pixelCount / (_width * _height)) * 100 >= _changeLimit)
                     {
-                        var r = Cv2.BoundingRect(c);
-                        var pixelCount = CountPixels(imgGrayscale, r);
-                        if (pixelCount >= _changeLimit)
-                        {
-                            result = true;
-                            break;
-                        }
+                        result = true;
+                        break;
                     }
-                    imgGrayscale.Dispose();
-
-                    _prevFrame.Dispose();
-                    _prevFrame = currFrame;
-                    _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
                 }
-                else
-                    _prevFrame = image.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
 
-                return result;
+                _prevFrame.Dispose();
+                _prevFrame = currFrame;
+
+                _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
             }
+            else
+                _prevFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+
+            return result;
         }
 
         private static int CountPixels(Mat image, Rect r)
@@ -101,6 +101,7 @@ namespace CameraServer.Services.MotionDetection
             {
                 if (disposing)
                 {
+                    ProcessedFrame?.Dispose();
                     _prevFrame?.Dispose();
                 }
 

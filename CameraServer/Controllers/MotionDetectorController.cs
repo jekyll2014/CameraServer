@@ -9,11 +9,15 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using OpenCvSharp;
+
 using Swashbuckle.AspNetCore.Annotations;
 
 using System.Net;
+using System.Text;
 
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Controllers
 {
@@ -23,6 +27,8 @@ namespace CameraServer.Controllers
     [Route("[controller]")]
     public class MotionDetectorController : ControllerBase
     {
+        private const string Boundary = "--boundary";
+
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
         private readonly MotionDetectionService _motionDetector;
@@ -167,16 +173,16 @@ namespace CameraServer.Controllers
                         NoiseThreshold = noiseThreshold ?? 0,
                         DetectorDelayMs = detectorDelayMs ?? 0
                     },
-                    Notifications = new List<NotificationParametersDto>()
-                    {
-                        new NotificationParametersDto()
+                    Notifications =
+                    [
+                        new()
                         {
                             Transport = transport ?? NotificationTransport.None,
                             Destination = destination ?? string.Empty,
                             MessageType = messageType ?? MessageType.Text,
                             Message = message ?? string.Empty
                         }
-                    }
+                    ]
                 };
 
                 var taskId = _motionDetector.Start(motionTask);
@@ -198,6 +204,76 @@ namespace CameraServer.Controllers
             _motionDetector.Stop(taskId);
 
             return Ok();
+        }
+
+        [HttpGet]
+        [Route("GetMotionDetectorStream")]
+        [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
+        public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
+        {
+            if (_motionDetector.TaskList.Count() <= detectorTask)
+                return BadRequest("No such detector task");
+
+            string detectorTaskId = _motionDetector.TaskList.ToArray()[detectorTask];
+
+            await GetMotionDetectorStreamInternal(detectorTaskId);
+
+            return new EmptyResult();
+        }
+
+        private async Task<IActionResult> GetMotionDetectorStreamInternal(string detectorTaskId)
+        {
+            if (!_motionDetector.TaskList.Contains(detectorTaskId))
+                return BadRequest("No such detector task");
+
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return BadRequest("No such detector task");
+
+            _motionDetector.ImageProcessedEvent += _motionDetector_ImageProcessedEvent;
+
+            Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
+
+            while (!Request.HttpContext.RequestAborted.IsCancellationRequested
+                && !Response.HttpContext.RequestAborted.IsCancellationRequested
+                && !HttpContext.RequestAborted.IsCancellationRequested
+                && _motionDetector.TaskList.Contains(detectorTaskId))
+            {
+                await Task.Delay(100);
+            }
+
+            _motionDetector.ImageProcessedEvent -= _motionDetector_ImageProcessedEvent;
+
+            return new EmptyResult();
+
+            async void _motionDetector_ImageProcessedEvent(MotionDetectionCameraTask detectorTask, Mat? image)
+            {
+                try
+                {
+                    if (image != null && detectorTask.TaskId == detectorTaskId)
+                    {
+                        var jpegBuffer = image.ToBytes(".jpg",
+                            new ImageEncodingParam[]
+                            {
+                                    new(ImwriteFlags.JpegOptimize, 1),
+                                    new(ImwriteFlags.JpegQuality, 100)
+                            });
+                        var header = $"\r\n{Boundary}\r\n" +
+                                     $"Content-Type: image/jpeg\r\n" +
+                                     $"Content-Length: {jpegBuffer.Length}\r\n" +
+                                     $"\r\n";
+                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
+                        await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
+                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log(LogLevel.Error, ex.ToString());
+                }
+
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            }
         }
     }
 }

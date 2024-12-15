@@ -10,4 +10,23 @@ public class NotificationParametersDto
     public string Message { get; set; } = string.Empty;
     public uint VideoLengthSec { get; set; } = 10;
     public bool SaveNotificationContent { get; set; } = false;
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is NotificationParametersDto notification)
+        {
+            return (Transport == notification.Transport
+                && MessageType == notification.MessageType
+                && Destination == notification.Destination
+                && Message == notification.Message
+                && VideoLengthSec == notification.VideoLengthSec);
+        }
+        else
+            return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return $"{Transport}{MessageType}{Destination}{Message}{VideoLengthSec}{SaveNotificationContent}".GetHashCode();
+    }
 }

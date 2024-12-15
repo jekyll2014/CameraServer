@@ -14,4 +14,19 @@ public class ServerCamera : IServerCamera
         AllowedRoles = allowedRoles;
         Custom = custom;
     }
+
+    public override int GetHashCode()
+    {
+        return CameraStream.Description.Path.GetHashCode();
+    }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is IServerCamera camera)
+        {
+            return CameraStream.Description.Path == camera.CameraStream.Description.Path;
+        }
+
+        return false;
+    }
 }

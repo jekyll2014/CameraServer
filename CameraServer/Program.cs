@@ -13,6 +13,10 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
+using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
+
 namespace CameraServer
 {
     public class Program
@@ -20,9 +24,13 @@ namespace CameraServer
         public const string ExpireTimeSection = "CookieExpireTimeMinutes";
         public const string BasicAuthenticationSchemeName = "BasicAuthentication";
 
+        private static Serilog.Core.Logger? _logger;
         public static void Main(string[] args)
         {
-            var logger = new LoggerConfiguration()
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
+
+            _logger = new LoggerConfiguration()
                 .MinimumLevel.Verbose()
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                 .Enrich.FromLogContext()
@@ -64,9 +72,25 @@ namespace CameraServer
                         flushToDiskInterval: TimeSpan.FromSeconds(2)))
                 .CreateLogger();
 
+            TryKillOldProcess();
+
             var builder = WebApplication.CreateBuilder(args);
 
-            builder.Host.UseSerilog(logger);
+            var serverUrl = builder.WebHost.GetSetting("Urls");
+            try
+            {
+                int serverPort = new Uri(serverUrl ?? "").Port;
+                if (PortInUse(serverPort))
+                {
+                    _logger?.Error($"Port in use. Trying to release...");
+                    ExecuteShellCommand("net", "stop winnat");
+                    Task.Delay(1000).RunSynchronously();
+                    ExecuteShellCommand("net", "start winnat");
+                }
+            }
+            catch { }
+
+            builder.Host.UseSerilog(_logger);
 
             var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
             // Add services to the container.
@@ -147,21 +171,66 @@ namespace CameraServer
                 app.UseSwaggerUI();
             }
 
-            app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapControllerRoute(
+            app.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}"
                 );
-            });
 
             app.Run();
         }
 
+        private static void TryKillOldProcess()
+        {
+            try
+            {
+                var currentProcess = Process.GetCurrentProcess();
+                var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id);
+                if (oldProcess != null && oldProcess.Any())
+                {
+                    _logger?.Error($"Another application copy is running. Trying to kill...");
+                    foreach (var p in oldProcess)
+                        p?.Kill(true);
+                }
+            }
+            catch (Exception exception)
+            {
+                _logger?.Error($"Process management exception: {exception.Message}");
+            }
+        }
+
+        public static bool PortInUse(int port)
+        {
+            IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+            IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+
+            return ipEndPoints.Any(n => n.Port == port);
+        }
+
+        private static bool ExecuteShellCommand(string command, string args)
+        {
+            var processInfo = new ProcessStartInfo(command, args)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+
+            try
+            {
+                var p = Process.Start(processInfo);
+                return p?.WaitForExit(10000) ?? false;
+            }
+            catch (Exception exception)
+            {
+                _logger?.Error($"Shell command execution exception: {exception.Message}");
+            }
+
+            return false;
+        }
+
         public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
         {
-            if (propertyName == null)
-                throw new ArgumentNullException(nameof(propertyName));
+            ArgumentNullException.ThrowIfNull(propertyName);
 
             var scalar = new ScalarValue(scalarValue);
             return e =>
@@ -178,6 +247,12 @@ namespace CameraServer
 
                 return false;
             };
+        }
+
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            if (e.ExceptionObject is Exception exception)
+                _logger?.Error($"Unhandled exception: {exception.Message}");
         }
     }
 }

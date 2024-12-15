@@ -32,4 +32,9 @@ public class RecordCameraTask : RecordCameraSettingDto
 
         return result;
     }
+
+    public override int GetHashCode()
+    {
+        return TaskId.GetHashCode();
+    }
 }

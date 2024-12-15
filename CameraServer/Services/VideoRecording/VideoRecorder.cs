@@ -63,7 +63,7 @@ namespace CameraServer.Services.VideoRecording
                         .Resize(new Size(Width, Height), interpolation: InterpolationFlags.Nearest);
                 }
                 else
-                    outImage = image;
+                    outImage = image?.Clone();
 
                 if (outImage != null)
                 {
@@ -80,16 +80,14 @@ namespace CameraServer.Services.VideoRecording
                     }
 
                     _videoWriter.Write(outImage);
+                    outImage?.Dispose();
                 }
             }
             catch (Exception ex)
             {
-                //Console.WriteLine($"Exception while video file recording: {ex}");
-                throw;
-            }
-            finally
-            {
+                _logger.Log(LogLevel.Information, $"Exception saving video frame: {ex}");
                 outImage?.Dispose();
+                throw;
             }
         }
 

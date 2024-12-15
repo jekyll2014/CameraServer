@@ -10,6 +10,7 @@ using System.Collections.Concurrent;
 
 using Telegram.Bot.Types;
 
+using DateTime = System.DateTime;
 using File = System.IO.File;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -28,9 +29,13 @@ namespace CameraServer.Services.MotionDetection
         private readonly TelegramService _telegramService;
         private readonly ILogger<MotionDetectionService> _logger;
         public readonly MotionDetectionSettings Settings;
-        public readonly Config<List<MotionDetectionCameraSettingDto>> TaskConfig = new Config<List<MotionDetectionCameraSettingDto>>(MotioDetectorTempConfig);
+        public readonly Config<List<MotionDetectionCameraSettingDto>> TaskConfig = new(MotioDetectorTempConfig);
 
         public IEnumerable<string> TaskList => _detectorTasks.Select(n => n.Key.TaskId);
+
+        public delegate void MotionDetectPrcessedEventHandler(MotionDetectionCameraTask detectorTask, Mat? image);
+        public event MotionDetectPrcessedEventHandler? ImageProcessedEvent;
+
         private readonly ConcurrentDictionary<MotionDetectionCameraTask, Task> _detectorTasks = new();
         private readonly ConcurrentDictionary<string, Task> _videoRecordingTasks = new();
         private readonly ConcurrentDictionary<string, DateTime> _notificationsText = new();
@@ -207,29 +212,29 @@ namespace CameraServer.Services.MotionDetection
             }
         }
 
-        private async Task MotionDetectorTask(MotionDetectionCameraTask newTask)
+        private async Task MotionDetectorTask(MotionDetectionCameraTask motionDetectTask)
         {
-            var userDto = _manager.GetUserInfo(newTask.User);
+            var userDto = _manager.GetUserInfo(motionDetectTask.User);
             if (userDto == null)
             {
-                _logger.Log(LogLevel.Error, $"User [{newTask.User}] not found");
-                throw new ApplicationException($"User [{newTask.User}] not found.");
+                _logger.Log(LogLevel.Error, $"User [{motionDetectTask.User}] not found");
+                throw new ApplicationException($"User [{motionDetectTask.User}] not found.");
             }
 
             ServerCamera camera;
             try
             {
-                camera = _collection.GetCamera(newTask.CameraId, userDto);
+                camera = _collection.GetCamera(motionDetectTask.CameraId, userDto);
             }
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Error finding camera: {ex.Message}");
-                throw new ApplicationException($"User [{newTask.User}] not authorised to start recording.");
+                throw new ApplicationException($"User [{motionDetectTask.User}] not authorised to start recording.");
             }
 
             var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
-                MotionDetectionStreamId + newTask.TaskId,
-                newTask.FrameFormat);
+                MotionDetectionStreamId + motionDetectTask.TaskId,
+                motionDetectTask.FrameFormat);
 
             var imageQueue = new ConcurrentQueue<Mat>();
             try
@@ -245,8 +250,8 @@ namespace CameraServer.Services.MotionDetection
 
                 //start looking for motion
                 var stopTask = false;
-                newTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
-                using (var motionDetector = new MotionDetector(newTask.MotionDetectParameters))
+                motionDetectTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
+                using (var motionDetector = new MotionDetector(motionDetectTask.MotionDetectParameters))
                 {
                     var lastImagesQueue = new ConcurrentQueue<Mat>();
                     var maxBufferCount = Settings.DefaultMotionDetectParametersDto.KeepImageBuffer;
@@ -255,40 +260,41 @@ namespace CameraServer.Services.MotionDetection
                         if (imageQueue.TryDequeue(out var image))
                         {
                             lastImagesQueue.Enqueue(image);
-
                             if (motionDetector.DetectMovement(image))
                             {
                                 _logger.Log(LogLevel.Information, "Motion detected!!!");
 
-                                var imageBuffer = lastImagesQueue.Select(n => n.Clone()).ToArray();
-                                SendNotifications(newTask.Notifications,
+                                SendNotifications(motionDetectTask.Notifications,
                                     camera,
                                     userDto,
-                                    image,
-                                    imageBuffer,
+                                    lastImagesQueue,
                                     cameraCancellationToken);
 
                                 while (lastImagesQueue.TryDequeue(out var oldImage))
                                     oldImage?.Dispose();
+
+                                motionDetector.ProcessedFrame?.Clone();
+                                ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
+                            }
+                            else
+                            {
+                                ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
                             }
 
-                            if (lastImagesQueue.Count > maxBufferCount)
+                            while (lastImagesQueue.Count >= maxBufferCount)
                             {
-                                lastImagesQueue.TryDequeue(out var oldImage);
-                                oldImage?.Dispose();
+                                if (lastImagesQueue.TryDequeue(out var oldImage))
+                                    oldImage?.Dispose();
                             }
                         }
                         else
-                            Thread.Sleep(10);
+                            await Task.Delay(1);
 
-                        stopTask = !_detectorTasks.TryGetValue(newTask, out _);
+                        stopTask = !_detectorTasks.Any(n => n.Key.TaskId == motionDetectTask.TaskId);
                     }
 
-                    while (!lastImagesQueue.IsEmpty)
-                    {
-                        lastImagesQueue.TryDequeue(out var oldImage);
+                    while (lastImagesQueue.TryDequeue(out var oldImage))
                         oldImage?.Dispose();
-                    }
                 }
 
                 _collection.UnHookCamera(newCameraItem);
@@ -296,25 +302,18 @@ namespace CameraServer.Services.MotionDetection
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Exception in MotionDetector task: {ex}");
-            }
-            finally
-            {
                 while (imageQueue.TryDequeue(out var image))
-                {
                     image?.Dispose();
-                }
 
-                imageQueue.Clear();
-                _detectorTasks.TryRemove(newTask, out _);
+                _detectorTasks.TryRemove(motionDetectTask, out _);
                 GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             }
         }
 
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
             ServerCamera camera,
-            ICameraUser user,
-            Mat image,
-            Mat[] bufferedImages,
+            UserDto user,
+            ConcurrentQueue<Mat> bufferedImages,
             CancellationToken cameraCancellationToken)
         {
             var tasks = new List<Task>();
@@ -327,10 +326,14 @@ namespace CameraServer.Services.MotionDetection
             {
                 _logger.Log(LogLevel.Information, $"Sending motion notification[image]");
                 var t = new Task(async () =>
-                        await SendMovementImageMulti(camera, image.Clone(), imageNotifications)
-                    , TaskCreationOptions.LongRunning);
+                {
+                    var image = bufferedImages.Last()?.Clone();
+                    await SendMovementImageMulti(camera, image, imageNotifications);
+                    image.Dispose();
+                }
+                , TaskCreationOptions.LongRunning);
 
-                t.ConfigureAwait(false);
+                //t.ConfigureAwait(false);
                 t.Start();
                 tasks.Add(t);
             }
@@ -345,14 +348,23 @@ namespace CameraServer.Services.MotionDetection
                 _logger.Log(LogLevel.Information, $"Sending motion notification[video]");
 
                 var t = new Task(async () =>
+                {
+                    var buffer = bufferedImages.Select(n => n?.Clone()).ToArray();
+                    try
+                    {
                         await SendMovementVideoMulti(camera,
                             videoNotifications,
                             user.DefaultCodec,
-                            bufferedImages,
-                            _telegramService._settings.DefaultVideoQuality)
+                            buffer,
+                            _telegramService._settings.DefaultVideoQuality);
+                    }
+                    catch { }
+                    foreach (var img in buffer)
+                        img?.Dispose();
+                }
                     , TaskCreationOptions.LongRunning);
 
-                t.ConfigureAwait(false);
+                //t.ConfigureAwait(false);
                 t.Start();
                 tasks.Add(t);
             }
@@ -370,12 +382,12 @@ namespace CameraServer.Services.MotionDetection
                         await SendMovementTextMulti(textNotifications)
                     , TaskCreationOptions.LongRunning);
 
-                t.ConfigureAwait(false);
+                //t.ConfigureAwait(false);
                 t.Start();
                 tasks.Add(t);
             }
 
-            Task.WaitAll(tasks.ToArray());
+            Task.WaitAll([.. tasks], cameraCancellationToken);
         }
 
         private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
@@ -458,7 +470,7 @@ namespace CameraServer.Services.MotionDetection
             if (notificationParams.Any(n => n.SaveNotificationContent))
             {
                 var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime.ToString("yyyy-MM-dd")}_{currentTime.ToString("HH-mm-ss")}.jpg")}";
+                               $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime:yyyy-MM-dd}_{currentTime:HH-mm-ss}.jpg")}";
                 try
                 {
                     await File.WriteAllBytesAsync(fileName, image.ToBytes(".jpg",
@@ -473,8 +485,6 @@ namespace CameraServer.Services.MotionDetection
                     _logger.Log(LogLevel.Error, $"Error saving image file: {ex}");
                 }
             }
-
-            image.Dispose();
         }
 
         private async Task SendMovementVideoMulti(ServerCamera camera,
@@ -532,7 +542,7 @@ namespace CameraServer.Services.MotionDetection
                         else if (dest.StartsWith('@'))
                             chatId = new ChatId(dest);
                         else
-                            return;
+                            continue;
 
                         await _telegramService.SendVideo(chatId,
                             fileName,
@@ -548,13 +558,11 @@ namespace CameraServer.Services.MotionDetection
                     await _telegramService.SendText(destinationTotal, $"Can't record video: {ex}",
                         CancellationToken.None);
                 }
-                finally
-                {
-                    _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);
-                }
+
+                _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);
             }, TaskCreationOptions.LongRunning);
 
-            t.ConfigureAwait(false);
+            //await t.ConfigureAwait(false);
             t.Start();
             _videoRecordingTasks.TryAdd(tmpRecordtaskId, t);
         }

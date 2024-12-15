@@ -145,6 +145,7 @@ namespace CameraServer.Controllers
             catch (Exception e)
             {
                 _logger.Log(LogLevel.Error, $"Exception happened during finding the camera[{cameraNumber}]: {e}");
+
                 return Problem("Can not find camera#",
                     cameraNumber.ToString(),
                     StatusCodes.Status204NoContent);
@@ -192,7 +193,7 @@ namespace CameraServer.Controllers
                                 .Resize(new Size(frameFormat.Width, frameFormat.Height), interpolation: InterpolationFlags.Nearest);
                         }
                         else
-                            outImage = image.Clone();
+                            outImage = image;
 
                         if (outImage != null)
                         {
@@ -216,7 +217,7 @@ namespace CameraServer.Controllers
                     }
                     else
                     {
-                        Thread.Sleep(10);
+                        await Task.Delay(1, Response.HttpContext.RequestAborted);
                     }
                 }
             }
@@ -229,7 +230,7 @@ namespace CameraServer.Controllers
 
             while (imageQueue.TryDequeue(out var image))
             {
-                image.Dispose();
+                image?.Dispose();
             }
 
             imageQueue.Clear();

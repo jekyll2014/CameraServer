@@ -14,7 +14,7 @@ namespace CameraServer.Services.VideoRecording
 {
     public class VideoRecorderService : IHostedService, IDisposable
     {
-        private const string VideoRecorderTempConfig = "appsettings-recorder";
+        private const string VideoRecorderTempConfig = "appsettings-recorder.json";
         private const string RecorderConfigSection = "Recorder";
         private const string RecorderStreamId = "Recorder";
         private const string DefaultVideoFileExtencion = "mp4";
@@ -224,18 +224,16 @@ namespace CameraServer.Services.VideoRecording
                                 try
                                 {
                                     recorder.SaveFrame(image);
+                                    image?.Dispose();
                                 }
                                 catch (Exception ex)
                                 {
                                     _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                                }
-                                finally
-                                {
                                     image?.Dispose();
                                 }
                             }
                             else
-                                Thread.Sleep(10);
+                                await Task.Delay(1);
 
                             stopTask = !_recorderTasks.TryGetValue(newTask, out _);
                         }
@@ -249,9 +247,6 @@ namespace CameraServer.Services.VideoRecording
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Exception in VideoRecorder task: {ex}");
-            }
-            finally
-            {
                 while (imageQueue.TryDequeue(out var image))
                 {
                     image?.Dispose();
@@ -294,10 +289,7 @@ namespace CameraServer.Services.VideoRecording
             {
                 var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
                 if (tmpCameraCancellationToken == CancellationToken.None)
-                {
                     throw new ApplicationException($"Can not connect to camera#{camera.CameraStream.Description.Name}");
-                }
-
 
                 if (frameFormat.Fps <= 0)
                     frameFormat.Fps = camera.CameraStream.CurrentFps;
@@ -311,16 +303,12 @@ namespace CameraServer.Services.VideoRecording
                         {
                             try
                             {
-                                if (image!=null)
+                                if (image != null)
                                     recorder.SaveFrame(image);
                             }
                             catch (Exception ex)
                             {
                                 _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                            }
-                            finally
-                            {
-                                image?.Dispose();
                             }
                         }
                     }
@@ -333,19 +321,17 @@ namespace CameraServer.Services.VideoRecording
                             try
                             {
                                 recorder.SaveFrame(image);
+                                image?.Dispose();
                             }
                             catch (Exception ex)
                             {
-                                timeOut = DateTime.Now;
                                 _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
-                            }
-                            finally
-                            {
+                                timeOut = DateTime.Now;
                                 image?.Dispose();
                             }
                         }
                         else
-                            Thread.Sleep(10);
+                            await Task.Delay(1, CancellationToken.None);
                     }
 
                     _collection.UnHookCamera(newCameraItem);
@@ -355,16 +341,12 @@ namespace CameraServer.Services.VideoRecording
             {
                 _logger.Log(LogLevel.Error, $"Exception in video file recorder: {ex}");
             }
-            finally
-            {
-                while (tmpImageQueue.TryDequeue(out var image))
-                {
-                    image.Dispose();
-                }
 
-                tmpImageQueue.Clear();
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
-            }
+            while (tmpImageQueue.TryDequeue(out var image))
+                image.Dispose();
+
+            tmpImageQueue.Clear();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
             if (!File.Exists(fileName))
                 throw new ApplicationException($"Can't write file {fileName}");

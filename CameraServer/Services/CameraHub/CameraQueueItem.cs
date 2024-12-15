@@ -34,4 +34,9 @@ public class CameraQueueItem
 
         return result;
     }
+
+    public override int GetHashCode()
+    {
+        return QueueId.GetHashCode();
+    }
 }
