@@ -10,15 +10,10 @@ public class MotionDetectionCameraSettingDto
     public MotionDetectorParametersDto? MotionDetectParameters { get; set; }
     public List<NotificationParametersDto> Notifications { get; set; } = new();
 
-    public void Merge(List<NotificationParametersDto> notifications)
+    public void Merge(MotionDetectionCameraSettingDto newTask)
     {
-        foreach (var notification in notifications)
-        {
-            if (Notifications.All(n => !n.Equals(notification)))
-            {
-                Notifications.Add(notification);
-            }
-        }
+        Notifications.AddRange(newTask.Notifications
+                 .Where(notification => !Notifications.Contains(notification)));
     }
 
     public void TryRemove(NotificationParametersDto notification)
@@ -47,5 +42,10 @@ public class MotionDetectionCameraSettingDto
         }
 
         return result;
+    }
+
+    public override int GetHashCode()
+    {
+        return $"{CameraId}{User}".GetHashCode();
     }
 }

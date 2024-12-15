@@ -14,18 +14,25 @@ namespace CameraServer.Controllers
     public class AccountController : Controller
     {
         private const string LoginFailedMessage = "Invalid Credential";
-        private const string BruteDetectedMessage = "Too many attempts";
         private readonly IConfiguration _configuration;
         private readonly IUserManager _manager;
+        private readonly ILogger<AccountController> _logger;
 
-        public AccountController(IConfiguration configuration, IUserManager manager)
+        public AccountController(
+            IConfiguration configuration,
+            IUserManager manager,
+            ILogger<AccountController> logger)
         {
+            _logger = logger;
             _configuration = configuration;
             _manager = manager;
         }
 
         public IActionResult Login(string returnUrl = "/")
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             var objLoginModel = new LoginModel
             {
                 ReturnUrl = returnUrl
@@ -89,14 +96,18 @@ namespace CameraServer.Controllers
                             new ClaimsPrincipal(claimsIdentity),
                             authProperties);
 
+                        _logger.Log(LogLevel.Information, $"User {user.Login} authenricated. Redirecting to {loginModel.ReturnUrl}");
+
                         return LocalRedirect(loginModel.ReturnUrl);
                     }
                 }
 
+                _logger.Log(LogLevel.Information, LoginFailedMessage);
                 ViewBag.Message = LoginFailedMessage;
             }
             catch (AuthenticationException ex)
             {
+                _logger.Log(LogLevel.Error, ex.ToString());
                 ViewBag.Message = ex.Message;
             }
 

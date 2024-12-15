@@ -6,12 +6,16 @@ namespace CameraServer.Services.AntiBruteForce
     public class BruteForceDetectionDetectionService : IBruteForceDetectionService, IDisposable//, IHostedService
     {
         private const string AntiBruteForceConfigSection = "BruteForceDetection";
+        private readonly ILogger<BruteForceDetectionDetectionService> _logger;
         private readonly BruteForceDetectionSettings _detectionSettings;
         private readonly ConcurrentDictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = new ConcurrentDictionary<string, List<(IPAddress, DateTime)>>();
         private bool _disposedValue;
 
-        public BruteForceDetectionDetectionService(IConfiguration configuration)
+        public BruteForceDetectionDetectionService(
+            IConfiguration configuration,
+            ILogger<BruteForceDetectionDetectionService> logger)
         {
+            _logger = logger;
             _detectionSettings = configuration.GetSection(AntiBruteForceConfigSection)?.Get<BruteForceDetectionSettings>() ?? new BruteForceDetectionSettings();
         }
 
@@ -61,9 +65,7 @@ namespace CameraServer.Services.AntiBruteForce
         public void ClearFailedAttempts(string login, IPAddress host)
         {
             if (_userAuthRetries.TryGetValue(login, out var attempts))
-            {
                 attempts.RemoveAll(n => n.Item1.Equals(host));
-            }
         }
 
         protected virtual void Dispose(bool disposing)

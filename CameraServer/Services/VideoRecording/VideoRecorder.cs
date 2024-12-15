@@ -3,68 +3,101 @@
 using Emgu.CV;
 using Emgu.CV.CvEnum;
 using Emgu.CV.Structure;
-
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using System.Drawing;
 
 namespace CameraServer.Services.VideoRecording
 {
-    public class VideoRecorder : iVideoRecorder, IDisposable
+    public class VideoRecorder : IVideoRecorder, IDisposable
     {
-        private const double DefaultFps = 20.0;
-        private readonly string _fileName;
-        private readonly int _fourcc = VideoWriter.Fourcc('a', 'v', 'c', '1');
-        private VideoWriter? _videoWriter;
-        private readonly int _width;
-        private readonly int _height;
-        private readonly double _fps;
-        private readonly byte _compressionQuality;
-        private bool _disposedValue;
-
-        public VideoRecorder(string fileName, FrameFormatDto frameFormat, byte quality = 90)
+        public string Codec
         {
-            _fileName = fileName;
-            _width = frameFormat.Width;
-            _height = frameFormat.Height;
-            _fps = frameFormat.Fps;
-            if (_fps <= 0)
-                _fps = DefaultFps;
-
-            _compressionQuality = quality;
+            get => _fourCcCodec.ToString();
+            set
+            {
+                if (value == "MP4V")
+                    _fourCcCodec = VideoWriter.Fourcc('m', 'p', '4', 'v');//FourCC.MP4V;
+                else
+                    _fourCcCodec = VideoWriter.Fourcc('a', 'v', 'c', '1');//FourCC.AVC;
+            }
         }
 
-        public void SaveFrame(Mat? frame)
+        public string FileName { get; }
+        public int Width { get; }
+        public int Height { get; }
+        public double Fps { get; }
+        public byte CompressionQuality { get; }
+        private int _fourCcCodec = VideoWriter.Fourcc('a', 'v', 'c', '1');
+        private const double DEFAULT_FPS = 20.0;
+        private VideoWriter? _videoWriter;
+        private readonly ILogger<VideoRecorderService> _logger;
+        private bool _disposedValue;
+
+        public VideoRecorder(
+            string fileName,
+            FrameFormatDto frameFormat,
+            byte quality,
+            ILogger<VideoRecorderService> logger)
         {
-            if (frame == null)
+            _logger = logger;
+            FileName = fileName;
+            Width = frameFormat.Width;
+            Height = frameFormat.Height;
+            Fps = frameFormat.Fps;
+            if (Fps <= 0)
+                Fps = DEFAULT_FPS;
+
+            CompressionQuality = quality;
+        }
+
+        public void SaveFrame(Mat? image)
+        {
+            if (image == null)
                 return;
 
-            Image<Rgb, byte> outImage;
-            if (_width > 0 && _height > 0 && frame.Width > _width && frame.Height > _height)
+            var outImage = image;
+            try
             {
-                outImage = frame
-                    .ToImage<Rgb, byte>()
-                    .Resize(_width, _height, Inter.Nearest);
+                /*if (Width > 0 && Height > 0 && image.Width > Width && image.Height > Height)
+                {
+                    outImage = image
+                        .ToImage<Rgb, byte>()
+                        .Resize(Width, Height, Inter.Nearest);
+                }
+                else*/
+                //outImage = image.ToImage<Rgb, byte>();
+                //outImage = image.Clone();
+
+                //if (outImage != null)
+                {
+                    if (_videoWriter == null)
+                    {
+                        _logger.Log(LogLevel.Information, $"Starting new file record [{_fourCcCodec}]: {FileName}");
+
+                        _videoWriter = new VideoWriter(FileName,
+                            _fourCcCodec,
+                            Fps,
+                            new Size(outImage.Width, outImage.Height),
+                            true);
+                        _videoWriter.Set(VideoWriter.WriterProperty.Quality, CompressionQuality);
+                    }
+
+                    _videoWriter.Write(outImage);
+                    //outImage?.Dispose();
+                }
             }
-            else
-                outImage = frame.ToImage<Rgb, byte>();
-
-
-            // video stream record to file
-            if (_videoWriter == null)
+            catch (Exception ex)
             {
-                _videoWriter = new VideoWriter(_fileName,
-                    _fourcc,
-                    _fps,
-                    new Size(outImage.Width, outImage.Height),
-                    true);
-                _videoWriter.Set(VideoWriter.WriterProperty.Quality, _compressionQuality);
+                _logger.Log(LogLevel.Information, $"Exception saving video frame: {ex}");
+                //outImage?.Dispose();
+                throw;
             }
-
-            _videoWriter.Write(outImage);
         }
 
         public void Stop()
         {
             _videoWriter?.Dispose();
+            _logger.Log(LogLevel.Information, $"File record stopped [{_fourCcCodec}]: {FileName}");
         }
 
         public static string SanitizeFileName(string path)

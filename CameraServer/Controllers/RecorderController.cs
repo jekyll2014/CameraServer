@@ -17,7 +17,6 @@ using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
 
 namespace CameraServer.Controllers
 {
-    //[Authorize]
     [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
     [Authorize(AuthenticationSchemes = Program.BasicAuthenticationSchemeName)]
     [ApiController]
@@ -27,9 +26,15 @@ namespace CameraServer.Controllers
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
         private readonly VideoRecorderService _recorder;
+        private readonly ILogger<RecorderController> _logger;
 
-        public RecorderController(IUserManager manager, CameraHubService collection, VideoRecorderService recorder)
+        public RecorderController(
+            IUserManager manager,
+            CameraHubService collection,
+            VideoRecorderService recorder,
+            ILogger<RecorderController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
             _recorder = recorder;
@@ -78,7 +83,8 @@ namespace CameraServer.Controllers
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            var userInfo = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+            var userRoles = userInfo?.Roles;
             if (userRoles == null || userRoles.Count == 0)
                 return BadRequest("No such camera");
 
@@ -93,7 +99,8 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception finding the camera[{cameraNumber}]: {e}");
+
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             }
 
@@ -111,14 +118,17 @@ namespace CameraServer.Controllers
                         Fps = fps ?? 0
                     },
                     Quality = quality ?? 0,
+                    Codec = userInfo?.DefaultCodec ?? "AVC"
                 };
 
                 var taskId = _recorder.Start(recordTask);
+
                 return Ok(taskId);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Can't start recording: {ex}");
+                _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
+
                 return BadRequest(ex);
             }
         }

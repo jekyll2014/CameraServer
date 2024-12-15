@@ -19,10 +19,10 @@ using System.Net;
 using System.Text;
 
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Controllers
 {
-    //[Authorize]
     [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
     [Authorize(AuthenticationSchemes = Program.BasicAuthenticationSchemeName)]
     [ApiController]
@@ -32,9 +32,14 @@ namespace CameraServer.Controllers
         private const string Boundary = "--boundary";
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
+        private readonly ILogger<CameraController> _logger;
 
-        public CameraController(IUserManager manager, CameraHubService collection)
+        public CameraController(
+            IUserManager manager,
+            CameraHubService collection,
+            ILogger<CameraController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
         }
@@ -141,7 +146,8 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception happened during finding the camera[{cameraNumber}]: {e}");
+
                 return Problem("Can not find camera#",
                     cameraNumber.ToString(),
                     StatusCodes.Status204NoContent);
@@ -154,10 +160,10 @@ namespace CameraServer.Controllers
                 Format = format ?? string.Empty
             };
 
-            var cameraCancellationToken = await _collection.HookCamera(camera.CameraStream.Description.Path,
+            var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 Request.HttpContext.TraceIdentifier,
-                imageQueue,
                 frameFormat);
+            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
             if (cameraCancellationToken == CancellationToken.None)
                 return Problem("Can not connect to camera#",
@@ -171,7 +177,6 @@ namespace CameraServer.Controllers
                 qlt = 100;
             try
             {
-
                 Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
                 while (!Request.HttpContext.RequestAborted.IsCancellationRequested
                        && !Response.HttpContext.RequestAborted.IsCancellationRequested
@@ -210,27 +215,25 @@ namespace CameraServer.Controllers
                     }
                     else
                     {
-                        await Task.Delay(10, Response.HttpContext.RequestAborted);
+                        await Task.Delay(1, Response.HttpContext.RequestAborted);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex);
+                _logger.Log(LogLevel.Error, ex.ToString());
             }
 
-            await _collection.UnHookCamera(camera.CameraStream.Description.Path,
-                Request.HttpContext.TraceIdentifier,
-                frameFormat);
+            _collection.UnHookCamera(newCameraItem);
 
             while (imageQueue.TryDequeue(out var image))
             {
-                image.Dispose();
+                image?.Dispose();
             }
 
             imageQueue.Clear();
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
             return new EmptyResult();
         }

@@ -32,4 +32,9 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
 
         return result;
     }
+
+    public override int GetHashCode()
+    {
+        return TaskId.GetHashCode();
+    }
 }

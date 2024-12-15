@@ -1,7 +1,5 @@
 ﻿using CameraLib;
 
-using CameraServer.Auth;
-
 namespace CameraServer.Models;
 
 public class ServerCamera : IServerCamera
@@ -15,5 +13,20 @@ public class ServerCamera : IServerCamera
         CameraStream = cameraStream;
         AllowedRoles = allowedRoles;
         Custom = custom;
+    }
+
+    public override int GetHashCode()
+    {
+        return CameraStream.Description.Path.GetHashCode();
+    }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is IServerCamera camera)
+        {
+            return CameraStream.Description.Path == camera.CameraStream.Description.Path;
+        }
+
+        return false;
     }
 }

@@ -9,6 +9,14 @@ using CameraServer.Services.VideoRecording;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
+
+using System.Diagnostics;
+using System.Net;
+using System.Net.NetworkInformation;
+
 namespace CameraServer
 {
     public class Program
@@ -16,9 +24,74 @@ namespace CameraServer
         public const string ExpireTimeSection = "CookieExpireTimeMinutes";
         public const string BasicAuthenticationSchemeName = "BasicAuthentication";
 
+        private static Serilog.Core.Logger? _logger;
         public static void Main(string[] args)
         {
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
+
+            _logger = new LoggerConfiguration()
+                .MinimumLevel.Verbose()
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+                .Enrich.FromLogContext()
+                //.WriteTo.Console()
+                .WriteTo.Logger(l => l
+                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
+                    .WriteTo.File(
+                        new CompactJsonFormatter(),
+                        "telegram_api.log.json",
+                        rollingInterval: RollingInterval.Day,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        retainedFileCountLimit: 10,
+                        rollOnFileSizeLimit: true,
+                        shared: false,
+                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
+                .WriteTo.Logger(l => l
+                    .Filter.ByIncludingOnly(n => n.Level != LogEventLevel.Debug
+                                                 && n.Level != LogEventLevel.Verbose)
+                    .WriteTo.File(
+                        new CompactJsonFormatter(),
+                        "CameraServer.log.json",
+                        rollingInterval: RollingInterval.Day,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        retainedFileCountLimit: 10,
+                        rollOnFileSizeLimit: true,
+                        shared: false,
+                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
+                .WriteTo.Logger(l => l
+                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug
+                                                 && n.Level != LogEventLevel.Verbose)
+                    .WriteTo.File(
+                        new CompactJsonFormatter(),
+                        path: "CameraServer_debug.log.json",
+                        rollingInterval: RollingInterval.Day,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        retainedFileCountLimit: 10,
+                        rollOnFileSizeLimit: true,
+                        shared: false,
+                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
+                .CreateLogger();
+
+            TryKillOldProcess();
+
             var builder = WebApplication.CreateBuilder(args);
+
+            var serverUrl = builder.WebHost.GetSetting("Urls");
+            try
+            {
+                int serverPort = new Uri(serverUrl ?? "").Port;
+                if (PortInUse(serverPort))
+                {
+                    _logger?.Error($"Port in use. Trying to release...");
+                    ExecuteShellCommand("net", "stop winnat");
+                    Task.Delay(1000).RunSynchronously();
+                    ExecuteShellCommand("net", "start winnat");
+                }
+            }
+            catch { }
+
+            builder.Host.UseSerilog(_logger);
+
             var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
             // Add services to the container.
             builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
@@ -85,26 +158,101 @@ namespace CameraServer
 
             app.UseStaticFiles();
 
+            app.UseSerilogRequestLogging();
+
             app.UseRouting();
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
 
-            if (app.Environment.IsDevelopment())
+            //if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
-            app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapControllerRoute(
+            app.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}"
                 );
-            });
 
             app.Run();
+        }
+
+        private static void TryKillOldProcess()
+        {
+            try
+            {
+                var currentProcess = Process.GetCurrentProcess();
+                var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id);
+                if (oldProcess != null && oldProcess.Any())
+                {
+                    _logger?.Error($"Another application copy is running. Trying to kill...");
+                    foreach (var p in oldProcess)
+                        p?.Kill(true);
+                }
+            }
+            catch (Exception exception)
+            {
+                _logger?.Error($"Process management exception: {exception.Message}");
+            }
+        }
+
+        public static bool PortInUse(int port)
+        {
+            IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+            IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+
+            return ipEndPoints.Any(n => n.Port == port);
+        }
+
+        private static bool ExecuteShellCommand(string command, string args)
+        {
+            var processInfo = new ProcessStartInfo(command, args)
+            {
+                CreateNoWindow = true,
+                UseShellExecute = true,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+
+            try
+            {
+                var p = Process.Start(processInfo);
+                return p?.WaitForExit(10000) ?? false;
+            }
+            catch (Exception exception)
+            {
+                _logger?.Error($"Shell command execution exception: {exception.Message}");
+            }
+
+            return false;
+        }
+
+        public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
+        {
+            ArgumentNullException.ThrowIfNull(propertyName);
+
+            var scalar = new ScalarValue(scalarValue);
+            return e =>
+            {
+                if (e.Properties.TryGetValue(propertyName, out var propertyValue))
+                {
+                    if (propertyValue is StructureValue stValue)
+                    {
+                        var value = stValue.Properties.FirstOrDefault(cc => cc.Name == "Id");
+
+                        return scalar.Equals(value?.Value);
+                    }
+                }
+
+                return false;
+            };
+        }
+
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            if (e.ExceptionObject is Exception exception)
+                _logger?.Error($"Unhandled exception: {exception.Message}");
         }
     }
 }

@@ -1,6 +1,8 @@
 ﻿using Emgu.CV;
 using Emgu.CV.CvEnum;
 
+using Microsoft.Extensions.Logging;
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -18,7 +20,7 @@ using IPAddress = System.Net.IPAddress;
 
 namespace CameraLib.MJPEG
 {
-    public class MjpegCamera : ICamera, IDisposable
+    public class MjpegCamera : ICamera
     {
         // JPEG delimiters
         const byte picMarker = 0xFF;
@@ -28,31 +30,25 @@ namespace CameraLib.MJPEG
         public AuthType AuthenicationType { get; }
         public string Login { get; }
         public string Password { get; }
-
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; set; }
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
-        public int FrameTimeout { get; set; } = 30000;
-
+        public int FrameTimeout { get; set; } = 10000;
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
-
         public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
-        private CancellationTokenSource? _cancellationTokenSource;
 
+        private readonly ILogger? _logger;
+        private CancellationTokenSource? _cancellationTokenSource;
         private readonly object _getPictureThreadLock = new object();
-        private Mat? _frame;
         private Task? _imageGrabber;
         private volatile bool _stopCapture = false;
         private readonly Stopwatch _fpsTimer = new();
         private volatile byte _frameCount;
-
         private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
         private int _width = 0;
         private int _height = 0;
         private string _format = string.Empty;
-        private CancellationToken _token = CancellationToken.None;
-
         private bool _disposedValue;
 
         public MjpegCamera(string path,
@@ -61,8 +57,10 @@ namespace CameraLib.MJPEG
             string login = "",
             string password = "",
             int discoveryTimeout = 1000,
-            bool forceCameraConnect = false)
+            bool forceCameraConnect = false,
+            ILogger? logger = null)
         {
+            _logger = logger;
             AuthenicationType = authenicationType;
             Login = login;
             Password = password;
@@ -82,12 +80,16 @@ namespace CameraLib.MJPEG
             {
                 if (PingAddress(cameraUri.Host, discoveryTimeout).Result)
                 {
-                    var image = GrabFrame(CancellationToken.None).Result;
-                    if (image != null)
+                    try
                     {
-                        frameFormats.Add(new FrameFormat(image.Width, image.Height, "MJPG"));
-                        image.Dispose();
+                        var image = GrabFrame(CancellationToken.None).Result;
+                        if (image != null)
+                        {
+                            frameFormats.Add(new FrameFormat(image.Width, image.Height, "MJPG"));
+                            image.Dispose();
+                        }
                     }
+                    catch { }
                 }
             }
 
@@ -97,20 +99,20 @@ namespace CameraLib.MJPEG
             _keepAliveTimer.Elapsed += CameraDisconnected;
         }
 
-        private void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        private async void CameraDisconnected(object? sender, ElapsedEventArgs e)
         {
             if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
-                Console.WriteLine($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                _logger?.LogDebug($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
                 Stop(false);
-                Start(_width, _height, _format, _token);
+                await Start(_width, _height, _format, CancellationToken.None);
             }
         }
 
         // can not be implemented
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return [];
+            return new List<CameraDescription>();
         }
 
         private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
@@ -129,32 +131,33 @@ namespace CameraLib.MJPEG
 
         public async Task<bool> Start(int width, int height, string format, CancellationToken token)
         {
-            if (!IsRunning)
+            if (IsRunning)
+                return true;
+
+            _width = width;
+            _height = height;
+            _format = format;
+
+            _cancellationTokenSource = new CancellationTokenSource();
+            _frameCount = 0;
+            _fpsTimer.Reset();
+            _keepAliveTimer.Interval = FrameTimeout;
+            _keepAliveTimer.Start();
+
+            _stopCapture = false;
+            try
             {
-                try
-                {
-                    _width = width;
-                    _height = height;
-                    _format = format;
-                    _token = token;
-
-                    _stopCapture = false;
-                    _fpsTimer.Reset();
-                    _frameCount = 0;
-                    _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex);
-
-                    return false;
-                }
-
-                _cancellationTokenSource = new CancellationTokenSource();
-
-                if (!IsRunning)
-                    return false;
+                _imageGrabber?.Dispose();
+                _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token).WaitAsync(TimeSpan.FromMilliseconds(FrameTimeout), token);
             }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex.Message);
+
+                return false;
+            }
+
+            IsRunning = true;
 
             return true;
         }
@@ -173,16 +176,13 @@ namespace CameraLib.MJPEG
             {
                 _keepAliveTimer.Stop();
 
+                _stopCapture = true;
+                var timeOut = DateTime.Now.AddSeconds(100);
+                _imageGrabber?.Wait(5000);
+
                 if (cancellation)
                     _cancellationTokenSource?.Cancel();
 
-                _stopCapture = true;
-                var timeOut = DateTime.Now.AddSeconds(100);
-                while (IsRunning && DateTime.Now < timeOut)
-                    Task.Delay(10).Wait();
-
-                _imageGrabber?.Dispose();
-                _frame?.Dispose();
                 CurrentFrameFormat = null;
                 _fpsTimer.Reset();
             }
@@ -192,22 +192,27 @@ namespace CameraLib.MJPEG
         {
             if (IsRunning)
             {
-                while (IsRunning && _frame == null && !token.IsCancellationRequested)
+                Mat? frame = null;
+                ImageCapturedEvent += CameraImageCapturedEvent;
+                while (IsRunning && frame == null && !token.IsCancellationRequested)
                     await Task.Delay(10, token);
 
-                lock (_getPictureThreadLock)
+                ImageCapturedEvent -= CameraImageCapturedEvent;
+
+                return frame;
+
+                void CameraImageCapturedEvent(ICamera camera, Mat image)
                 {
-                    return _frame?.Clone();
+                    frame = image?.Clone();
                 }
             }
 
-            var image = new Mat();
+            Mat? image = null;
             await Task.Run(async () =>
             {
                 if (await Start(0, 0, string.Empty, token))
                 {
                     image = await GrabFrame(token);
-
                     if (image != null)
                         CurrentFrameFormat ??= new FrameFormat(image.Width, image.Height);
                 }
@@ -224,14 +229,9 @@ namespace CameraLib.MJPEG
             {
                 var image = await GrabFrame(token);
                 if (image == null)
-                {
-                    await Task.Delay(100, token);
-                }
+                    await Task.Delay(10, token);
                 else
-                {
-                    yield return image.Clone();
-                    image.Dispose();
-                }
+                    yield return image;
             }
         }
 
@@ -251,7 +251,7 @@ namespace CameraLib.MJPEG
         /// <returns></returns>
         private async Task StartAsync(string url, AuthType authenicationType, string login = "", string password = "", CancellationToken? token = null, int chunkMaxSize = 1024, int frameBufferSize = 1024 * 1024)
         {
-            var tok = token ?? CancellationToken.None;
+            var tokenLocal = token ?? CancellationToken.None;
 
             using (var httpClient = new HttpClient())
             {
@@ -260,9 +260,8 @@ namespace CameraLib.MJPEG
                         "Basic",
                         Convert.ToBase64String(Encoding.ASCII.GetBytes($"{login}:{password}")));
 
-                await using (var stream = await httpClient.GetStreamAsync(url, tok).ConfigureAwait(false))
+                await using (var stream = await httpClient.GetStreamAsync(url, tokenLocal).ConfigureAwait(false))
                 {
-
                     var streamBuffer = new byte[chunkMaxSize];      // Stream chunk read
                     var frameBuffer = new byte[frameBufferSize];    // Frame buffer
 
@@ -272,23 +271,20 @@ namespace CameraLib.MJPEG
                     byte previous = 0x00;   // The byte before
 
                     // Continuously pump the stream. The cancellationtoken is used to get out of there
-                    IsRunning = true;
                     try
                     {
-                        while (!_stopCapture && !tok.IsCancellationRequested)
+                        while (!_stopCapture && !tokenLocal.IsCancellationRequested)
                         {
-                            var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tok)
+                            var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tokenLocal)
                                 .ConfigureAwait(false);
+
                             ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture,
-                                ref previous, ref current, tok);
+                                ref previous, ref current, tokenLocal);
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
-                    }
-                    finally
-                    {
+                        _logger?.LogError(ex.Message);
                         IsRunning = false;
                     }
                 }
@@ -353,13 +349,13 @@ namespace CameraLib.MJPEG
 
                     lock (_getPictureThreadLock)
                     {
-                        _frame?.Dispose();
-                        _frame = new Mat();
                         try
                         {
-                            CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, _frame);
-                            CurrentFrameFormat ??= new FrameFormat(_frame.Width, _frame.Height);
-                            ImageCapturedEvent?.Invoke(this, _frame.Clone());
+                            var frame = new Mat();
+                            CvInvoke.Imdecode(frameBuffer, ImreadModes.Color, frame);
+                            CurrentFrameFormat ??= new FrameFormat(frame.Width, frame.Height);
+                            ImageCapturedEvent?.Invoke(this, frame);
+
                             if (!_fpsTimer.IsRunning)
                             {
                                 _fpsTimer.Start();
@@ -381,9 +377,6 @@ namespace CameraLib.MJPEG
                         catch
                         {
                             // We dont care about badly decoded pictures
-                        }
-                        finally
-                        {
                             GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                         }
                     }
@@ -445,11 +438,11 @@ namespace CameraLib.MJPEG
                 if (disposing)
                 {
                     Stop();
+                    _imageGrabber?.Wait(5000);
+                    _imageGrabber?.Dispose();
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();
-                    _imageGrabber?.Dispose();
                     _cancellationTokenSource?.Dispose();
-                    _frame?.Dispose();
                 }
 
                 _disposedValue = true;

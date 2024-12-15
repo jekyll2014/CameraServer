@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace CameraServer.Auth;
+namespace CameraServer.Models;
 
 public interface ICameraUser
 {
@@ -9,4 +9,5 @@ public interface ICameraUser
     [Required]
     public string Login { get; set; }
     public long TelegramId { get; set; }
+    public string DefaultCodec { get; set; }
 }

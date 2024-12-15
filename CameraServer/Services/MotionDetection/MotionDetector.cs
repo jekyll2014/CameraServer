@@ -8,15 +8,17 @@ namespace CameraServer.Services.MotionDetection
 {
     public class MotionDetector : IDisposable
     {
-        private const int DetectorRestartMs = 10000;
+        private const int DETECTOR_RESTART_MS = 10000;
 
         private readonly uint _detectorDelayMs;
         private readonly byte _noiseThreshold;
         private readonly int _width;
         private readonly int _height;
-        private readonly uint _changeLimit;
+        private readonly double _changeLimit;
 
-        private Image<Gray, byte>? _prevFrame;
+        private Image<Bgr, byte>? _prevFrame;
+        public Image<Gray, byte>? ProcessedFrame = null;
+
         private DateTime _nextFrameProcessTime = DateTime.Now;
 
         private bool _disposedValue;
@@ -37,38 +39,43 @@ namespace CameraServer.Services.MotionDetection
 
             var result = false;
             var currentTime = DateTime.Now;
-            if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DetectorRestartMs - _detectorDelayMs))
+            if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DETECTOR_RESTART_MS - _detectorDelayMs))
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
+
             // movement detection
             if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
             {
                 // resize
-                var currFrame = frame.ToImage<Gray, byte>().Resize(_width, _height, Inter.Nearest);
+                var currFrame = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
 
                 // compare
-                var imgAbsDiff = new Image<Gray, byte>(currFrame.Width, currFrame.Height);
+                var imgAbsDiff = new Image<Bgr, byte>(_width, _height);
                 CvInvoke.AbsDiff(currFrame, _prevFrame, imgAbsDiff);
 #if DEBUG
                 //File.WriteAllBytes("diff.jpg", imgAbsDiff.ToJpegData());
 #endif
+                currFrame.Dispose();
 
                 // filter out the noise
-                var imgThreshold = new Image<Gray, byte>(currFrame.Width, currFrame.Height);
+                var imgThreshold = new Image<Gray, byte>(_width, _height);
                 CvInvoke.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdType.Binary);
+                imgAbsDiff.Dispose();
 
-                // Find contours around the blobs
+                // Find contours around the blobs                
+                ProcessedFrame ??= new Image<Gray, byte>(_width, _height);
+                CvInvoke.CvtColor(imgThreshold, ProcessedFrame, ColorConversion.Bgr2Gray);
                 var contours = new Emgu.CV.Util.VectorOfVectorOfPoint();
-                CvInvoke.FindContours(imgThreshold, contours, null, RetrType.External, ChainApproxMethod.ChainApproxTc89L1);
+                CvInvoke.FindContours(ProcessedFrame, contours, null, RetrType.External, ChainApproxMethod.ChainApproxTc89L1);
 #if DEBUG
-                var colorFrame = imgThreshold.Convert<Rgb, byte>();
+                var colorFrame = ProcessedFrame.Convert<Rgb, byte>();
+                var n = 0;
 #endif
                 //Find big blobs to activate alarm
-                var n = 0;
-                foreach (var c in contours?.ToArrayOfArray())
+                foreach (var c in contours.ToArrayOfArray())
                 {
                     var r = CvInvoke.BoundingRectangle(c);
-                    var pixelCount = CountPixels(imgThreshold, r);
-                    if (pixelCount >= _changeLimit)
+                    var pixelCount = CountPixels(ProcessedFrame, r);
+                    if (((double)pixelCount / (_width * _height)) * 100 >= _changeLimit)
                     {
 #if DEBUG
                         CvInvoke.DrawContours(colorFrame, contours, n, new MCvScalar(0, 255, 0));
@@ -87,8 +94,9 @@ namespace CameraServer.Services.MotionDetection
                     {
                         CvInvoke.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), new MCvScalar(0, 0, 255));
                     }
-#endif
+
                     n++;
+#endif
                 }
 
                 contours.Dispose();
@@ -99,11 +107,9 @@ namespace CameraServer.Services.MotionDetection
                 _prevFrame.Dispose();
                 _prevFrame = currFrame;
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
-
-                imgAbsDiff.Dispose();
-                imgThreshold.Dispose();
             }
-            else _prevFrame ??= frame.ToImage<Gray, byte>().Resize(_width, _height, Inter.Nearest);
+            else
+                _prevFrame = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
 
             return result;
         }
@@ -123,6 +129,7 @@ namespace CameraServer.Services.MotionDetection
             {
                 if (disposing)
                 {
+                    ProcessedFrame?.Dispose();
                     _prevFrame?.Dispose();
                 }
 

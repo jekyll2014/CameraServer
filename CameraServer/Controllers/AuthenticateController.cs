@@ -19,9 +19,15 @@ public class AuthenticateController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IUserManager _manager;
     private readonly IHttpContextAccessor _accessor;
+    private readonly ILogger<AuthenticateController> _logger;
 
-    public AuthenticateController(IConfiguration configuration, IUserManager manager, IHttpContextAccessor accessor)
+    public AuthenticateController(
+        IConfiguration configuration,
+        IUserManager manager,
+        IHttpContextAccessor accessor,
+        ILogger<AuthenticateController> logger)
     {
+        _logger = logger;
         _configuration = configuration;
         _manager = manager;
         _accessor = accessor;
@@ -80,6 +86,8 @@ public class AuthenticateController : ControllerBase
                     CookieAuthenticationDefaults.AuthenticationScheme,
                     new ClaimsPrincipal(claimsIdentity),
                     authProperties);
+
+                _logger.Log(LogLevel.Error, $"User {user.Login} authenticated");
 
                 return Ok();
             }

@@ -5,6 +5,10 @@ using CameraServer.Models;
 using CameraServer.Services.CameraHub;
 using CameraServer.Services.MotionDetection;
 
+using Emgu.CV;
+using Emgu.CV.CvEnum;
+using Emgu.CV.Structure;
+
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,24 +16,33 @@ using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
 
 using System.Net;
+using System.Text;
 
 using HttpGetAttribute = Microsoft.AspNetCore.Mvc.HttpGetAttribute;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Controllers
 {
-    //[Authorize]
     [Authorize(AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme)]
     [Authorize(AuthenticationSchemes = Program.BasicAuthenticationSchemeName)]
     [ApiController]
     [Route("[controller]")]
     public class MotionDetectorController : ControllerBase
     {
+        private const string Boundary = "--boundary";
+
         private readonly IUserManager _manager;
         private readonly CameraHubService _collection;
         private readonly MotionDetectionService _motionDetector;
+        private readonly ILogger<MotionDetectorController> _logger;
 
-        public MotionDetectorController(IUserManager manager, CameraHubService collection, MotionDetectionService motionDetector)
+        public MotionDetectorController(
+            IUserManager manager,
+            CameraHubService collection,
+            MotionDetectionService motionDetector,
+            ILogger<MotionDetectorController> logger)
         {
+            _logger = logger;
             _manager = manager;
             _collection = collection;
             _motionDetector = motionDetector;
@@ -126,7 +139,8 @@ namespace CameraServer.Controllers
             if (cameraNumber < 0 || cameraNumber >= _collection.Cameras.Count())
                 return BadRequest("No such camera");
 
-            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            var userinfo = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+            var userRoles = userinfo?.Roles;
             if (userRoles == null || userRoles.Count == 0)
                 return BadRequest("No such camera");
 
@@ -141,7 +155,8 @@ namespace CameraServer.Controllers
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Exception happened during finding the camera[{cameraNumber}]: {e}");
+                _logger.Log(LogLevel.Error, $"Exception happened during finding the camera[{cameraNumber}]: {e}");
+
                 return Problem("Can not find camera#", cameraNumber.ToString(), StatusCodes.Status204NoContent);
             }
 
@@ -160,16 +175,16 @@ namespace CameraServer.Controllers
                         NoiseThreshold = noiseThreshold ?? 0,
                         DetectorDelayMs = detectorDelayMs ?? 0
                     },
-                    Notifications = new List<NotificationParametersDto>()
-                    {
-                        new NotificationParametersDto()
+                    Notifications =
+                    [
+                        new()
                         {
                             Transport = transport ?? NotificationTransport.None,
                             Destination = destination ?? string.Empty,
                             MessageType = messageType ?? MessageType.Text,
                             Message = message ?? string.Empty
                         }
-                    }
+                    ]
                 };
 
                 var taskId = _motionDetector.Start(motionTask);
@@ -178,7 +193,7 @@ namespace CameraServer.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Can't start recording: {ex}");
+                _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
                 return BadRequest(ex);
             }
         }
@@ -191,6 +206,71 @@ namespace CameraServer.Controllers
             _motionDetector.Stop(taskId);
 
             return Ok();
+        }
+
+        [HttpGet]
+        [Route("GetMotionDetectorStream")]
+        [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
+        public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
+        {
+            if (_motionDetector.TaskList.Count() <= detectorTask)
+                return BadRequest("No such detector task");
+
+            string detectorTaskId = _motionDetector.TaskList.ToArray()[detectorTask];
+
+            await GetMotionDetectorStreamInternal(detectorTaskId);
+
+            return new EmptyResult();
+        }
+
+        private async Task<IActionResult> GetMotionDetectorStreamInternal(string detectorTaskId)
+        {
+            if (!_motionDetector.TaskList.Contains(detectorTaskId))
+                return BadRequest("No such detector task");
+
+            var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+            if (userRoles == null || userRoles.Count == 0)
+                return BadRequest("No such detector task");
+
+            _motionDetector.ImageProcessedEvent += _motionDetector_ImageProcessedEvent;
+
+            Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
+
+            while (!Request.HttpContext.RequestAborted.IsCancellationRequested
+                && !Response.HttpContext.RequestAborted.IsCancellationRequested
+                && !HttpContext.RequestAborted.IsCancellationRequested
+                && _motionDetector.TaskList.Contains(detectorTaskId))
+            {
+                await Task.Delay(100);
+            }
+
+            _motionDetector.ImageProcessedEvent -= _motionDetector_ImageProcessedEvent;
+
+            return new EmptyResult();
+
+            async void _motionDetector_ImageProcessedEvent(MotionDetectionCameraTask detectorTask, Image<Gray, byte>? image)
+            {
+                try
+                {
+                    if (image != null && detectorTask.TaskId == detectorTaskId)
+                    {
+                        var jpegBuffer = image.ToJpegData(100);
+                        var header = $"\r\n{Boundary}\r\n" +
+                                     $"Content-Type: image/jpeg\r\n" +
+                                     $"Content-Length: {jpegBuffer.Length}\r\n" +
+                                     $"\r\n";
+                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
+                        await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
+                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log(LogLevel.Error, ex.ToString());
+                }
+
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            }
         }
     }
 }
