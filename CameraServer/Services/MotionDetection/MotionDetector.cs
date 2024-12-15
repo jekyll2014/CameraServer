@@ -58,7 +58,10 @@ namespace CameraServer.Services.MotionDetection
                 // Find contours around the blobs
                 Cv2.CvtColor(imgThreshold, ProcessedFrame, ColorConversionCodes.BGR2GRAY);
                 imgThreshold.Dispose();
-                Cv2.FindContours(ProcessedFrame, out var contours, out _, RetrievalModes.External,
+                Cv2.FindContours(ProcessedFrame,
+                    out var contours,
+                    out _,
+                    RetrievalModes.External,
                     ContourApproximationModes.ApproxTC89L1);
 
                 //Find big blobs to activate alarm

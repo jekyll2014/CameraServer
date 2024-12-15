@@ -179,7 +179,7 @@ namespace CameraServer.Services.Telegram
         }
 
         public async Task<Message?> SendImage(ChatId chatId,
-            Mat image,
+            Mat? image,
             string caption,
             CancellationToken cancellationToken)
         {
@@ -191,29 +191,31 @@ namespace CameraServer.Services.Telegram
             {
                 using (var ms = new MemoryStream())
                 {
-                    var jpegBuffer = image.ToBytes(".jpg",
+                    var jpegBuffer = image?.ToBytes(".jpg",
                     new ImageEncodingParam[]
                     {
                         new(ImwriteFlags.JpegOptimize, 1),
                         new(ImwriteFlags.JpegQuality, _settings.DefaultImageQuality)
                     });
+                    if (jpegBuffer != null)
+                    {
+                        await ms.WriteAsync(jpegBuffer, cancellationToken);
+                        ms.Position = 0;
+                        var pic = InputFile.FromStream(ms);
 
-                    await ms.WriteAsync(jpegBuffer, cancellationToken);
-                    ms.Position = 0;
-                    var pic = InputFile.FromStream(ms);
-
-                    return await _botClient.SendPhoto(chatId: chatId,
-                        photo: pic,
-                        caption: caption,
-                        cancellationToken: cancellationToken);
+                        return await _botClient.SendPhoto(chatId: chatId,
+                            photo: pic,
+                            caption: caption,
+                            cancellationToken: cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Telegram exception: {ex}");
-
-                return null;
             }
+
+            return null;
         }
 
         public async Task<Message?> SendVideo(ChatId chatId,

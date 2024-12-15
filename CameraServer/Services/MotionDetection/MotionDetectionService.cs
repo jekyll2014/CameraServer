@@ -329,9 +329,8 @@ namespace CameraServer.Services.MotionDetection
                 {
                     var image = bufferedImages.Last()?.Clone();
                     await SendMovementImageMulti(camera, image, imageNotifications);
-                    image.Dispose();
-                }
-                , TaskCreationOptions.LongRunning);
+                    image?.Dispose();
+                }, TaskCreationOptions.LongRunning);
 
                 //t.ConfigureAwait(false);
                 t.Start();
@@ -430,7 +429,7 @@ namespace CameraServer.Services.MotionDetection
 
         private async Task SendMovementImageMulti(
             IServerCamera camera,
-            Mat image,
+            Mat? image,
             NotificationParametersDto[] notificationParams)
         {
             if (notificationParams.Length <= 0)
@@ -473,12 +472,13 @@ namespace CameraServer.Services.MotionDetection
                                $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime:yyyy-MM-dd}_{currentTime:HH-mm-ss}.jpg")}";
                 try
                 {
-                    await File.WriteAllBytesAsync(fileName, image.ToBytes(".jpg",
-                        new ImageEncodingParam[]
-                        {
+                    if (image != null)
+                        await File.WriteAllBytesAsync(fileName, image.ToBytes(".jpg",
+                            new ImageEncodingParam[]
+                            {
                                     new(ImwriteFlags.JpegOptimize, 1),
                                     new(ImwriteFlags.JpegQuality, _videoRecorderService._settings.DefaultVideoQuality)
-                        }));
+                            }));
                 }
                 catch (Exception ex)
                 {
