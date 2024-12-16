@@ -29,7 +29,6 @@ namespace CameraServer
         {
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
-
             _logger = new LoggerConfiguration()
                 .MinimumLevel.Verbose()
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Information)

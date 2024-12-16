@@ -6,19 +6,16 @@ namespace CameraServer.Services.MotionDetection
 {
     public class MotionDetector : IDisposable
     {
-        private const int DETECTOR_RESTART_MS = 10000;
+        public Mat ProcessedFrame = new();
 
+        private const int DETECTOR_RESTART_MS = 10000;
         private readonly uint _detectorDelayMs;
         private readonly byte _noiseThreshold;
         private readonly int _width;
         private readonly int _height;
         private readonly double _changeLimit;
-
-        private Mat? _prevFrame;
-        public Mat ProcessedFrame = new();
-
+        private Mat? _backgroundFrame = null; //new Mat(,CV_32FC1);
         private DateTime _nextFrameProcessTime = DateTime.Now;
-
         private bool _disposedValue;
 
         public MotionDetector(MotionDetectorParametersDto parametersDto)
@@ -41,28 +38,42 @@ namespace CameraServer.Services.MotionDetection
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
 
             // movement detection
-            if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
+            if (_backgroundFrame != null)
             {
+                if (currentTime < _nextFrameProcessTime)
+                    return false;
+
                 // resize
-                var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+                var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest)
+                    .CvtColor(ColorConversionCodes.BGR2GRAY)
+                    .GaussianBlur(new Size(21, 21), 0)
+                    .EqualizeHist();
 
                 // compare
+                var backgroundFrameGray = new Mat();
+                Cv2.ConvertScaleAbs(_backgroundFrame, backgroundFrameGray);
                 var imgAbsDiff = new Mat();
-                Cv2.Absdiff(currFrame, _prevFrame, imgAbsDiff);
+                Cv2.Absdiff(currFrame, backgroundFrameGray, imgAbsDiff);
+                backgroundFrameGray.Dispose();
+
+                // update background frame
+                if (result)
+                    Cv2.AccumulateWeighted(currFrame, _backgroundFrame, 0.1, new Mat());
+                else
+                    Cv2.AccumulateWeighted(currFrame, _backgroundFrame, 0.5, new Mat());
+
+                currFrame.Dispose();
 
                 // filter out the noise
-                var imgThreshold = new Mat();
-                Cv2.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdTypes.Binary);
+                Cv2.Threshold(imgAbsDiff, ProcessedFrame, _noiseThreshold, 255, ThresholdTypes.Binary);
                 imgAbsDiff.Dispose();
 
                 // Find contours around the blobs
-                Cv2.CvtColor(imgThreshold, ProcessedFrame, ColorConversionCodes.BGR2GRAY);
-                imgThreshold.Dispose();
                 Cv2.FindContours(ProcessedFrame,
                     out var contours,
                     out _,
                     RetrievalModes.External,
-                    ContourApproximationModes.ApproxTC89L1);
+                    ContourApproximationModes.ApproxSimple); // ApproxTC89L1, ApproxSimple
 
                 //Find big blobs to activate alarm
                 foreach (var c in contours)
@@ -78,13 +89,17 @@ namespace CameraServer.Services.MotionDetection
                     }
                 }
 
-                _prevFrame.Dispose();
-                _prevFrame = currFrame;
-
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
             }
             else
-                _prevFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+            {
+                _backgroundFrame = new Mat(_width, _height, MatType.CV_32FC1);
+                frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest)
+                    .CvtColor(ColorConversionCodes.BGR2GRAY)
+                    .GaussianBlur(new Size(21, 21), 0)
+                    .EqualizeHist()
+                    .AssignTo(_backgroundFrame, MatType.CV_32FC1);
+            }
 
             return result;
         }
@@ -105,7 +120,7 @@ namespace CameraServer.Services.MotionDetection
                 if (disposing)
                 {
                     ProcessedFrame?.Dispose();
-                    _prevFrame?.Dispose();
+                    _backgroundFrame?.Dispose();
                 }
 
                 _disposedValue = true;

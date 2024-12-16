@@ -242,21 +242,20 @@ namespace CameraServer.Services.VideoRecording
                     stopTask = !_recorderTasks.TryGetValue(newTask, out _);
                 }
 
-                _collection.UnHookCamera(newCameraItem);
             }
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Exception in VideoRecorder task: {ex}");
-                while (imageQueue.TryDequeue(out var image))
-                {
-                    image?.Dispose();
-                }
-
-                imageQueue.Clear();
-
-                _recorderTasks.TryRemove(newTask, out _);
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             }
+
+            _collection.UnHookCamera(newCameraItem);
+            while (imageQueue.TryDequeue(out var image))
+            {
+                image?.Dispose();
+            }
+
+            _recorderTasks.TryRemove(newTask, out _);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
 
         public async Task<string> RecordVideoFile(ServerCamera camera,
@@ -334,7 +333,6 @@ namespace CameraServer.Services.VideoRecording
                             await Task.Delay(1, CancellationToken.None);
                     }
 
-                    _collection.UnHookCamera(newCameraItem);
                 }
             }
             catch (Exception ex)
@@ -342,6 +340,7 @@ namespace CameraServer.Services.VideoRecording
                 _logger.Log(LogLevel.Error, $"Exception in video file recorder: {ex}");
             }
 
+            _collection.UnHookCamera(newCameraItem);
             while (tmpImageQueue.TryDequeue(out var image))
                 image.Dispose();
 
