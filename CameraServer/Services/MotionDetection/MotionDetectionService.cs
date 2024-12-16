@@ -110,26 +110,26 @@ namespace CameraServer.Services.MotionDetection
             if (detectTask?.Notifications == null || detectTask.Notifications.Count <= 0)
                 return string.Empty;
 
-            detectTask.MotionDetectParameters ??= Settings.DefaultMotionDetectParametersDto;
+            detectTask.MotionDetectParameters ??= Settings.DefaultMotionDetectParameters;
 
             var userDto = _manager.GetUserInfo(detectTask.User);
             if (userDto == null)
                 throw new ApplicationException($"User [{detectTask.User}] not authorised to start recording.");
 
             if (detectTask.MotionDetectParameters.Width <= 0)
-                detectTask.MotionDetectParameters.Width = Settings.DefaultMotionDetectParametersDto.Width;
+                detectTask.MotionDetectParameters.Width = Settings.DefaultMotionDetectParameters.Width;
 
             if (detectTask.MotionDetectParameters.Height <= 0)
-                detectTask.MotionDetectParameters.Height = Settings.DefaultMotionDetectParametersDto.Height;
+                detectTask.MotionDetectParameters.Height = Settings.DefaultMotionDetectParameters.Height;
 
             if (detectTask.MotionDetectParameters.DetectorDelayMs <= 0)
-                detectTask.MotionDetectParameters.Width = Settings.DefaultMotionDetectParametersDto.Width;
+                detectTask.MotionDetectParameters.Width = Settings.DefaultMotionDetectParameters.Width;
 
             if (detectTask.MotionDetectParameters.NoiseThreshold <= 0)
-                detectTask.MotionDetectParameters.NoiseThreshold = Settings.DefaultMotionDetectParametersDto.NoiseThreshold;
+                detectTask.MotionDetectParameters.NoiseThreshold = Settings.DefaultMotionDetectParameters.NoiseThreshold;
 
             if (detectTask.MotionDetectParameters.ChangeLimit <= 0)
-                detectTask.MotionDetectParameters.ChangeLimit = Settings.DefaultMotionDetectParametersDto.ChangeLimit;
+                detectTask.MotionDetectParameters.ChangeLimit = Settings.DefaultMotionDetectParameters.ChangeLimit;
 
             ServerCamera camera;
             try
@@ -238,10 +238,10 @@ namespace CameraServer.Services.MotionDetection
                 motionDetectTask.FrameFormat);
 
             var imageQueue = new ConcurrentQueue<Mat>();
+            var lastImagesQueue = new ConcurrentQueue<Mat>();
             try
             {
                 var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
-
                 if (cameraCancellationToken == CancellationToken.None)
                 {
                     _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
@@ -254,8 +254,7 @@ namespace CameraServer.Services.MotionDetection
                 motionDetectTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
                 using (var motionDetector = new MotionDetector(motionDetectTask.MotionDetectParameters))
                 {
-                    var lastImagesQueue = new ConcurrentQueue<Mat>();
-                    var maxBufferCount = Settings.DefaultMotionDetectParametersDto.KeepImageBuffer;
+                    var maxBufferCount = Settings.DefaultMotionDetectParameters.KeepImageBuffer;
                     while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
                     {
                         if (imageQueue.TryDequeue(out var image))
@@ -293,22 +292,22 @@ namespace CameraServer.Services.MotionDetection
 
                         stopTask = !_detectorTasks.Any(n => n.Key.TaskId == motionDetectTask.TaskId);
                     }
-
-                    while (lastImagesQueue.TryDequeue(out var oldImage))
-                        oldImage?.Dispose();
                 }
-
-                _collection.UnHookCamera(newCameraItem);
             }
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error, $"Exception in MotionDetector task: {ex}");
-                while (imageQueue.TryDequeue(out var image))
-                    image?.Dispose();
-
-                _detectorTasks.TryRemove(motionDetectTask, out _);
-                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             }
+
+            _collection.UnHookCamera(newCameraItem);
+            while (imageQueue.TryDequeue(out var image))
+                image?.Dispose();
+
+            while (lastImagesQueue.TryDequeue(out var oldImage))
+                oldImage?.Dispose();
+
+            _detectorTasks.TryRemove(motionDetectTask, out _);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
 
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
@@ -401,7 +400,7 @@ namespace CameraServer.Services.MotionDetection
                 var dest = notificationParam.Destination;
                 if (_notificationsText.TryGetValue(dest, out var lastNotificationTime))
                 {
-                    if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParametersDto.NotificationDelay)
+                    if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
                         continue;
 
                     _notificationsText[dest] = currentTime;
@@ -442,7 +441,7 @@ namespace CameraServer.Services.MotionDetection
                 var dest = notificationParam.Destination;
                 if (_notificationsImage.TryGetValue(dest, out var lastNotificationTime))
                 {
-                    if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParametersDto.NotificationDelay)
+                    if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
                         continue;
 
                     _notificationsImage[dest] = currentTime;
@@ -522,7 +521,7 @@ namespace CameraServer.Services.MotionDetection
                         if (_notificationsVideo.TryGetValue(dest, out var lastNotificationTime))
                         {
                             if (currentTime.Subtract(lastNotificationTime).TotalSeconds <
-                                Settings.DefaultMotionDetectParametersDto.NotificationDelay)
+                                Settings.DefaultMotionDetectParameters.NotificationDelay)
                                 continue;
 
                             _notificationsVideo[dest] = currentTime;

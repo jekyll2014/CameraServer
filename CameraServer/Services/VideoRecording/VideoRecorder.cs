@@ -1,10 +1,10 @@
 ﻿using CameraLib;
 
 using Emgu.CV;
-using Emgu.CV.CvEnum;
-using Emgu.CV.Structure;
-using LogLevel = Microsoft.Extensions.Logging.LogLevel;
+
 using System.Drawing;
+
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace CameraServer.Services.VideoRecording
 {

@@ -8,19 +8,16 @@ namespace CameraServer.Services.MotionDetection
 {
     public class MotionDetector : IDisposable
     {
-        private const int DETECTOR_RESTART_MS = 10000;
+        public Image<Gray, byte>? ProcessedFrame = null;
 
+        private const int DETECTOR_RESTART_MS = 10000;
         private readonly uint _detectorDelayMs;
         private readonly byte _noiseThreshold;
         private readonly int _width;
         private readonly int _height;
         private readonly double _changeLimit;
-
-        private Image<Bgr, byte>? _prevFrame;
-        public Image<Gray, byte>? ProcessedFrame = null;
-
+        private Image<Gray, float>? _backgroundFrame = null; //new Mat(,CV_32FC1);
         private DateTime _nextFrameProcessTime = DateTime.Now;
-
         private bool _disposedValue;
 
         public MotionDetector(MotionDetectorParametersDto parametersDto)
@@ -43,37 +40,53 @@ namespace CameraServer.Services.MotionDetection
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
 
             // movement detection
-            if (_prevFrame != null && currentTime >= _nextFrameProcessTime)
+            if (_backgroundFrame != null)
             {
+                if (currentTime < _nextFrameProcessTime)
+                    return false;
+
                 // resize
-                var currFrame = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
+                var img1 = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
+                var currFrame = new Image<Gray, byte>(_width, _height);
+                CvInvoke.CvtColor(img1, currFrame, ColorConversion.Bgr2Gray);
+                img1.Dispose();
+                var img3 = new Image<Gray, byte>(_width, _height);
+                CvInvoke.GaussianBlur(currFrame, img3, new Size(21, 21), 0);
+                CvInvoke.EqualizeHist(img3, currFrame);
+                img3.Dispose();
 
                 // compare
-                var imgAbsDiff = new Image<Bgr, byte>(_width, _height);
-                CvInvoke.AbsDiff(currFrame, _prevFrame, imgAbsDiff);
+                var backgroundFrameGray = new Image<Gray, byte>(_width, _height);
+                CvInvoke.ConvertScaleAbs(_backgroundFrame, backgroundFrameGray, 1, 0);
+
+                var imgAbsDiff = new Image<Gray, byte>(_width, _height);
+                CvInvoke.AbsDiff(currFrame, backgroundFrameGray, imgAbsDiff);
 #if DEBUG
                 //File.WriteAllBytes("diff.jpg", imgAbsDiff.ToJpegData());
 #endif
+                // update background frame
+                if (result)
+                    CvInvoke.AccumulateWeighted(currFrame, _backgroundFrame, 0.1);
+                else
+                    CvInvoke.AccumulateWeighted(currFrame, _backgroundFrame, 0.5);
                 currFrame.Dispose();
 
                 // filter out the noise
-                var imgThreshold = new Image<Gray, byte>(_width, _height);
-                CvInvoke.Threshold(imgAbsDiff, imgThreshold, _noiseThreshold, 255, ThresholdType.Binary);
+                ProcessedFrame ??= new Image<Gray, byte>(_width, _height);
+                CvInvoke.Threshold(imgAbsDiff, ProcessedFrame, _noiseThreshold, 255, ThresholdType.Binary);
                 imgAbsDiff.Dispose();
 
                 // Find contours around the blobs                
-                ProcessedFrame ??= new Image<Gray, byte>(_width, _height);
-                CvInvoke.CvtColor(imgThreshold, ProcessedFrame, ColorConversion.Bgr2Gray);
                 var contours = new Emgu.CV.Util.VectorOfVectorOfPoint();
-                CvInvoke.FindContours(ProcessedFrame, contours, null, RetrType.External, ChainApproxMethod.ChainApproxTc89L1);
+                CvInvoke.FindContours(ProcessedFrame, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
 #if DEBUG
                 var colorFrame = ProcessedFrame.Convert<Rgb, byte>();
                 var n = 0;
 #endif
                 //Find big blobs to activate alarm
-                foreach (var c in contours.ToArrayOfArray())
+                foreach (var contour in contours.ToArrayOfArray())
                 {
-                    var r = CvInvoke.BoundingRectangle(c);
+                    var r = CvInvoke.BoundingRectangle(contour);
                     var pixelCount = CountPixels(ProcessedFrame, r);
                     if (((double)pixelCount / (_width * _height)) * 100 >= _changeLimit)
                     {
@@ -90,9 +103,14 @@ namespace CameraServer.Services.MotionDetection
                         CvInvoke.Rectangle(colorFrame, r, new MCvScalar(255, 0, 0));
                     }
 
-                    for (var i = 1; i < c.Length; i++)
+                    for (var i = 1; i < contour.Length; i++)
                     {
-                        CvInvoke.Line(colorFrame, new Point(c[i - 1].X, c[i - 1].Y), new Point(c[i].X, c[i].Y), new MCvScalar(0, 0, 255));
+                        CvInvoke.Line(colorFrame,
+                            new Point(contour[i - 1].X,
+                            contour[i - 1].Y),
+                            new Point(contour[i].X,
+                            contour[i].Y),
+                            new MCvScalar(0, 0, 255));
                     }
 
                     n++;
@@ -104,12 +122,22 @@ namespace CameraServer.Services.MotionDetection
                 File.WriteAllBytes("threshold_cnt.jpg", colorFrame.ToJpegData());
                 colorFrame.Dispose();
 #endif
-                _prevFrame.Dispose();
-                _prevFrame = currFrame;
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
             }
             else
-                _prevFrame = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
+            {
+                var img1 = frame.ToImage<Bgr, byte>().Resize(_width, _height, Inter.Nearest);
+                var img2 = new Image<Gray, byte>(_width, _height);
+                CvInvoke.CvtColor(img1, img2, ColorConversion.Bgr2Gray);
+                img1.Dispose();
+                var img3 = new Image<Gray, byte>(_width, _height);
+                CvInvoke.GaussianBlur(img2, img3, new Size(21, 21), 0);
+                CvInvoke.EqualizeHist(img3, img2);
+                img3.Dispose();
+                _backgroundFrame?.Dispose();
+                _backgroundFrame = img2.Convert<Gray, float>();
+                img2.Dispose();
+            }
 
             return result;
         }
@@ -130,7 +158,7 @@ namespace CameraServer.Services.MotionDetection
                 if (disposing)
                 {
                     ProcessedFrame?.Dispose();
-                    _prevFrame?.Dispose();
+                    _backgroundFrame?.Dispose();
                 }
 
                 _disposedValue = true;

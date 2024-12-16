@@ -791,7 +791,7 @@ namespace CameraServer.Services.Telegram
                             CameraId = camera.CameraStream.Description.Path,
                             User = user.Login,
                             FrameFormat = new FrameFormatDto(),
-                            MotionDetectParameters = new MotionDetectorParametersDto(),
+                            MotionDetectParameters = motionDetectionService.Settings.DefaultMotionDetectParameters,
                             Notifications = new List<NotificationParametersDto>()
                             {
                                 new NotificationParametersDto()

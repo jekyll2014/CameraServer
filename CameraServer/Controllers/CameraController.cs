@@ -227,11 +227,7 @@ namespace CameraServer.Controllers
             _collection.UnHookCamera(newCameraItem);
 
             while (imageQueue.TryDequeue(out var image))
-            {
                 image?.Dispose();
-            }
-
-            imageQueue.Clear();
 
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
