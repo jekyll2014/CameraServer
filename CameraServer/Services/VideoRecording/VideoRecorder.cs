@@ -1,6 +1,8 @@
 ﻿using CameraLib;
 
 using Emgu.CV;
+using Emgu.CV.CvEnum;
+using Emgu.CV.Structure;
 
 using System.Drawing;
 
@@ -55,20 +57,19 @@ namespace CameraServer.Services.VideoRecording
             if (image == null)
                 return;
 
-            var outImage = image;
+            Image<Rgb, byte>? outImage = null;
             try
             {
-                /*if (Width > 0 && Height > 0 && image.Width > Width && image.Height > Height)
+                if (Width > 0 && Height > 0 && image.Width > Width && image.Height > Height)
                 {
                     outImage = image
                         .ToImage<Rgb, byte>()
                         .Resize(Width, Height, Inter.Nearest);
                 }
-                else*/
-                //outImage = image.ToImage<Rgb, byte>();
-                //outImage = image.Clone();
+                else
+                    outImage = image.ToImage<Rgb, byte>();
 
-                //if (outImage != null)
+                if (outImage != null)
                 {
                     if (_videoWriter == null)
                     {
@@ -83,14 +84,16 @@ namespace CameraServer.Services.VideoRecording
                     }
 
                     _videoWriter.Write(outImage);
-                    //outImage?.Dispose();
                 }
             }
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Information, $"Exception saving video frame: {ex}");
-                //outImage?.Dispose();
                 throw;
+            }
+            finally
+            {
+                outImage?.Dispose();
             }
         }
 

@@ -296,7 +296,9 @@ namespace CameraServer.Services.VideoRecording
                 using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
                 {
                     recorder.Codec = codec;
-                    if (imageBuffer.Length > 0)
+
+                    // ToDo: for some reason VideoWriter can't access buffered images. Seems like they are corrupted.
+                    /*if (imageBuffer.Length > 0)
                     {
                         foreach (var image in imageBuffer)
                         {
@@ -310,7 +312,7 @@ namespace CameraServer.Services.VideoRecording
                                 _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
                             }
                         }
-                    }
+                    }*/
 
                     var timeOut = DateTime.Now.AddSeconds(recordLengthSec);
                     while (DateTime.Now < timeOut)
