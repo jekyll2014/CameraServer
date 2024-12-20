@@ -30,7 +30,7 @@ namespace CameraLib.MJPEG
         public string Login { get; }
         public string Password { get; }
         public CameraDescription Description { get; set; }
-        public bool IsRunning { get; set; }
+        public bool IsRunning { get; set; } = false;
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
         public int FrameTimeout { get; set; } = 10000;
@@ -274,6 +274,7 @@ namespace CameraLib.MJPEG
                     byte previous = 0x00;   // The byte before
 
                     // Continuously pump the stream. The cancellationtoken is used to get out of there
+                    IsRunning = true;
                     try
                     {
                         while (!_stopCapture && !tokenLocal.IsCancellationRequested)
@@ -288,8 +289,9 @@ namespace CameraLib.MJPEG
                     catch (Exception ex)
                     {
                         _logger?.LogError(ex.Message);
-                        IsRunning = false;
                     }
+					
+					IsRunning = false;
                 }
             }
         }
