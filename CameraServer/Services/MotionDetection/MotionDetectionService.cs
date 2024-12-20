@@ -356,7 +356,11 @@ namespace CameraServer.Services.MotionDetection
                             buffer,
                             _telegramService._settings.DefaultVideoQuality);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError($"Can't send motion video: {ex}");
+                    }
+
                     foreach (var img in buffer)
                         img?.Dispose();
                 }

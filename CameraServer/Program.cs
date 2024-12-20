@@ -87,7 +87,10 @@ namespace CameraServer
                     ExecuteShellCommand("net", "start winnat");
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Host clean-up failed: {ex}");
+            }
 
             builder.Host.UseSerilog(_logger);
 
