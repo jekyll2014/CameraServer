@@ -7,11 +7,11 @@ namespace CameraLib
     {
         public CameraType Type { get; }
 
-        public string Path { get; private set; }
+        public string Path { get; set; }
 
         public string Name { get; set; }
 
-        public IEnumerable<FrameFormat> FrameFormats { get; }
+        public IEnumerable<FrameFormat> FrameFormats { get; set; }
 
         public CameraDescription(CameraType type, string path, string name = "", IEnumerable<FrameFormat>? frameFormats = null)
         {
