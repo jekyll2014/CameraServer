@@ -123,6 +123,8 @@ namespace CameraServer
 
             builder.Services.AddAuthorization();
 
+            builder.Services.AddHealthChecks();
+
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
@@ -177,6 +179,8 @@ namespace CameraServer
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}"
                 );
+
+            app.MapHealthChecks("/healthcheck");
 
             app.Run();
         }
