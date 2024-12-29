@@ -256,7 +256,7 @@ namespace CameraServer.Controllers
                             new ImageEncodingParam[]
                             {
                                     new(ImwriteFlags.JpegOptimize, 1),
-                                    new(ImwriteFlags.JpegQuality, 100)
+                                    new(ImwriteFlags.JpegQuality, 90)
                             });
                         var header = $"\r\n{Boundary}\r\n" +
                                      $"Content-Type: image/jpeg\r\n" +
