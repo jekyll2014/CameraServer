@@ -39,9 +39,9 @@ namespace CameraLib.MJPEG
 
         private readonly ILogger? _logger;
         private CancellationTokenSource? _cancellationTokenSource;
+        private CancellationTokenSource? _cancellationTokenSourceCameraGrabber;
         private readonly object _getPictureThreadLock = new object();
         private Task? _imageGrabber;
-        private volatile bool _stopCapture = false;
         private readonly Stopwatch _fpsTimer = new();
         private volatile byte _frameCount;
         private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
@@ -140,21 +140,24 @@ namespace CameraLib.MJPEG
             _height = height;
             _format = format;
 
+            _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new CancellationTokenSource();
+            _cancellationTokenSourceCameraGrabber?.Dispose();
+            _cancellationTokenSourceCameraGrabber = new CancellationTokenSource();
+
             _frameCount = 0;
             _fpsTimer.Reset();
             _keepAliveTimer.Interval = FrameTimeout;
             _keepAliveTimer.Start();
 
-            _stopCapture = false;
             try
             {
                 _imageGrabber?.Dispose();
-                _imageGrabber = StartAsync(Description.Path, AuthenicationType, Login, Password, token).WaitAsync(TimeSpan.FromMilliseconds(FrameTimeout), token);
+                _imageGrabber = StartAsync(Description.Path, AuthenicationType, _cancellationTokenSourceCameraGrabber.Token, Login, Password).WaitAsync(TimeSpan.FromMilliseconds(FrameTimeout), token);
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex.Message);
+                _logger?.LogError($"Camera stopped due to exception: {ex.Message}");
                 Stop();
 
                 return false;
@@ -177,11 +180,18 @@ namespace CameraLib.MJPEG
 
             lock (_getPictureThreadLock)
             {
+                IsRunning = false;
                 _keepAliveTimer.Stop();
 
-                _stopCapture = true;
-                var timeOut = DateTime.Now.AddSeconds(100);
-                _imageGrabber?.Wait(5000);
+                _cancellationTokenSourceCameraGrabber?.Cancel();
+                try
+                {
+                    _imageGrabber?.Wait(5000);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError($"Camera Stop() failed: {ex}");
+                }
 
                 if (cancellation)
                     _cancellationTokenSource?.Cancel();
@@ -252,10 +262,8 @@ namespace CameraLib.MJPEG
         /// <param name="chunkMaxSize">Max chunk byte size when reading stream</param>
         /// <param name="frameBufferSize">Maximum frame byte size</param>
         /// <returns></returns>
-        private async Task StartAsync(string url, AuthType authenicationType, string login = "", string password = "", CancellationToken? token = null, int chunkMaxSize = 1024, int frameBufferSize = 1024 * 1024)
+        private async Task StartAsync(string url, AuthType authenicationType, CancellationToken token, string login = "", string password = "", int chunkMaxSize = 1024, int frameBufferSize = 1024 * 1024)
         {
-            var tokenLocal = token ?? CancellationToken.None;
-
             using (var httpClient = new HttpClient())
             {
                 if (authenicationType == AuthType.Basic)
@@ -263,7 +271,7 @@ namespace CameraLib.MJPEG
                         "Basic",
                         Convert.ToBase64String(Encoding.ASCII.GetBytes($"{login}:{password}")));
 
-                await using (var stream = await httpClient.GetStreamAsync(url, tokenLocal).ConfigureAwait(false))
+                await using (var stream = await httpClient.GetStreamAsync(url, token).ConfigureAwait(false))
                 {
                     var streamBuffer = new byte[chunkMaxSize];      // Stream chunk read
                     var frameBuffer = new byte[frameBufferSize];    // Frame buffer
@@ -277,21 +285,22 @@ namespace CameraLib.MJPEG
                     IsRunning = true;
                     try
                     {
-                        while (!_stopCapture && !tokenLocal.IsCancellationRequested)
+                        while (!token.IsCancellationRequested)
                         {
-                            var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), tokenLocal)
+                            var streamLength = await stream.ReadAsync(streamBuffer.AsMemory(0, chunkMaxSize), token)
                                 .ConfigureAwait(false);
 
                             ParseStreamBuffer(frameBuffer, ref frameIdx, streamLength, streamBuffer, ref inPicture,
-                                ref previous, ref current, tokenLocal);
+                                ref previous, ref current, token);
                         }
                     }
                     catch (Exception ex)
                     {
+                        Stop();
                         _logger?.LogError(ex.Message);
                     }
-					
-					IsRunning = false;
+
+                    IsRunning = false;
                 }
             }
         }
@@ -300,7 +309,7 @@ namespace CameraLib.MJPEG
         private void ParseStreamBuffer(byte[] frameBuffer, ref int frameIdx, int streamLength, byte[] streamBuffer, ref bool inPicture, ref byte previous, ref byte current, CancellationToken token)
         {
             var idx = 0;
-            while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested)
+            while (idx < streamLength && !token.IsCancellationRequested)
             {
                 if (inPicture)
                 {
@@ -330,7 +339,7 @@ namespace CameraLib.MJPEG
                     inPicture = true;
                     return;
                 }
-            } while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested);
+            } while (idx < streamLength && !token.IsCancellationRequested);
         }
 
         // While we are parsing a picture, fill the frame buffer until a FFD9 is reach.
@@ -389,7 +398,7 @@ namespace CameraLib.MJPEG
 
                     return;
                 }
-            } while (idx < streamLength && !_stopCapture && !token.IsCancellationRequested);
+            } while (idx < streamLength && !token.IsCancellationRequested);
         }
 
         #endregion
@@ -442,11 +451,11 @@ namespace CameraLib.MJPEG
                 if (disposing)
                 {
                     Stop();
-                    _imageGrabber?.Wait(5000);
                     _imageGrabber?.Dispose();
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();
                     _cancellationTokenSource?.Dispose();
+                    _cancellationTokenSourceCameraGrabber?.Dispose();
                 }
 
                 _disposedValue = true;

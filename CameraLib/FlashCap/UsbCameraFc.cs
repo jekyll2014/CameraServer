@@ -249,6 +249,7 @@ namespace CameraLib.FlashCap
 
             lock (_getPictureThreadLock)
             {
+                IsRunning = false;
                 _keepAliveTimer.Stop();
 
                 if (cancellation)

@@ -234,7 +234,8 @@ namespace CameraLib.IP
                 catch (Exception ex)
                 {
                     _logger?.LogError($"Error getting image from camera: {ex.Message}");
-                    await Task.Delay(1000);
+                    Stop();
+                    //await Task.Delay(1000);
                 }
 
                 IsRunning = false;
@@ -314,14 +315,15 @@ namespace CameraLib.IP
 
             lock (_getPictureThreadLock)
             {
+                IsRunning = false;
                 _keepAliveTimer.Stop();
 
                 if (_captureDevice != null)
                 {
                     _cancellationTokenSourceCameraGrabber?.Cancel();
-                    _captureTask?.Wait(5000);
                     try
                     {
+                        _captureTask?.Wait(5000);
                         _captureDevice?.Release();
                     }
                     catch (Exception ex)
@@ -454,6 +456,7 @@ namespace CameraLib.IP
                     _keepAliveTimer.Dispose();
                     _captureDevice?.Dispose();
                     _cancellationTokenSource?.Dispose();
+                    _cancellationTokenSourceCameraGrabber?.Dispose();
                 }
 
                 _disposedValue = true;
