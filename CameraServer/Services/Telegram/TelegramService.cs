@@ -7,6 +7,8 @@ using CameraServer.Services.CameraHub;
 using CameraServer.Services.MotionDetection;
 using CameraServer.Services.VideoRecording;
 
+using Microsoft.AspNetCore.Identity;
+
 using OpenCvSharp;
 
 using Telegram.Bot;
@@ -42,7 +44,7 @@ namespace CameraServer.Services.Telegram
 
         private const uint VideoRecordMaxTime = 120;
         private readonly char[] _separator = new[] { ' ', ',' };
-        private readonly IUserManager _manager;
+        private readonly IUserManager _userManager;
         private readonly CameraHubService _collection;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<TelegramService> _logger;
@@ -53,14 +55,14 @@ namespace CameraServer.Services.Telegram
         private bool _disposedValue;
 
         public TelegramService(IConfiguration configuration,
-            IUserManager manager,
+            IUserManager userManager,
             CameraHubService collection,
             IServiceProvider serviceProvider,
             ILogger<TelegramService> logger)
         {
             _logger = logger;
             _settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>() ?? new TelegeramSettings();
-            _manager = manager;
+            _userManager = userManager;
             _collection = collection;
             _serviceProvider = serviceProvider;
             _externalHostUrl = configuration.GetValue(ExternalHostUriSection, string.Empty) ?? string.Empty;
@@ -136,6 +138,13 @@ namespace CameraServer.Services.Telegram
 
                 var me = await _botClient.GetMe(cancellationToken);
                 _logger.Log(LogLevel.Information, $"...listening for @{me.Username} [{me.Id}]");
+
+                var admins = _userManager.GetUsers()?.Where(n => n.Roles.Contains(Roles.Admin) && n.TelegramId > 0);
+                if (admins != null)
+                {
+                    foreach (var admin in admins)
+                        await _botClient.SendMessage(admin.TelegramId, "CameraServer started");
+                }
             }
             catch (Exception ex)
             {
@@ -310,7 +319,7 @@ namespace CameraServer.Services.Telegram
 
             _logger.Log(LogLevel.Information, $"Received a '{messageText}' message from \"@{senderName}\"[{senderId}].");
 
-            var currentTelegramUser = _manager.GetUserInfo(senderId);
+            var currentTelegramUser = _userManager.GetUserInfo(senderId);
             if (currentTelegramUser == null)
             {
                 await SendText(chatId: chatId, text: $"Non authorized users are not allowed", cancellationToken);
