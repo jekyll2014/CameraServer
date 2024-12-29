@@ -236,6 +236,9 @@ namespace CameraServer.Controllers
             return new EmptyResult();
         }
 
+        [HttpGet]
+        [Route("GenerateCameraUrl")]
+        [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
         public static string GenerateCameraUrl(int cameraNumber, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
         {
             return
