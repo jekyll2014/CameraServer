@@ -58,10 +58,7 @@ namespace CameraServer.Services.VideoRecording
             try
             {
                 if (Width > 0 && Height > 0 && image.Width > Width && image.Height > Height)
-                {
-                    outImage = image?
-                        .Resize(new Size(Width, Height), interpolation: InterpolationFlags.Nearest);
-                }
+                    outImage = image?.Resize(new Size(Width, Height), interpolation: InterpolationFlags.Nearest);
                 else
                     outImage = image?.Clone();
 
@@ -70,12 +67,12 @@ namespace CameraServer.Services.VideoRecording
                     if (_videoWriter == null)
                     {
                         _logger.Log(LogLevel.Information, $"Starting new file record [{_fourCcCodec}]: {FileName}");
-
                         _videoWriter = new VideoWriter(FileName,
                             _fourCcCodec,
                             Fps,
                             new Size(outImage.Width, outImage.Height),
                             true);
+
                         _videoWriter.Set(VideoWriterProperties.Quality, CompressionQuality);
                     }
 

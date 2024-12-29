@@ -148,8 +148,15 @@ namespace CameraServer.Services.VideoRecording
 
                 TaskConfig.SaveConfig();
 
-                t.Wait(5000);
-                t.Dispose();
+                try
+                {
+                    t?.Wait(5000);
+                    t?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError($"{this} Stop() failed: {ex}");
+                }
             }
         }
 
@@ -228,7 +235,7 @@ namespace CameraServer.Services.VideoRecording
                                 }
                                 catch (Exception ex)
                                 {
-                                    _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                                    _logger.Log(LogLevel.Error, $"Exception while video file (Task) recording: {ex}");
                                     image?.Dispose();
                                 }
                             }
@@ -266,10 +273,10 @@ namespace CameraServer.Services.VideoRecording
             FrameFormatDto? frameFormat = null,
             byte quality = 90,
             string codec = "",
-            Mat?[]? imageBuffer = null)
+            List<Mat?>? imageBuffer = null)
         {
             var currentTime = DateTime.Now;
-            imageBuffer ??= Array.Empty<Mat?>();
+            imageBuffer ??= [];
             frameFormat ??= new FrameFormatDto();
             var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
                 streamId,
@@ -296,7 +303,7 @@ namespace CameraServer.Services.VideoRecording
                 using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
                 {
                     recorder.Codec = codec;
-                    if (imageBuffer.Length > 0)
+                    if (imageBuffer.Count > 0)
                     {
                         foreach (var image in imageBuffer)
                         {
@@ -307,7 +314,9 @@ namespace CameraServer.Services.VideoRecording
                             }
                             catch (Exception ex)
                             {
-                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                                _logger.Log(LogLevel.Error, $"Exception while video file (Buffer) recording: {ex}");
+
+                                break;
                             }
                         }
                     }
@@ -324,7 +333,7 @@ namespace CameraServer.Services.VideoRecording
                             }
                             catch (Exception ex)
                             {
-                                _logger.Log(LogLevel.Error, $"Exception while video file recording: {ex}");
+                                _logger.Log(LogLevel.Error, $"Exception while video file (Stream) recording: {ex}");
                                 timeOut = DateTime.Now;
                                 image?.Dispose();
                             }
@@ -332,7 +341,6 @@ namespace CameraServer.Services.VideoRecording
                         else
                             await Task.Delay(1, CancellationToken.None);
                     }
-
                 }
             }
             catch (Exception ex)

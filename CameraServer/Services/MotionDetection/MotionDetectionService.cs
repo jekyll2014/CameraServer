@@ -195,8 +195,15 @@ namespace CameraServer.Services.MotionDetection
                 CleanEmptyTasks();
                 TaskConfig.SaveConfig();
 
-                t.Wait(5000);
-                t.Dispose();
+                try
+                {
+                    t?.Wait(5000);
+                    t?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError($"{this} Stop() failed: {ex}");
+                }
             }
         }
 
@@ -263,22 +270,19 @@ namespace CameraServer.Services.MotionDetection
                             {
                                 _logger.Log(LogLevel.Information, "Motion detected!!!");
 
+                                List<Mat?> buffer = new();
+                                while (lastImagesQueue.TryDequeue(out var img))
+                                    buffer.Add(img);
+
                                 SendNotifications(motionDetectTask.Notifications,
                                     camera,
                                     userDto,
-                                    lastImagesQueue,
+                                    buffer,
                                     cameraCancellationToken);
-
-                                while (lastImagesQueue.TryDequeue(out var oldImage))
-                                    oldImage?.Dispose();
-
-                                motionDetector.ProcessedFrame?.Clone();
-                                ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
                             }
-                            else
-                            {
+
+                            if (ImageProcessedEvent != null)
                                 ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
-                            }
 
                             while (lastImagesQueue.Count >= maxBufferCount)
                             {
@@ -312,7 +316,7 @@ namespace CameraServer.Services.MotionDetection
         private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
             ServerCamera camera,
             UserDto user,
-            ConcurrentQueue<Mat> bufferedImages,
+            List<Mat?> bufferedImages,
             CancellationToken cameraCancellationToken)
         {
             var tasks = new List<Task>();
@@ -347,24 +351,19 @@ namespace CameraServer.Services.MotionDetection
 
                 var t = new Task(async () =>
                 {
-                    var buffer = bufferedImages.Select(n => n?.Clone()).ToArray();
                     try
                     {
                         await SendMovementVideoMulti(camera,
                             videoNotifications,
                             user.DefaultCodec,
-                            buffer,
+                            bufferedImages,
                             _telegramService._settings.DefaultVideoQuality);
                     }
                     catch (Exception ex)
                     {
                         _logger?.LogError($"Can't send motion video: {ex}");
                     }
-
-                    foreach (var img in buffer)
-                        img?.Dispose();
-                }
-                    , TaskCreationOptions.LongRunning);
+                }, TaskCreationOptions.LongRunning);
 
                 //t.ConfigureAwait(false);
                 t.Start();
@@ -381,8 +380,8 @@ namespace CameraServer.Services.MotionDetection
                 _logger.Log(LogLevel.Information, $"Sending motion notification[text]");
 
                 var t = new Task(async () =>
-                        await SendMovementTextMulti(textNotifications)
-                    , TaskCreationOptions.LongRunning);
+                        await SendMovementTextMulti(textNotifications),
+                        TaskCreationOptions.LongRunning);
 
                 //t.ConfigureAwait(false);
                 t.Start();
@@ -390,6 +389,9 @@ namespace CameraServer.Services.MotionDetection
             }
 
             Task.WaitAll([.. tasks], cameraCancellationToken);
+
+            foreach (var img in bufferedImages)
+                img?.Dispose();
         }
 
         private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
@@ -493,7 +495,7 @@ namespace CameraServer.Services.MotionDetection
         private async Task SendMovementVideoMulti(ServerCamera camera,
             IReadOnlyCollection<NotificationParametersDto> notificationParams,
             string codec,
-            Mat?[]? bufferedImages,
+            List<Mat?>? bufferedImages,
             byte quality)
         {
             if (notificationParams.Count == 0)
