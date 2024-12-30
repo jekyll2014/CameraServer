@@ -98,10 +98,10 @@ namespace CameraLib.MJPEG
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
 
-            _keepAliveTimer.Elapsed += CameraDisconnected;
+            _keepAliveTimer.Elapsed += CheckCameraDisconnected;
         }
 
-        private async void CameraDisconnected(object? sender, ElapsedEventArgs e)
+        private async void CheckCameraDisconnected(object? sender, ElapsedEventArgs e)
         {
             if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
             {
