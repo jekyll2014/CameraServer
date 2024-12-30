@@ -1,0 +1,5 @@
+sc.exe create "CameraServer" binpath="C:\service\CameraServer.exe"
+sc.exe start "CameraServer"
+sc.exe stop "CameraServer"
+sc.exe delete "CameraServer"
+
