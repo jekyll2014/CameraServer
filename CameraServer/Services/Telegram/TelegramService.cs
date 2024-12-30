@@ -7,8 +7,6 @@ using CameraServer.Services.CameraHub;
 using CameraServer.Services.MotionDetection;
 using CameraServer.Services.VideoRecording;
 
-using Microsoft.AspNetCore.Identity;
-
 using OpenCvSharp;
 
 using Telegram.Bot;

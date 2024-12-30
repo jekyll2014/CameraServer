@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 using System.Net;
 using System.ServiceProcess;
 
