@@ -44,7 +44,7 @@ namespace CameraLib.MJPEG
         private Task? _imageGrabber;
         private readonly Stopwatch _fpsTimer = new();
         private volatile byte _frameCount;
-        private readonly System.Timers.Timer _keepAliveTimer = new System.Timers.Timer();
+        private readonly System.Timers.Timer _keepAliveTimer = new();
         private int _width = 0;
         private int _height = 0;
         private string _format = string.Empty;
@@ -72,7 +72,7 @@ namespace CameraLib.MJPEG
                 ? cameraUri.Host
                 : name;
 
-            List<FrameFormat> frameFormats = new();
+            List<FrameFormat> frameFormats = [];
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
 
             if (forceCameraConnect)
@@ -114,7 +114,7 @@ namespace CameraLib.MJPEG
         // can not be implemented
         public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return new List<CameraDescription>();
+            return [];
         }
 
         private static async Task<bool> PingAddress(string host, int pingTimeout = 3000)
