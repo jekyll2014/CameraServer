@@ -38,9 +38,9 @@ namespace CameraServer.Services.MotionDetection
 
         private readonly ConcurrentDictionary<MotionDetectionCameraTask, Task> _detectorTasks = new();
         private readonly ConcurrentDictionary<string, Task> _videoRecordingTasks = new();
-        private readonly ConcurrentDictionary<string, DateTime> _notificationsText = new();
-        private readonly ConcurrentDictionary<string, DateTime> _notificationsImage = new();
-        private readonly ConcurrentDictionary<string, DateTime> _notificationsVideo = new();
+        private readonly ConcurrentDictionary<string, DateTime> _notificationsTextLast = new();
+        private readonly ConcurrentDictionary<string, DateTime> _notificationsImageLast = new();
+        private readonly ConcurrentDictionary<string, DateTime> _notificationsVideoLast = new();
 
         private bool _disposedValue;
 
@@ -244,7 +244,7 @@ namespace CameraServer.Services.MotionDetection
                 motionDetectTask.FrameFormat);
 
             var imageQueue = new ConcurrentQueue<Mat>();
-            var lastImagesQueue = new ConcurrentQueue<Mat>();
+            var lastImagesQueue = new ConcurrentQueue<Mat?>();
             try
             {
                 var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
@@ -270,15 +270,16 @@ namespace CameraServer.Services.MotionDetection
                             {
                                 _logger.Log(LogLevel.Information, "Motion detected!!!");
 
-                                List<Mat?> buffer = new();
-                                while (lastImagesQueue.TryDequeue(out var img))
-                                    buffer.Add(img);
-
+                                List<Mat?> buffer = lastImagesQueue.ToList();
+                                lastImagesQueue = new ConcurrentQueue<Mat?>();
                                 SendNotifications(motionDetectTask.Notifications,
                                     camera,
                                     userDto,
                                     buffer,
                                     cameraCancellationToken);
+
+                                foreach (var img in buffer)
+                                    img?.Dispose();
                             }
 
                             if (ImageProcessedEvent != null)
@@ -291,7 +292,7 @@ namespace CameraServer.Services.MotionDetection
                             }
                         }
                         else
-                            await Task.Delay(1);
+                            await Task.Delay(10);
 
                         stopTask = !_detectorTasks.Any(n => n.Key.TaskId == motionDetectTask.TaskId);
                     }
@@ -389,9 +390,6 @@ namespace CameraServer.Services.MotionDetection
             }
 
             Task.WaitAll([.. tasks], cameraCancellationToken);
-
-            foreach (var img in bufferedImages)
-                img?.Dispose();
         }
 
         private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
@@ -403,16 +401,16 @@ namespace CameraServer.Services.MotionDetection
             foreach (var notificationParam in notificationParams)
             {
                 var dest = notificationParam.Destination;
-                if (_notificationsText.TryGetValue(dest, out var lastNotificationTime))
+                if (_notificationsTextLast.TryGetValue(dest, out var lastNotificationTime))
                 {
                     if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
                         continue;
 
-                    _notificationsText[dest] = currentTime;
+                    _notificationsTextLast[dest] = currentTime;
                 }
                 else
                 {
-                    _notificationsText.TryAdd(dest, currentTime);
+                    _notificationsTextLast.TryAdd(dest, currentTime);
                 }
 
                 ChatId chatId;
@@ -444,16 +442,16 @@ namespace CameraServer.Services.MotionDetection
             foreach (var notificationParam in notificationParams)
             {
                 var dest = notificationParam.Destination;
-                if (_notificationsImage.TryGetValue(dest, out var lastNotificationTime))
+                if (_notificationsImageLast.TryGetValue(dest, out var lastNotificationTime))
                 {
                     if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
                         continue;
 
-                    _notificationsImage[dest] = currentTime;
+                    _notificationsImageLast[dest] = currentTime;
                 }
                 else
                 {
-                    _notificationsImage.TryAdd(dest, currentTime);
+                    _notificationsImageLast.TryAdd(dest, currentTime);
                 }
 
                 ChatId chatId;
@@ -528,17 +526,17 @@ namespace CameraServer.Services.MotionDetection
                     foreach (var notificationParam in notificationParams)
                     {
                         var dest = notificationParam.Destination;
-                        if (_notificationsVideo.TryGetValue(dest, out var lastNotificationTime))
+                        if (_notificationsVideoLast.TryGetValue(dest, out var lastNotificationTime))
                         {
                             if (currentTime.Subtract(lastNotificationTime).TotalSeconds <
                                 Settings.DefaultMotionDetectParameters.NotificationDelay)
                                 continue;
 
-                            _notificationsVideo[dest] = currentTime;
+                            _notificationsVideoLast[dest] = currentTime;
                         }
                         else
                         {
-                            _notificationsVideo.TryAdd(dest, currentTime);
+                            _notificationsVideoLast.TryAdd(dest, currentTime);
                         }
 
                         ChatId chatId;

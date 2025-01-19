@@ -76,17 +76,25 @@ namespace CameraServer.Services.MotionDetection
                     ContourApproximationModes.ApproxSimple); // ApproxTC89L1, ApproxSimple
 
                 //Find big blobs to activate alarm
+                //var n = 0;
                 foreach (var c in contours)
                 {
                     var r = Cv2.BoundingRect(c);
                     //var r2 = Cv2.MinAreaRect(c);
                     var pixelCount = CountPixels(ProcessedFrame, r);
                     //var pixelCount = Cv2.ContourArea(c);
-                    if (((double)pixelCount / (_width * _height)) * 100 >= _changeLimit)
+                    if (((double)pixelCount / (_width * _height)) * 100.0d >= _changeLimit)
                     {
                         result = true;
+
                         break;
                     }
+
+                    // draw metainfo on the frame
+                    // only possible for RGB image
+                    /*Cv2.DrawContours(ProcessedFrame, contours, n, new Scalar(0, 255, 0));
+                    Cv2.Rectangle(ProcessedFrame, r, new Scalar(0, 0, 255));
+                    n++; */
                 }
 
                 _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);

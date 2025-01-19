@@ -240,7 +240,7 @@ namespace CameraServer.Services.VideoRecording
                                 }
                             }
                             else
-                                await Task.Delay(1);
+                                await Task.Delay(10);
 
                             stopTask = !_recorderTasks.TryGetValue(newTask, out _);
                         }
@@ -339,7 +339,7 @@ namespace CameraServer.Services.VideoRecording
                             }
                         }
                         else
-                            await Task.Delay(1, CancellationToken.None);
+                            await Task.Delay(10, CancellationToken.None);
                     }
                 }
             }

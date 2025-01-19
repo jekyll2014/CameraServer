@@ -217,7 +217,7 @@ namespace CameraServer.Controllers
                     }
                     else
                     {
-                        await Task.Delay(1, Response.HttpContext.RequestAborted);
+                        await Task.Delay(10, Response.HttpContext.RequestAborted);
                     }
                 }
             }

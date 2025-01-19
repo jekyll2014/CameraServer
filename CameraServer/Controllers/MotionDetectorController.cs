@@ -49,7 +49,7 @@ namespace CameraServer.Controllers
         [HttpGet]
         [Route("GetDetectorTasksList")]
         [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string[]))]
-        public async Task<IActionResult> GetDetectorTasksList()
+        public IActionResult GetDetectorTasksList()
         {
             return Ok(_motionDetector.TaskList.ToArray());
         }

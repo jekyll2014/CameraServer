@@ -228,7 +228,7 @@ namespace CameraLib.IP
                         if (_captureDevice?.Grab() ?? false)
                             CaptureImage();
                         else
-                            await Task.Delay(1, _cancellationTokenSourceCameraGrabber.Token);
+                            await Task.Delay(10, _cancellationTokenSourceCameraGrabber.Token);
                     }
                 }
                 catch (Exception ex)
