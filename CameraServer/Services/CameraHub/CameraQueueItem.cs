@@ -1,6 +1,6 @@
 ﻿using CameraLib;
 
-namespace CameraServer.Services.CameraHub;
+namespace CameraServer.Server.Services.CameraHub;
 
 public class CameraQueueItem
 {

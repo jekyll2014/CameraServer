@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Services.AntiBruteForce;
+﻿namespace CameraServer.Server.Services.AntiBruteForce;
 
 public class BruteForceDetectionSettings
 {

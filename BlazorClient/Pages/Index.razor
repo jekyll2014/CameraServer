@@ -1,0 +1,308 @@
+﻿@page "/"
+@using System.Net
+@using CameraServer.Shared
+@using CameraServer.Shared.DTO
+
+@inject HttpClient _http
+
+<PageTitle>CameraServer</PageTitle>
+
+<p>CameraServer app</p>
+
+<div style="padding: 5px 8px; background-color: lightblue">
+    <p>
+        Login: <input disabled="@_authenticated"
+                      type="text"
+                      @bind-value="_loginModel.UserName"
+                      @bind-value:event="oninput" />
+    </p>
+    <p>
+        Password: <input disabled="@_authenticated"
+                         type="password"
+                         @bind-value="_loginModel.Password"
+                         @bind-value:event="oninput" />
+    </p>
+    <p>
+        Stay logged in <input disabled="@_authenticated"
+                              type="checkbox"
+                              @bind-value="_loginModel.RememberLogin"
+                              @bind-value:event="oninput" />
+    </p>
+    <button hidden="@_authenticated"
+            @onclick="async () => await LoginClicked()">
+        Login
+    </button>
+    <button hidden="@(!_authenticated)"
+            @onclick="async () => await LogoutClicked()">
+        Logout
+    </button>
+</div>
+
+@if (!_authenticated)
+{
+    <p><em>Not logged in</em></p>
+}
+else if (_cameras == null)
+{
+    <p><em>No data loaded</em></p>
+}
+else
+{
+    <div style="visibility:@(_authenticated ? "visible" : "hidden")">
+        <p></p>
+        <p><em>User roles: @(_userInfo?.Roles.Aggregate((n, m) => n = n + "," + m).Trim(','))</em></p>
+
+        <p></p>
+        <button style="background-color: darkorange"
+                hidden="@(!IsAdmin())"
+                @onclick="async () => await ClickedRefersh()">
+            Refresh camera list
+        </button>
+
+        <button style="background-color: darkorange"
+                hidden="@(!IsAdmin())"
+                @onclick="async () => await ClickedRestart()">
+            Restart server
+        </button>
+        <p></p>
+
+        <h1>Cameras</h1>
+        <table>
+            <thead style="background-color: cornflowerblue">
+                <tr>
+                    <th>Id</th>
+                    <th>Name</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var camera in _cameras)
+                {
+                    <tr @onclick="async () => await ClickedCameraRow(camera.Id)"
+                        style=@(_selectedCameraId == camera.Id ? "background-color: powderblue" : "background-color: white")>
+                        <td>
+                            @camera.Id
+                        </td>
+
+                        <td>
+                            <a href="@camera.Url" target="_blank">@camera.Name</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <h1>Frame formats</h1>
+        <div>Camera type: @_cameraDescription?.Type</div>
+        <div>Camera name: @_cameraDescription?.Name</div>
+        <table>
+            <thead style="background-color: cornflowerblue">
+                <tr>
+                    <th>Width</th>
+                    <th>Height</th>
+                    <th>Format</th>
+                    <th>FPS</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_cameraDescription != null)
+                {
+                    @foreach (var format in _cameraDescription?.FrameFormats)
+                    {
+                        <tr @onclick="async () => await ClickedCameraFormatRow(-1)"
+                            style=@(_selectedCameraFormatId == 0 ? "background-color: powderblue" : "background-color: white")>
+                            <td>
+                                @format.Width
+                            </td>
+
+                            <td>
+                                @format.Height
+                            </td>
+
+                            <td>
+                                @format.Format
+                            </td>
+
+                            <td>
+                                @format.Fps
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private LoginModel _loginModel = new LoginModel();
+    private UserInfoModel? _userInfo;
+    private bool _authenticated = false;
+
+    private List<CameraDto>? _cameras;
+    private int _selectedCameraId = -1;
+
+    private CameraDescriptionDto? _cameraDescription;
+    private int _selectedCameraFormatId = -1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _userInfo = await _http.GetFromJsonAsync<UserInfoModel>($"/Authenticate/IsLoggedIn/");
+        }
+        catch
+        {
+            _authenticated = false;
+        }
+
+        if (_userInfo != null)
+        {
+            _authenticated = true;
+            _loginModel.UserName = _userInfo.UserName;
+            _loginModel.RememberLogin = true;
+            _cameras = await GetCameras();
+            _selectedCameraId = -1;
+        }
+        else
+        {
+            _authenticated = false;
+        }
+        //StateHasChanged();
+    }
+
+    private async Task LoginClicked()
+    {
+        _userInfo = await Login(_loginModel);
+        if (_authenticated)
+        {
+            _loginModel.Password = string.Empty;
+            _selectedCameraId = -1;
+            _cameras = await GetCameras();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LogoutClicked()
+    {
+        await Logout();
+        if (!_authenticated)
+        {
+            _userInfo = null;
+            _cameras = null;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task<UserInfoModel?> Login(LoginModel loginModel)
+    {
+        var result = await _http.PostAsJsonAsync<LoginModel>($"/Authenticate/Login/", loginModel);
+        if (result.IsSuccessStatusCode)
+        {
+            _authenticated = true;
+            _userInfo = await result.Content.ReadFromJsonAsync<UserInfoModel>();
+        }
+        else
+        {
+            _authenticated = false;
+            _userInfo = null;
+        }
+
+        return _userInfo;
+    }
+
+    private async Task Logout()
+    {
+        var result = await _http.PostAsync($"/Authenticate/Logout/", null);
+        if (result.IsSuccessStatusCode)
+        {
+            _authenticated = false;
+        }
+    }
+
+    private async Task<List<CameraDto>?> GetCameras()
+    {
+        List<CameraDto>? cameras = null;
+        try
+        {
+            cameras = await _http.GetFromJsonAsync<List<CameraDto>>($"/Camera/GetCameraList");
+            Console.WriteLine($"Got cameras");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+
+        return cameras;
+    }
+
+    // Order operations
+    private async Task ClickedCameraRow(int id)
+    {
+        _selectedCameraId = id;
+        try
+        {
+            _cameraDescription = await GetDescription(id);
+            Console.WriteLine($"Got camera desc");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+    }
+
+    private async Task ClickedCameraFormatRow(int id)
+    {
+
+    }
+
+    private async Task<CameraDescriptionDto?> GetDescription(int id)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<CameraDescriptionDto?>($"/Camera/GetCameraDetails?cameraId={id}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception getting description: {ex}");
+            return null;
+        }
+    }
+
+    private async Task ClickedRefersh()
+    {
+        var response = await _http.PostAsync($"/Camera/RefreshCameraList", null);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            _cameras = null;
+            _selectedCameraId = -1;
+            _cameras = await GetCameras();
+        }
+        else
+        {
+            // show error message
+        }
+    }
+
+    private async Task ClickedRestart()
+    {
+        var response = await _http.PostAsync($"/System/Restart", null);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            _cameras = null;
+            _selectedCameraId = -1;
+            _cameras = await GetCameras();
+        }
+        else
+        {
+            // show error message
+        }
+    }
+
+    private bool IsAdmin()
+    {
+        return _userInfo?.Roles.Contains("Admin") ?? false;
+    }
+}

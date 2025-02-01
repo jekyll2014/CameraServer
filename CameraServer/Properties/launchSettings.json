@@ -7,16 +7,20 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "http://localhost:808"
+      "applicationUrl": "http://localhost:808",
+      "jsWebView2Debugging": false,
+      "nativeDebugging": false
     },
     "https": {
       "commandName": "Project",
-      "launchUrl": "swagger",
+      "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "https://localhost:808;http://localhost:808"
+      "applicationUrl": "https://localhost:809;http://localhost:808",
+      "jsWebView2Debugging": true,
+      "nativeDebugging": true
     },
     "IIS Express": {
       "commandName": "IISExpress",

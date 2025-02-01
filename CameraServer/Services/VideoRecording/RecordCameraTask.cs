@@ -1,7 +1,9 @@
-﻿namespace CameraServer.Services.VideoRecording;
+﻿namespace CameraServer.Server.Services.VideoRecording;
 
 public class RecordCameraTask : RecordCameraSettingDto
 {
+    public Guid Id { get; set; } = new Guid();
+    public DateTime CreationDateTime { get; set; } = DateTime.Now;
     public string TaskId { get; set; } = string.Empty;
 
     public RecordCameraTask()

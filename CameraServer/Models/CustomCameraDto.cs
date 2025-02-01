@@ -1,6 +1,6 @@
 ﻿using CameraLib;
 
-namespace CameraServer.Models;
+namespace CameraServer.Server.Models;
 
 public class CustomCameraDto
 {

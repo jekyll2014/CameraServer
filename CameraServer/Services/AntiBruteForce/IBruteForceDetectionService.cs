@@ -1,6 +1,6 @@
 ﻿using System.Net;
 
-namespace CameraServer.Services.AntiBruteForce;
+namespace CameraServer.Server.Services.AntiBruteForce;
 
 public interface IBruteForceDetectionService
 {

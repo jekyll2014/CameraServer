@@ -4,6 +4,9 @@ namespace CameraLib
 {
     public class FrameFormat : FrameFormatDto
     {
+        public FrameFormat()
+        {}
+
         public FrameFormat(int width = 0, int height = 0, string format = "", double fps = 0)
         {
             Width = width;

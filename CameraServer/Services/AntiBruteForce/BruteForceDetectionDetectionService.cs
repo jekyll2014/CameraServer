@@ -1,7 +1,10 @@
-﻿using System.Collections.Concurrent;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+using System.Collections.Concurrent;
 using System.Net;
 
-namespace CameraServer.Services.AntiBruteForce
+namespace CameraServer.Server.Services.AntiBruteForce
 {
     public class BruteForceDetectionDetectionService : IBruteForceDetectionService, IDisposable//, IHostedService
     {

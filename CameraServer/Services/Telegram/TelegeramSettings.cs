@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Services.Telegram;
+﻿namespace CameraServer.Server.Services.Telegram;
 
 public class TelegeramSettings
 {

@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace CameraServer.Models;
+namespace CameraServer.Server.Models;
 
 public interface ICameraUser
 {

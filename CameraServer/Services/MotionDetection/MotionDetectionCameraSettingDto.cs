@@ -1,6 +1,6 @@
 ﻿using CameraLib;
 
-namespace CameraServer.Services.MotionDetection;
+namespace CameraServer.Server.Services.MotionDetection;
 
 public class MotionDetectionCameraSettingDto
 {
@@ -36,7 +36,7 @@ public class MotionDetectionCameraSettingDto
             if (setting.CameraId == CameraId
                 && setting.User == User
                 && setting.FrameFormat.Equals(FrameFormat)
-                && ((setting.MotionDetectParameters == null && MotionDetectParameters == null)
+                && (setting.MotionDetectParameters == null && MotionDetectParameters == null
                      || (setting.MotionDetectParameters?.Equals(MotionDetectParameters) ?? false)))
                 result = true;
         }

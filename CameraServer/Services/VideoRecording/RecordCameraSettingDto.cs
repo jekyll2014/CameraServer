@@ -1,6 +1,6 @@
 ﻿using CameraLib;
 
-namespace CameraServer.Services.VideoRecording;
+namespace CameraServer.Server.Services.VideoRecording;
 
 public class RecordCameraSettingDto
 {

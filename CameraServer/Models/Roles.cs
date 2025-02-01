@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Models;
+﻿namespace CameraServer.Server.Models;
 
 public enum Roles
 {

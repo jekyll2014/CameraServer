@@ -1,13 +1,17 @@
-using CameraServer.Auth;
-using CameraServer.Auth.BasicAuth;
-using CameraServer.Services.AntiBruteForce;
-using CameraServer.Services.CameraHub;
-using CameraServer.Services.MotionDetection;
-using CameraServer.Services.Telegram;
-using CameraServer.Services.VideoRecording;
+using CameraServer.Server.Auth;
+using CameraServer.Server.Auth.BasicAuth;
+using CameraServer.Server.Services.AntiBruteForce;
+using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.MotionDetection;
+using CameraServer.Server.Services.Telegram;
+using CameraServer.Server.Services.VideoRecording;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 using Serilog;
 using Serilog.Events;
@@ -17,66 +21,70 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 
-namespace CameraServer
+namespace CameraServer.Server;
+
+public class Program
 {
-    public class Program
+    public const string ExpireTimeSection = "CookieExpireTimeMinutes";
+    public const string BasicAuthenticationSchemeName = "BasicAuthentication";
+
+    private static Serilog.Core.Logger? _logger;
+    public static void Main(string[] args)
     {
-        public const string ExpireTimeSection = "CookieExpireTimeMinutes";
-        public const string BasicAuthenticationSchemeName = "BasicAuthentication";
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
-        private static Serilog.Core.Logger? _logger;
-        public static void Main(string[] args)
+        _logger = new LoggerConfiguration()
+            .MinimumLevel.Verbose()
+            .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+            .Enrich.FromLogContext()
+            //.WriteTo.Console()
+            .WriteTo.Logger(l => l
+                .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
+                .WriteTo.File(
+                    new CompactJsonFormatter(),
+                    "telegram_api.log.json",
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: 10 * 1024 * 1024,
+                    retainedFileCountLimit: 10,
+                    rollOnFileSizeLimit: true,
+                    shared: false,
+                    flushToDiskInterval: TimeSpan.FromSeconds(2)))
+            .WriteTo.Logger(l => l
+                .Filter.ByIncludingOnly(n => n.Level != LogEventLevel.Debug
+                                             && n.Level != LogEventLevel.Verbose)
+                .WriteTo.File(
+                    new CompactJsonFormatter(),
+                    "CameraServer.log.json",
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: 10 * 1024 * 1024,
+                    retainedFileCountLimit: 10,
+                    rollOnFileSizeLimit: true,
+                    shared: false,
+                    flushToDiskInterval: TimeSpan.FromSeconds(2)))
+            .WriteTo.Logger(l => l
+                .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug
+                                             && n.Level != LogEventLevel.Verbose)
+                .WriteTo.File(
+                    new CompactJsonFormatter(),
+                    path: "CameraServer_debug.log.json",
+                    rollingInterval: RollingInterval.Day,
+                    fileSizeLimitBytes: 10 * 1024 * 1024,
+                    retainedFileCountLimit: 10,
+                    rollOnFileSizeLimit: true,
+                    shared: false,
+                    flushToDiskInterval: TimeSpan.FromSeconds(2)))
+            .CreateLogger();
+
+        TryKillOldProcess();
+
+        var builder = WebApplication.CreateBuilder(args);
+
+        builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
+
+        var serverUrls = builder.WebHost.GetSetting("Urls");
+        try
         {
-            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-
-            _logger = new LoggerConfiguration()
-                .MinimumLevel.Verbose()
-                .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
-                .Enrich.FromLogContext()
-                //.WriteTo.Console()
-                .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
-                    .WriteTo.File(
-                        new CompactJsonFormatter(),
-                        "telegram_api.log.json",
-                        rollingInterval: RollingInterval.Day,
-                        fileSizeLimitBytes: 10 * 1024 * 1024,
-                        retainedFileCountLimit: 10,
-                        rollOnFileSizeLimit: true,
-                        shared: false,
-                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
-                .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(n => n.Level != LogEventLevel.Debug
-                                                 && n.Level != LogEventLevel.Verbose)
-                    .WriteTo.File(
-                        new CompactJsonFormatter(),
-                        "CameraServer.log.json",
-                        rollingInterval: RollingInterval.Day,
-                        fileSizeLimitBytes: 10 * 1024 * 1024,
-                        retainedFileCountLimit: 10,
-                        rollOnFileSizeLimit: true,
-                        shared: false,
-                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
-                .WriteTo.Logger(l => l
-                    .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug
-                                                 && n.Level != LogEventLevel.Verbose)
-                    .WriteTo.File(
-                        new CompactJsonFormatter(),
-                        path: "CameraServer_debug.log.json",
-                        rollingInterval: RollingInterval.Day,
-                        fileSizeLimitBytes: 10 * 1024 * 1024,
-                        retainedFileCountLimit: 10,
-                        rollOnFileSizeLimit: true,
-                        shared: false,
-                        flushToDiskInterval: TimeSpan.FromSeconds(2)))
-                .CreateLogger();
-
-            TryKillOldProcess();
-
-            var builder = WebApplication.CreateBuilder(args);
-
-            var serverUrl = builder.WebHost.GetSetting("Urls");
-            try
+            foreach (var serverUrl in serverUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 int serverPort = new Uri(serverUrl ?? "").Port;
                 if (PortInUse(serverPort))
@@ -87,178 +95,212 @@ namespace CameraServer
                     ExecuteShellCommand("net", "start winnat");
                 }
             }
-            catch (Exception ex)
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error($"Host ports check/clean-up failed: {ex}");
+        }
+
+        builder.Host.UseSerilog(_logger);
+
+        // Add services to the container.
+        builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
+        builder.Services.AddTransient<IUserManager, UserManager>();
+        builder.Services.AddSingleton<CameraHubService, CameraHubService>();
+        builder.Services.AddSingleton<VideoRecorderService>();
+        builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
+        builder.Services.AddSingleton<TelegramService>();
+        builder.Services.AddHostedService<TelegramService>(provider => provider.GetService<TelegramService>());
+        builder.Services.AddSingleton<MotionDetectionService>();
+        builder.Services.AddHostedService<MotionDetectionService>(provider => provider.GetService<MotionDetectionService>());
+
+        builder.Services.AddControllers().AddControllersAsServices();
+        //builder.Services.AddControllersWithViews().AddControllersAsServices();
+        //builder.Services.AddControllersWithViews();
+        //builder.Services.AddControllers();
+        builder.Services.AddEndpointsApiExplorer();
+
+        builder.Services.AddHttpContextAccessor();
+
+        builder.Services.AddCors(o => o.AddPolicy("MyPolicy", builder =>
+        {
+            builder.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+        }));
+
+        builder.Services.AddAuthentication(BasicAuthenticationSchemeName)
+            .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(BasicAuthenticationSchemeName, null);
+
+        var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
+        builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+            .AddCookie(options =>
             {
-                _logger?.Error($"Host clean-up failed: {ex}");
-            }
-
-            builder.Host.UseSerilog(_logger);
-
-            var expireTime = builder.Configuration.GetValue<int>(ExpireTimeSection, 60);
-            // Add services to the container.
-            builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
-            builder.Services.AddTransient<IUserManager, UserManager>();
-            builder.Services.AddSingleton<CameraHubService, CameraHubService>();
-            builder.Services.AddSingleton<VideoRecorderService>();
-            builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
-            builder.Services.AddSingleton<TelegramService>();
-            builder.Services.AddHostedService<TelegramService>(provider => provider.GetService<TelegramService>());
-            builder.Services.AddSingleton<MotionDetectionService>();
-            builder.Services.AddHostedService<MotionDetectionService>(provider => provider.GetService<MotionDetectionService>());
-            builder.Services.AddControllersWithViews().AddControllersAsServices();
-
-            builder.Services.AddAuthentication(BasicAuthenticationSchemeName)
-                .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>(BasicAuthenticationSchemeName, null);
-
-            builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-                .AddCookie(options =>
-                {
-                    //options.LoginPath = "/Authenticate/login";
-                    //options.LogoutPath = "/Authenticate/logout";
-                    options.ExpireTimeSpan = TimeSpan.FromMinutes(expireTime);
-                    options.SlidingExpiration = true;
-                });
-
-            builder.Services.AddHttpContextAccessor();
-
-            builder.Services.AddAuthorization();
-
-            builder.Services.AddHealthChecks();
-
-            builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen(options =>
-            {
-                /*options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
-                options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
-                {
-                    Login = "Authorization",
-                    Type = SecuritySchemeType.Http,
-                    Scheme = "basic",
-                    In = ParameterLocation.Header,
-                    Description = "Basic Authorization header using the Bearer scheme."
-                });
-                options.AddSecurityRequirement(new OpenApiSecurityRequirement
-                {
-                    {
-                        new OpenApiSecurityScheme
-                        {
-                            Reference = new OpenApiReference
-                            {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "basic"
-                            }
-                        },
-                        new string[] {}
-                    }
-                });*/
+                //options.LoginPath = "/Authenticate/login";
+                //options.LogoutPath = "/Authenticate/logout";
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(expireTime);
+                options.SlidingExpiration = true;
             });
 
-            var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
-            //app.UseHttpsRedirection();
+        builder.Services.AddAuthorization();
 
-            app.UseStaticFiles();
+        builder.Services.AddHealthChecks();
 
-            app.UseSerilogRequestLogging();
-
-            app.UseRouting();
-            app.UseAuthentication();
-            app.UseAuthorization();
-            app.MapControllers();
-
-            //if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
-
-            app.MapControllerRoute(
-                    name: "default",
-                    pattern: "{controller=Home}/{action=Index}/{id?}"
-                );
-
-            app.MapHealthChecks("/healthcheck");
-
-            app.Run();
-        }
-
-        private static void TryKillOldProcess()
+        builder.Services.AddSwaggerGenNewtonsoftSupport();
+        // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+        builder.Services.AddSwaggerGen(options =>
         {
-            try
+            /*options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
+            options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
             {
-                var currentProcess = Process.GetCurrentProcess();
-                var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id);
-                if (oldProcess != null && oldProcess.Any())
+                Login = "Authorization",
+                Type = SecuritySchemeType.Http,
+                Scheme = "basic",
+                In = ParameterLocation.Header,
+                Description = "Basic Authorization header using the Bearer scheme."
+            });
+            options.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
                 {
-                    _logger?.Error($"Another application copy is running. Trying to kill...");
-                    foreach (var p in oldProcess)
-                        p?.Kill(true);
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference
+                        {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = "basic"
+                        }
+                    },
+                    new string[] {}
                 }
-            }
-            catch (Exception exception)
-            {
-                _logger?.Error($"Process management exception: {exception.Message}");
-            }
+            });*/
+        });
+
+        builder.Services.AddRazorPages();
+
+        var app = builder.Build();
+
+        app.UseSerilogRequestLogging();
+
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+            app.UseWebAssemblyDebugging();
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+        else
+        {
+            app.UseExceptionHandler("/Error");
+            // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+            app.UseHsts();
         }
 
-        public static bool PortInUse(int port)
-        {
-            IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
-            IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+        // Configure the HTTP request pipeline.
+        //app.UseHttpsRedirection();
 
-            return ipEndPoints.Any(n => n.Port == port);
+        app.UseRouting();
+
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.MapControllers();
+
+        /*app.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}");*/
+
+        app.UseBlazorFrameworkFiles();
+        app.UseStaticFiles();
+
+        app.MapRazorPages();
+
+        app.MapFallbackToFile("index.html");
+
+        app.MapHealthChecks("/healthcheck");
+
+        Console.WriteLine("Starting at:");
+        foreach (var url in app.Urls)
+        {
+            Console.WriteLine($"Starting at:{url}");
         }
 
-        private static bool ExecuteShellCommand(string command, string args)
-        {
-            var processInfo = new ProcessStartInfo(command, args)
-            {
-                CreateNoWindow = true,
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
+        app.Run();
+    }
 
-            try
+    private static void TryKillOldProcess()
+    {
+        try
+        {
+            var currentProcess = Process.GetCurrentProcess();
+            var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id);
+            if (oldProcess != null && oldProcess.Any())
             {
-                var p = Process.Start(processInfo);
-                return p?.WaitForExit(10000) ?? false;
+                _logger?.Error($"Another application copy is running. Trying to kill...");
+                foreach (var p in oldProcess)
+                    p?.Kill(true);
             }
-            catch (Exception exception)
+        }
+        catch (Exception exception)
+        {
+            _logger?.Error($"Process management exception: {exception.Message}");
+        }
+    }
+
+    private static bool PortInUse(int port)
+    {
+        IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+        IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+
+        return ipEndPoints.Any(n => n.Port == port);
+    }
+
+    private static bool ExecuteShellCommand(string command, string args)
+    {
+        var processInfo = new ProcessStartInfo(command, args)
+        {
+            CreateNoWindow = true,
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Hidden
+        };
+
+        try
+        {
+            var p = Process.Start(processInfo);
+            return p?.WaitForExit(10000) ?? false;
+        }
+        catch (Exception exception)
+        {
+            _logger?.Error($"Shell command execution exception: {exception.Message}");
+        }
+
+        return false;
+    }
+
+    public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
+    {
+        ArgumentNullException.ThrowIfNull(propertyName);
+
+        var scalar = new ScalarValue(scalarValue);
+        return e =>
+        {
+            if (e.Properties.TryGetValue(propertyName, out var propertyValue))
             {
-                _logger?.Error($"Shell command execution exception: {exception.Message}");
+                if (propertyValue is StructureValue stValue)
+                {
+                    var value = stValue.Properties.FirstOrDefault(cc => cc.Name == "Id");
+
+                    return scalar.Equals(value?.Value);
+                }
             }
 
             return false;
-        }
+        };
+    }
 
-        public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
-        {
-            ArgumentNullException.ThrowIfNull(propertyName);
-
-            var scalar = new ScalarValue(scalarValue);
-            return e =>
-            {
-                if (e.Properties.TryGetValue(propertyName, out var propertyValue))
-                {
-                    if (propertyValue is StructureValue stValue)
-                    {
-                        var value = stValue.Properties.FirstOrDefault(cc => cc.Name == "Id");
-
-                        return scalar.Equals(value?.Value);
-                    }
-                }
-
-                return false;
-            };
-        }
-
-        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
-        {
-            if (e.ExceptionObject is Exception exception)
-                _logger?.Error($"Unhandled exception: {exception.Message}");
-        }
+    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception exception)
+            _logger?.Error($"Unhandled exception: {exception.Message}");
     }
 }

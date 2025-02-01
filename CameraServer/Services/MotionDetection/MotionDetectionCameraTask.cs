@@ -1,7 +1,9 @@
-﻿namespace CameraServer.Services.MotionDetection;
+﻿namespace CameraServer.Server.Services.MotionDetection;
 
 public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
 {
+    public Guid Id { get; set; } = new Guid();
+    public DateTime CreationDateTime { get; set; } = DateTime.Now;
     public string TaskId { get; set; } = string.Empty;
 
     public MotionDetectionCameraTask()
@@ -25,7 +27,7 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
                 && setting.CameraId == CameraId
                 && setting.User == User
                 && setting.FrameFormat.Equals(FrameFormat)
-                && ((setting.MotionDetectParameters == null && MotionDetectParameters == null)
+                && (setting.MotionDetectParameters == null && MotionDetectParameters == null
                     || (setting.MotionDetectParameters?.Equals(MotionDetectParameters) ?? false)))
                 result = true;
         }

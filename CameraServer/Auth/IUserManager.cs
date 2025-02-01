@@ -1,8 +1,8 @@
-﻿using CameraServer.Models;
+﻿using CameraServer.Server.Models;
 
 using System.Net;
 
-namespace CameraServer.Auth;
+namespace CameraServer.Server.Auth;
 
 public interface IUserManager
 {

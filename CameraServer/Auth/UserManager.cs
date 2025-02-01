@@ -1,10 +1,12 @@
-﻿using CameraServer.Models;
-using CameraServer.Services.AntiBruteForce;
+﻿using CameraServer.Server.Models;
+using CameraServer.Server.Services.AntiBruteForce;
+
+using Microsoft.Extensions.Configuration;
 
 using System.Net;
 using System.Security.Authentication;
 
-namespace CameraServer.Auth;
+namespace CameraServer.Server.Auth;
 
 public class UserManager : IUserManager
 {

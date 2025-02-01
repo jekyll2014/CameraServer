@@ -1,4 +1,6 @@
-﻿namespace CameraServer.Services.MotionDetection;
+﻿using CameraServer.Shared.Enum;
+
+namespace CameraServer.Server.Services.MotionDetection;
 
 public class NotificationParametersDto
 {
@@ -15,11 +17,11 @@ public class NotificationParametersDto
     {
         if (obj is NotificationParametersDto notification)
         {
-            return (Transport == notification.Transport
+            return Transport == notification.Transport
                 && MessageType == notification.MessageType
                 && Destination == notification.Destination
                 && Message == notification.Message
-                && VideoLengthSec == notification.VideoLengthSec);
+                && VideoLengthSec == notification.VideoLengthSec;
         }
         else
             return false;

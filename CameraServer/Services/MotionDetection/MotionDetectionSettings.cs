@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Services.MotionDetection;
+﻿namespace CameraServer.Server.Services.MotionDetection;
 
 public class MotionDetectionSettings
 {
