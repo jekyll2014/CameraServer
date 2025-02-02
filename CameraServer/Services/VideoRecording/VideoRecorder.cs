@@ -1,4 +1,4 @@
-﻿using CameraLib;
+﻿using CameraServer.Shared.DTO;
 
 using Microsoft.Extensions.Logging;
 

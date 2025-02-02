@@ -1,8 +1,7 @@
-﻿using CameraLib;
-
-using CameraServer.Server.Auth;
+﻿using CameraServer.Server.Auth;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.VideoRecording;
+using CameraServer.Shared.DTO;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;

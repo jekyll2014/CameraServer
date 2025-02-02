@@ -1,8 +1,7 @@
-﻿using CameraLib;
-
-using CameraServer.Server.Auth;
+﻿using CameraServer.Server.Auth;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.MotionDetection;
+using CameraServer.Shared.DTO;
 using CameraServer.Shared.Enum;
 
 using Microsoft.AspNetCore.Authentication.Cookies;

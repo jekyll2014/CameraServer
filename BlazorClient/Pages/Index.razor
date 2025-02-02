@@ -12,18 +12,21 @@
 <div style="padding: 5px 8px; background-color: lightblue">
     <p>
         Login: <input disabled="@_authenticated"
+                      id="login"
                       type="text"
                       @bind-value="_loginModel.UserName"
                       @bind-value:event="oninput" />
     </p>
     <p>
         Password: <input disabled="@_authenticated"
+                         id="password"
                          type="password"
                          @bind-value="_loginModel.Password"
                          @bind-value:event="oninput" />
     </p>
     <p>
         Stay logged in <input disabled="@_authenticated"
+                              id="RememberLogin"
                               type="checkbox"
                               @bind-value="_loginModel.RememberLogin"
                               @bind-value:event="oninput" />
@@ -104,9 +107,9 @@ else
                 </tr>
             </thead>
             <tbody>
-                @if (_cameraDescription != null)
+                @if (_cameraDescription != null && _cameraDescription.FrameFormats!=null)
                 {
-                    @foreach (var format in _cameraDescription?.FrameFormats)
+                    @foreach (var format in _cameraDescription.FrameFormats)
                     {
                         <tr @onclick="async () => await ClickedCameraFormatRow(-1)"
                             style=@(_selectedCameraFormatId == 0 ? "background-color: powderblue" : "background-color: white")>

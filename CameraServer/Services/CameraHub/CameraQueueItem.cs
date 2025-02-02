@@ -1,4 +1,4 @@
-﻿using CameraLib;
+﻿using CameraServer.Shared.DTO;
 
 namespace CameraServer.Server.Services.CameraHub;
 

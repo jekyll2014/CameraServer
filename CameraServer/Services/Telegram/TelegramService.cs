@@ -6,6 +6,7 @@ using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.MotionDetection;
 using CameraServer.Server.Services.VideoRecording;
+using CameraServer.Shared.DTO;
 using CameraServer.Shared.Enum;
 
 using Microsoft.Extensions.Configuration;

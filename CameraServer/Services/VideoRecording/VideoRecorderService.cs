@@ -1,8 +1,7 @@
-﻿using CameraLib;
-
-using CameraServer.Server.Auth;
+﻿using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Shared.DTO;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;

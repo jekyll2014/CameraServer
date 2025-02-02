@@ -1,6 +1,4 @@
-﻿using CameraLib;
-
-using CameraServer.Server.Auth;
+﻿using CameraServer.Server.Auth;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Shared.DTO;
 
@@ -99,7 +97,16 @@ public class CameraController : ControllerBase
         if (!camera.AllowedRoles.Intersect(userRoles).Any())
             return BadRequest("No such camera");
 
-        return Ok(new CameraDescriptionDto(camera.CameraStream.Description));
+        var formats = camera.CameraStream.Description.FrameFormats
+            .Select(n => new FrameFormatDto()
+            {
+                Width = n.Width,
+                Height = n.Height,
+                Format = n.Format,
+                Fps = n.Fps
+            });
+
+        return Ok(new CameraDescriptionDto(camera.CameraStream.Description.Name, camera.CameraStream.Description.Type.ToString(), formats));
     }
 
     [HttpGet]

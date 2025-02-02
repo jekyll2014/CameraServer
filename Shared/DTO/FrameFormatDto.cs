@@ -1,4 +1,4 @@
-﻿namespace CameraLib;
+﻿namespace CameraServer.Shared.DTO;
 
 public class FrameFormatDto
 {

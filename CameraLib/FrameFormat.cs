@@ -2,10 +2,15 @@
 
 namespace CameraLib
 {
-    public class FrameFormat : FrameFormatDto
+    public class FrameFormat
     {
+        public int Width { get; set; } = 0;
+        public int Height { get; set; } = 0;
+        public string Format { get; set; } = string.Empty;
+        public double Fps { get; set; } = 0.0;
+
         public FrameFormat()
-        {}
+        { }
 
         public FrameFormat(int width = 0, int height = 0, string format = "", double fps = 0)
         {
@@ -360,6 +365,25 @@ namespace CameraLib
         public override string ToString()
         {
             return $"{Width}x{Height} {Fps} {Format}";
+        }
+
+        public override bool Equals(object? obj)
+        {
+            var result = false;
+            if (obj is FrameFormat setting)
+            {
+                if (setting.Width == Width
+                    && setting.Height == Height
+                    && setting.Format == Format)
+                    result = true;
+            }
+
+            return result;
+        }
+
+        public override int GetHashCode()
+        {
+            return $"{Width}{Height}{Format}{Fps}".GetHashCode();
         }
     }
 }
