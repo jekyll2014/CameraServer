@@ -269,7 +269,7 @@ public class TelegramService : IHostedService, IDisposable
 
     public async Task<Message?> SendMenu(ChatId chatId,
         string text,
-        IReplyMarkup menu,
+        ReplyMarkup menu,
         CancellationToken cancellationToken)
     {
         if (_botClient == null)

@@ -30,9 +30,3 @@ h1:focus {
     .blazor-error-boundary::after {
         content: "An error has occurred."
     }
-
-table, thead, td, th {
-    padding: 5px 8px;
-    border: 1px solid #000;
-    border-collapse: collapse;
-}

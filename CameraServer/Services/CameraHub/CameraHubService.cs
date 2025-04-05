@@ -180,16 +180,7 @@ public class CameraHubService
         var camera = _cameras
             .FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraItem.CameraId);
 
-        if (camera.Key == null || !camera.Value.TryAdd(
-                cameraItem,
-                srcImageQueue))
-        {
-            _logger.Log(LogLevel.Error, $"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
-
-            return CancellationToken.None;
-        }
-
-        if (camera.Value.Count == 1)
+        if (camera.Value.Count == 0)
         {
             camera.Key.CameraStream.ImageCapturedEvent += GetImageFromCameraStream;
             if (!await camera.Key.CameraStream.Start(cameraItem.FrameFormat.Width,
@@ -198,6 +189,14 @@ public class CameraHubService
                     CancellationToken.None))
             {
                 _logger.Log(LogLevel.Error, $"Failed to connect to camera {cameraItem.CameraId}");
+
+                return CancellationToken.None;
+            }
+
+            if (!camera.Value.TryAdd(cameraItem, srcImageQueue))
+            {
+                camera.Key.CameraStream.Stop();
+                _logger.Log(LogLevel.Error, $"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
 
                 return CancellationToken.None;
             }

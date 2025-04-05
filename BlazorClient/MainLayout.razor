@@ -1,5 +1,15 @@
 ﻿@inherits LayoutComponentBase
 
-<main>
-    @Body
-</main>
+@* Required for MudBlazor*@
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+
+@* Needed for MudBlazor snackbars *@
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>

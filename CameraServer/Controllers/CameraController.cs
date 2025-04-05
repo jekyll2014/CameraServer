@@ -70,10 +70,24 @@ public class CameraController : ControllerBase
         var cameraList = new List<CameraDto>();
         foreach (var camera in cameras)
         {
+            FrameFormatDto? maxFrameDto = null;
+            var maxFrame = camera.CameraStream.Description.FrameFormats.MaxBy(n => n.Width * n.Height);
+            if (maxFrame != null)
+            {
+                maxFrameDto = new FrameFormatDto()
+                {
+                    Width = maxFrame.Width,
+                    Height = maxFrame.Height,
+                    Format = maxFrame.Format,
+                    Fps = maxFrame.Fps,
+                };
+            }
+
             cameraList.Add(new CameraDto()
             {
                 Id = camera.Id,
                 Name = camera.CameraStream.Description.Name,
+                MaxFrameFormat = maxFrameDto,
                 Url = GenerateCameraUrlInternal(camera.Id)
             });
         }

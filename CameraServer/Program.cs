@@ -81,12 +81,12 @@ public class Program
 
         builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
 
-        var serverUrls = builder.WebHost.GetSetting("Urls");
+        var serverUrls = builder.WebHost.GetSetting("Urls") ?? "http://0.0.0.0:8080";
         try
         {
             foreach (var serverUrl in serverUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                int serverPort = new Uri(serverUrl ?? "").Port;
+                var serverPort = new Uri(serverUrl ?? "").Port;
                 if (PortInUse(serverPort))
                 {
                     _logger?.Error($"Port in use. Trying to release...");
@@ -115,11 +115,7 @@ public class Program
         builder.Services.AddHostedService<MotionDetectionService>(provider => provider.GetService<MotionDetectionService>());
 
         builder.Services.AddControllers().AddControllersAsServices();
-        //builder.Services.AddControllersWithViews().AddControllersAsServices();
-        //builder.Services.AddControllersWithViews();
-        //builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
-
         builder.Services.AddHttpContextAccessor();
 
         builder.Services.AddCors(o => o.AddPolicy("MyPolicy", builder =>
@@ -148,7 +144,6 @@ public class Program
         builder.Services.AddHealthChecks();
 
         builder.Services.AddSwaggerGenNewtonsoftSupport();
-        // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
         builder.Services.AddSwaggerGen(options =>
         {
             /*options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
@@ -275,27 +270,6 @@ public class Program
         }
 
         return false;
-    }
-
-    public static Func<LogEvent, bool> WithProperty(string propertyName, object scalarValue)
-    {
-        ArgumentNullException.ThrowIfNull(propertyName);
-
-        var scalar = new ScalarValue(scalarValue);
-        return e =>
-        {
-            if (e.Properties.TryGetValue(propertyName, out var propertyValue))
-            {
-                if (propertyValue is StructureValue stValue)
-                {
-                    var value = stValue.Properties.FirstOrDefault(cc => cc.Name == "Id");
-
-                    return scalar.Equals(value?.Value);
-                }
-            }
-
-            return false;
-        };
     }
 
     private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)

@@ -111,7 +111,7 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     public string Start(MotionDetectionCameraSettingDto detectTask)
     {
-        if (detectTask?.Notifications == null || detectTask.Notifications.Count <= 0)
+        if (!detectTask.Notifications.Any())
             return string.Empty;
 
         detectTask.MotionDetectParameters ??= Settings.DefaultMotionDetectParameters;

@@ -96,7 +96,7 @@ namespace CameraLib.FlashCap
         private static List<FrameFormat> GetAllAvailableResolution(CaptureDeviceDescriptor usbCamera)
         {
             var formats = new List<FrameFormat>();
-            foreach (var cameraCharacteristic in usbCamera.Characteristics)
+            foreach (var cameraCharacteristic in usbCamera.Characteristics.Where(n => n.PixelFormat != PixelFormats.Unknown))
             {
                 formats.Add(new FrameFormat(cameraCharacteristic.Width,
                     cameraCharacteristic.Height,

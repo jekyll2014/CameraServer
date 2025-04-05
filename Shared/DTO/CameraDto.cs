@@ -5,5 +5,6 @@ public class CameraDto
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public FrameFormatDto? MaxFrameFormat { get; set; } = null;
     public string Url { get; set; } = string.Empty;
 }
