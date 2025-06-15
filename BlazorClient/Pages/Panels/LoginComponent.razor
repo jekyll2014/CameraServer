@@ -1,0 +1,91 @@
+﻿@using CameraServer.Client.Services
+@using CameraServer.Shared
+
+@inject HttpClient _http
+@inject IAuthenticationService _authenticationService
+
+<MudStack Row="true">
+    <MudTextField Disabled="@_authenticationService.IsAuthenticated"
+                  id="login"
+                  Label="Login:"
+                  @bind-Value="_loginModel.UserName" />
+
+    <MudTextField disabled="@_authenticationService.IsAuthenticated"
+                  id="password"
+                  Label="Password:"
+                  @bind-value="_loginModel.Password" />
+
+    <MudCheckBox Disabled="@_authenticationService.IsAuthenticated"
+                 Label="Stay logged in"
+                 @bind-value="_loginModel.RememberLogin" />
+    @if (!_authenticationService.IsAuthenticated)
+    {
+        <MudButton OnClick="@LoginClicked"
+                   Variant="Variant.Filled">
+            Login
+        </MudButton>
+    }
+    else
+    {
+        <MudButton OnClick="@LogoutClicked"
+                   Variant="Variant.Filled">
+            Logout
+        </MudButton>
+    }
+</MudStack>
+
+@code {
+    private LoginModel _loginModel = new LoginModel();
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine($"LoginComponent: OnInitialized()");
+
+        _authenticationService.OnLogIn += OnLogin;
+        _authenticationService.OnLogOut += OnLogout;
+
+        Console.WriteLine($"LoginComponent: UserInfo = {_authenticationService.UserInfo?.UserName}");
+
+        if (_authenticationService.UserInfo != null)
+        {
+            _loginModel.UserName = _authenticationService.UserInfo.UserName;
+            _loginModel.RememberLogin = true;
+        }
+    }
+
+    private async Task LoginClicked()
+    {
+        await _authenticationService.Login(_loginModel);
+    }
+
+    private async Task LogoutClicked()
+    {
+        await _authenticationService.Logout();
+    }
+
+    private async void OnLogin(UserInfoModel? userInfoModel)
+    {
+        Console.WriteLine("LoginComponent: OnLogin() invoked");
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                _loginModel.UserName = userInfoModel?.UserName ?? string.Empty;
+                _loginModel.Password = string.Empty;
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"LoginComponent: OnLogin() exception: {ex}");
+        }
+    }
+
+    private void OnLogout()
+    {
+        Console.WriteLine("LoginComponent: OnLogout() invoked");
+
+        _loginModel.Password = string.Empty;
+        StateHasChanged();
+    }
+}

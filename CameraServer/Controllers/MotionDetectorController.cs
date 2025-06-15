@@ -46,16 +46,16 @@ public class MotionDetectorController : ControllerBase
         _motionDetector = motionDetector;
     }
 
-    [HttpGet]
-    [Route("GetDetectorTasksList")]
+    [HttpGet("GetDetectorTasksList")]
+    //[Route("GetDetectorTasksList")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string[]))]
     public IActionResult GetDetectorTasksList()
     {
         return Ok(_motionDetector.TaskList.ToArray());
     }
 
-    [HttpGet]
-    [Route("StartDetectorByName")]
+    [HttpGet("StartDetectorByName")]
+    //[Route("StartDetectorByName")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartDetectorByName(string cameraName,
         int? xResolution,
@@ -86,8 +86,8 @@ public class MotionDetectorController : ControllerBase
             message);
     }
 
-    [HttpGet]
-    [Route("StartDetector")]
+    [HttpGet("StartDetector")]
+    //[Route("StartDetector")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartDetector(int cameraId,
         int? xResolution,
@@ -186,8 +186,8 @@ public class MotionDetectorController : ControllerBase
         }
     }
 
-    [HttpGet]
-    [Route("StopDetector")]
+    [HttpGet("StopDetectorById")]
+    //[Route("StopDetector")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StopDetector(string taskId)
     {
@@ -196,8 +196,8 @@ public class MotionDetectorController : ControllerBase
         return Ok();
     }
 
-    [HttpGet]
-    [Route("StopDetector")]
+    [HttpGet("StopDetector")]
+    //[Route("StopDetector")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StopDetector(Guid taskId)
     {
@@ -206,8 +206,8 @@ public class MotionDetectorController : ControllerBase
         return Ok();
     }
 
-    [HttpGet]
-    [Route("GetMotionDetectorStream")]
+    [HttpGet("GetMotionDetectorStream")]
+    //[Route("GetMotionDetectorStream")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
     public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
     {
@@ -272,7 +272,7 @@ public class MotionDetectorController : ControllerBase
                 _logger.Log(LogLevel.Error, ex.ToString());
             }
 
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            //GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
     }
 }

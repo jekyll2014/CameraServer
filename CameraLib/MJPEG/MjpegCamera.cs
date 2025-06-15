@@ -26,7 +26,7 @@ namespace CameraLib.MJPEG
         const byte picStart = 0xD8;
         const byte picEnd = 0xD9;
 
-        public AuthType AuthenicationType { get; }
+        public AuthType AuthenticationType { get; }
         public string Login { get; }
         public string Password { get; }
         public CameraDescription Description { get; set; }
@@ -52,7 +52,7 @@ namespace CameraLib.MJPEG
 
         public MjpegCamera(string path,
             string name = "",
-            AuthType authenicationType = AuthType.None,
+            AuthType authenticationType = AuthType.None,
             string login = "",
             string password = "",
             int discoveryTimeout = 1000,
@@ -60,11 +60,11 @@ namespace CameraLib.MJPEG
             ILogger? logger = null)
         {
             _logger = logger;
-            AuthenicationType = authenicationType;
+            AuthenticationType = authenticationType;
             Login = login;
             Password = password;
 
-            if (authenicationType == AuthType.Plain)
+            if (authenticationType == AuthType.Plain)
                 path = string.Format(path, login, password);
 
             var cameraUri = new Uri(path);
@@ -153,7 +153,7 @@ namespace CameraLib.MJPEG
             try
             {
                 _imageGrabber?.Dispose();
-                _imageGrabber = StartAsync(Description.Path, AuthenicationType, _cancellationTokenSourceCameraGrabber.Token, Login, Password).WaitAsync(TimeSpan.FromMilliseconds(FrameTimeout), token);
+                _imageGrabber = StartAsync(Description.Path, AuthenticationType, _cancellationTokenSourceCameraGrabber.Token, Login, Password).WaitAsync(TimeSpan.FromMilliseconds(FrameTimeout), token);
             }
             catch (Exception ex)
             {
@@ -255,18 +255,18 @@ namespace CameraLib.MJPEG
         /// </summary>
         /// <param name="action">Delegate to run at each frame</param>
         /// <param name="url">url of the http stream (only basic auth is implemented)</param>
-        /// <param name="authenicationType"></param>
+        /// <param name="authenticationType"></param>
         /// <param name="login">optional login</param>
         /// <param name="password">optional password (only basic auth is implemented)</param>
         /// <param name="token">cancellation token used to cancel the stream parsing</param>
         /// <param name="chunkMaxSize">Max chunk byte size when reading stream</param>
         /// <param name="frameBufferSize">Maximum frame byte size</param>
         /// <returns></returns>
-        private async Task StartAsync(string url, AuthType authenicationType, CancellationToken token, string login = "", string password = "", int chunkMaxSize = 1024, int frameBufferSize = 1024 * 1024)
+        private async Task StartAsync(string url, AuthType authenticationType, CancellationToken token, string login = "", string password = "", int chunkMaxSize = 1024, int frameBufferSize = 1024 * 1024)
         {
             using (var httpClient = new HttpClient())
             {
-                if (authenicationType == AuthType.Basic)
+                if (authenticationType == AuthType.Basic)
                     httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
                         "Basic",
                         Convert.ToBase64String(Encoding.ASCII.GetBytes($"{login}:{password}")));
@@ -389,8 +389,8 @@ namespace CameraLib.MJPEG
                         }
                         catch
                         {
-                            // We dont care about badly decoded pictures
-                            GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
+                            // We don't care about badly decoded pictures
+                            //GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
                         }
                     }
 
@@ -451,6 +451,7 @@ namespace CameraLib.MJPEG
                 if (disposing)
                 {
                     Stop();
+                    _keepAliveTimer.Elapsed -= CheckCameraDisconnected;
                     _imageGrabber?.Dispose();
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();

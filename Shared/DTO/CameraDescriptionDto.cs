@@ -3,17 +3,21 @@
 [Serializable]
 public class CameraDescriptionDto
 {
-    public string Type { get; set; } = string.Empty;
+    public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
     public IEnumerable<FrameFormatDto>? FrameFormats { get; set; }
+    public bool IsPtz { get; set; } = false;
 
     public CameraDescriptionDto()
     { }
 
-    public CameraDescriptionDto(string name, string type, IEnumerable<FrameFormatDto>? frameFormats)
+    public CameraDescriptionDto(int id, string name, string type, bool isPtz, IEnumerable<FrameFormatDto>? frameFormats)
     {
-        Type = type;
+        Id = id;
         Name = name;
+        Type = type;
+        IsPtz = isPtz;
         FrameFormats = frameFormats;
     }
 }

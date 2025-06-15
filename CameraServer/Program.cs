@@ -12,13 +12,13 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.OpenApi.Models;
 
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
 using System.Diagnostics;
-using System.Net;
 using System.Net.NetworkInformation;
 
 namespace CameraServer.Server;
@@ -62,8 +62,7 @@ public class Program
                     shared: false,
                     flushToDiskInterval: TimeSpan.FromSeconds(2)))
             .WriteTo.Logger(l => l
-                .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug
-                                             && n.Level != LogEventLevel.Verbose)
+                .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug)
                 .WriteTo.File(
                     new CompactJsonFormatter(),
                     path: "CameraServer_debug.log.json",
@@ -116,7 +115,6 @@ public class Program
 
         builder.Services.AddControllers().AddControllersAsServices();
         builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddHttpContextAccessor();
 
         builder.Services.AddCors(o => o.AddPolicy("MyPolicy", builder =>
         {
@@ -137,7 +135,7 @@ public class Program
                 options.ExpireTimeSpan = TimeSpan.FromMinutes(expireTime);
                 options.SlidingExpiration = true;
             });
-
+        builder.Services.AddHttpContextAccessor();
 
         builder.Services.AddAuthorization();
 
@@ -146,29 +144,7 @@ public class Program
         builder.Services.AddSwaggerGenNewtonsoftSupport();
         builder.Services.AddSwaggerGen(options =>
         {
-            /*options.SwaggerDoc("v1", new OpenApiInfo { Title = "BasicAuth", Version = "v1" });
-            options.AddSecurityDefinition("basic", new OpenApiSecurityScheme
-            {
-                Login = "Authorization",
-                Type = SecuritySchemeType.Http,
-                Scheme = "basic",
-                In = ParameterLocation.Header,
-                Description = "Basic Authorization header using the Bearer scheme."
-            });
-            options.AddSecurityRequirement(new OpenApiSecurityRequirement
-            {
-                {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "basic"
-                        }
-                    },
-                    new string[] {}
-                }
-            });*/
+            options.SwaggerDoc("v1", new OpenApiInfo { Title = "CameraServer API", Version = "v1" });
         });
 
         builder.Services.AddRazorPages();
@@ -200,7 +176,6 @@ public class Program
         app.UseAuthorization();
 
         app.MapControllers();
-
         /*app.MapControllerRoute(
                 name: "default",
                 pattern: "{controller=Home}/{action=Index}/{id?}");*/
@@ -214,11 +189,7 @@ public class Program
 
         app.MapHealthChecks("/healthcheck");
 
-        Console.WriteLine("Starting at:");
-        foreach (var url in app.Urls)
-        {
-            Console.WriteLine($"Starting at:{url}");
-        }
+        Console.WriteLine($"Starting at: {serverUrls}");
 
         app.Run();
     }
@@ -228,8 +199,8 @@ public class Program
         try
         {
             var currentProcess = Process.GetCurrentProcess();
-            var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id);
-            if (oldProcess != null && oldProcess.Any())
+            var oldProcess = Process.GetProcessesByName(currentProcess.ProcessName).Where(n => n.Id != currentProcess.Id).ToArray();
+            if (oldProcess.Any())
             {
                 _logger?.Error($"Another application copy is running. Trying to kill...");
                 foreach (var p in oldProcess)
@@ -244,8 +215,8 @@ public class Program
 
     private static bool PortInUse(int port)
     {
-        IPGlobalProperties ipProperties = IPGlobalProperties.GetIPGlobalProperties();
-        IPEndPoint[] ipEndPoints = ipProperties.GetActiveTcpListeners();
+        var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+        var ipEndPoints = ipProperties.GetActiveTcpListeners();
 
         return ipEndPoints.Any(n => n.Port == port);
     }

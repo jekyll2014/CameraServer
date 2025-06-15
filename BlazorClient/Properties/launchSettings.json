@@ -9,7 +9,8 @@
       },
       "dotnetRunMessages": true,
       "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
-      "applicationUrl": "http://localhost:808"
+      "applicationUrl": "http://localhost:808",
+      "nativeDebugging": true
     },
     "https": {
       "commandName": "Project",
@@ -22,7 +23,7 @@
       "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
       "applicationUrl": "https://localhost:809;http://localhost:808",
       "sqlDebugging": false,
-      "nativeDebugging": false
+      "nativeDebugging": true
     },
     "IIS Express": {
       "commandName": "IISExpress",

@@ -374,6 +374,7 @@ namespace CameraLib.FlashCap
                 if (disposing)
                 {
                     Stop();
+                    _keepAliveTimer.Elapsed -= CheckCameraDisconnected;
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();
                     _cancellationTokenSource?.Dispose();

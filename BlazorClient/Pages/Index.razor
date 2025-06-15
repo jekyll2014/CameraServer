@@ -1,159 +1,27 @@
 ﻿@page "/"
-@using System.Net
-@using CameraServer.Client.Pages.Components
-@using CameraServer.Shared
-@using CameraServer.Shared.DTO
 
-@inject HttpClient _http
+@using CameraServer.Client.Pages.Panels
+@using CameraServer.Client.Services
+@using CameraServer.Shared
+
+@inject IAuthenticationService _authenticationService
 
 <PageTitle>CameraServer</PageTitle>
 
 <MudText Typo="Typo.h2">CameraServer app</MudText>
 
-<LoginComponent OnLogIn="OnLogIn"
-                OnLogOut="OnLogOut" />
+<LoginComponent />
 
-@if (!_authenticated)
+@if (!_authenticationService.IsAuthenticated)
 {
     <MudText>Not logged in</MudText>
-}
-else if (_cameras == null)
-{
-    <MudText>No data loaded</MudText>
 }
 else
 {
     <MudTabs>
         <MudTabPanel Text="Camera management">
             <MudPaper>
-                @if (IsAdmin())
-                {
-                    <MudStack Row="true">
-                        <MudButton OnClick="async () => await ClickedRefresh()"
-                                   Variant="Variant.Filled">
-                            Refresh camera list
-                        </MudButton>
-
-                        <MudButton OnClick="async () => await ClickedRestart()"
-                                   Variant="Variant.Filled">
-                            Restart server
-                        </MudButton>
-                    </MudStack>
-                }
-
-                <MudText Typo="Typo.h3">Cameras</MudText>
-
-                <MudDataGrid T="CameraDto"
-                             ReadOnly="true"
-                             Outlined="true"
-                             Virtualize="false"
-                             Items="@_cameras.OrderBy(n => n.Name)"
-                             RowClick="@ClickedCameraRow"
-                             RowStyleFunc="@CameraRowStyleFunc"
-                             Dense="true"
-                             Striped="true"
-                             Bordered="true"
-                             ColumnResizeMode="ResizeMode.None">
-                    <NoRecordsContent>
-                        <MudText>@("No cameras found")</MudText>
-                    </NoRecordsContent>
-
-                    <Columns>
-                        <PropertyColumn Title="Id"
-                                        Property="n => n.Id"
-                                        Filterable="false"
-                                        Sortable="true"
-                                        Class="border-solid border-x mud-border-lines-default" />
-
-                        <PropertyColumn Title="Name"
-                                        Property="n => n.Name"
-                                        Filterable="false"
-                                        Sortable="true"
-                                        Class="border-solid border-x mud-border-lines-default">
-                            <CellTemplate>
-                                <MudText>
-                                    @context.Item.Name / @context.Item.MaxFrameFormat?.Height * @context.Item.MaxFrameFormat?.Width / @context.Item.MaxFrameFormat?.Format
-                                </MudText>
-                            </CellTemplate>
-                        </PropertyColumn>
-
-                        <PropertyColumn Title="Default URL"
-                                        Property="n => n.Url"
-                                        Filterable="false"
-                                        Sortable="true"
-                                        Class="border-solid border-x mud-border-lines-default">
-                            <CellTemplate>
-                                <MudLink Href="@context.Item.Url"
-                                         Target="_blank">
-                                    <Mudtext>Link</Mudtext>
-                                </MudLink>
-                            </CellTemplate>
-                        </PropertyColumn>
-                    </Columns>
-                </MudDataGrid>
-
-                <MudText Typo="Typo.h3">Frame formats</MudText>
-
-                <MudText>Camera type: @_cameraDescription?.Type</MudText>
-
-                <MudText>Camera name: @_cameraDescription?.Name</MudText>
-
-                @if (_cameraDescription != null && _cameraDescription.FrameFormats != null)
-                {
-                    <MudDataGrid T="FrameFormatDto"
-                                 ReadOnly="true"
-                                 Outlined="true"
-                                 Virtualize="false"
-                                 Items="@_cameraDescription.FrameFormats.OrderBy(n => n.Width * n.Height).ThenBy(n => n.Format)"
-                                 Dense="true"
-                                 Striped="true"
-                                 Bordered="true"
-                                 ColumnResizeMode="ResizeMode.None">
-                        <NoRecordsContent>
-                            <MudText>@("No frame formats found")</MudText>
-                        </NoRecordsContent>
-
-                        <Columns>
-                            <PropertyColumn Title="Width"
-                                            Property="n => n.Width"
-                                            Filterable="false"
-                                            Sortable="true"
-                                            Class="border-solid border-x mud-border-lines-default" />
-
-                            <PropertyColumn Title="Height"
-                                            Property="n => n.Height"
-                                            Filterable="false"
-                                            Sortable="true"
-                                            Class="border-solid border-x mud-border-lines-default" />
-
-                            <PropertyColumn Title="Format"
-                                            Property="n => n.Format"
-                                            Filterable="false"
-                                            Sortable="true"
-                                            Class="border-solid border-x mud-border-lines-default" />
-
-
-                            <PropertyColumn Title="FPS"
-                                            Property="n => n.Fps"
-                                            Filterable="false"
-                                            Sortable="true"
-                                            Class="border-solid border-x mud-border-lines-default" />
-
-
-                            <TemplateColumn Title="URL"
-                                            Filterable="false"
-                                            Sortable="true"
-                                            Class="border-solid border-x mud-border-lines-default">
-                                <CellTemplate>
-                                    <MudLink Href="@GenerateCameraUrl(_selectedCameraId, @context.Item.Width, @context.Item.Height, @context.Item.Format)"
-                                             Target="_blank">
-                                        <Mudtext>Link</Mudtext>
-                                    </MudLink>
-                                </CellTemplate>
-                            </TemplateColumn>
-                        </Columns>
-                    </MudDataGrid>
-                }
+                <CameraManagementPanel />
             </MudPaper>
         </MudTabPanel>
 
@@ -176,8 +44,8 @@ else
 
         <MudTabPanel Text="User management">
             <MudPaper>
-                <MudText Typo="Typo.h3">Frame formats</MudText>
-                @foreach (var role in _userInfo?.Roles ?? [])
+                <MudText Typo="Typo.h3">User roles</MudText>
+                @foreach (var role in _authenticationService.UserInfo?.Roles ?? [])
                 {
                     <MudText>@role</MudText>
                 }
@@ -187,130 +55,33 @@ else
 }
 
 @code {
-    private UserInfoModel? _userInfo;
-    private bool _authenticated = false;
 
-    private List<CameraDto>? _cameras;
-    private int _selectedCameraId = -1;
-
-    private CameraDescriptionDto? _cameraDescription;
-
-    protected override async Task OnInitializedAsync()
+    protected override async void OnInitialized()
     {
+        Console.WriteLine($"Index: OnInitialized()");
+
+        _authenticationService.OnLogIn += OnLogin;
+        _authenticationService.OnLogOut += OnLogout;
     }
 
-    private async Task<List<CameraDto>?> GetCameras()
+    private async void OnLogin(UserInfoModel? userInfoModel)
     {
-        List<CameraDto>? cameras = null;
+        Console.WriteLine("Index: OnLogin() invoked");
         try
         {
-            cameras = await _http.GetFromJsonAsync<List<CameraDto>>($"/Camera/GetCameraList");
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-        }
-
-        return cameras;
-    }
-
-    // Order operations
-    private async void ClickedCameraRow(DataGridRowClickEventArgs<CameraDto> camera)
-    {
-        _selectedCameraId = camera.Item.Id;
-        try
-        {
-            _cameraDescription = await GetDescription(camera.Item.Id);
-            StateHasChanged();
+                StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Console.WriteLine($"Index: OnLogin() exception: {ex}");
         }
     }
 
-    private async Task ClickedCameraFormatRow(int id)
+    private void OnLogout()
     {
+        Console.WriteLine("Index: OnLogout() invoked");
+
+        StateHasChanged();
     }
 
-    private async Task<CameraDescriptionDto?> GetDescription(int id)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<CameraDescriptionDto?>($"/Camera/GetCameraDetails?cameraId={id}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Exception getting description: {ex}");
-            return null;
-        }
-    }
-
-    private async Task ClickedRefresh()
-    {
-        var response = await _http.PostAsync($"/Camera/RefreshCameraList", null);
-        if (response.StatusCode == HttpStatusCode.OK)
-        {
-            _cameras = null;
-            _selectedCameraId = -1;
-            _cameras = await GetCameras();
-        }
-        else
-        {
-            // show error message
-        }
-    }
-
-    private async Task ClickedRestart()
-    {
-        var response = await _http.PostAsync($"/System/Restart", null);
-        if (response.StatusCode == HttpStatusCode.OK)
-        {
-            _cameras = null;
-            _selectedCameraId = -1;
-            _cameras = await GetCameras();
-        }
-        else
-        {
-            // show error message
-        }
-    }
-
-    private bool IsAdmin()
-    {
-        return _userInfo?.Roles.Contains("Admin") ?? false;
-    }
-
-    private static string GenerateCameraUrl(int cameraId,
-        int xResolution = 0,
-        int yResolution = 0,
-        string? format = "",
-        byte? quality = 90)
-    {
-        return
-            $"/Camera/GetVideoContent?cameraId={cameraId}&xResolution={xResolution}&yResolution={yResolution}&format={format}&quality={quality}";
-    }
-
-    private void OnLogOut()
-    {
-        _authenticated = false;
-        _userInfo = null;
-        _cameras = null;
-    }
-
-    private async Task OnLogIn(UserInfoModel? userInfo)
-    {
-        _userInfo = userInfo;
-        _authenticated = true;
-        _selectedCameraId = -1;
-        _cameras = await GetCameras();
-    }
-
-    private Func<CameraDto, int, string> CameraRowStyleFunc => (camera, n) =>
-    {
-        return _selectedCameraId == camera.Id
-            ? "background-color: powderblue" : "background-color: white"
-                        /*? ";font-weight: bold;"
-                        : ";font-weight: normal;"*/;
-    };
 }

@@ -36,7 +36,8 @@ public class SystemController : ControllerBase
         _logger = logger;
     }
 
-    [HttpGet]
+    [HttpGet("Get")]
+    //[Route("Get")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(HealthReport))]
     public async Task<IActionResult> Get()
     {
@@ -45,8 +46,8 @@ public class SystemController : ControllerBase
         return report.Status == HealthStatus.Healthy ? Ok(report) : StatusCode((int)HttpStatusCode.ServiceUnavailable, report);
     }
 
-    [HttpPost]
-    [Route("Restart")]
+    [HttpPost("Restart")]
+    //[Route("Restart")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult Restart()
     {

@@ -8,7 +8,9 @@ public class MotionDetectorParametersDto
     public byte NoiseThreshold { get; set; } = 70;
     //percent of the total image area
     public double ChangeLimit { get; set; } = 0.1;
-    public uint NotificationDelay { get; set; } = 10;
+    public uint TextNotificationDelay { get; set; } = 10;
+    public uint ImageNotificationDelay { get; set; } = 10;
+    public uint VideoNotificationDelay { get; set; } = 1;
     public uint KeepImageBuffer { get; set; } = 10;
 
     public override bool Equals(object? obj)
@@ -21,7 +23,9 @@ public class MotionDetectorParametersDto
                 && setting.DetectorDelayMs == DetectorDelayMs
                 && setting.NoiseThreshold == NoiseThreshold
                 && setting.ChangeLimit == ChangeLimit
-                && setting.NotificationDelay == NotificationDelay
+                && setting.TextNotificationDelay == TextNotificationDelay
+                && setting.ImageNotificationDelay == ImageNotificationDelay
+                && setting.VideoNotificationDelay == VideoNotificationDelay
                 && setting.KeepImageBuffer == KeepImageBuffer)
                 result = true;
         }
@@ -31,6 +35,6 @@ public class MotionDetectorParametersDto
 
     public override int GetHashCode()
     {
-        return $"{Width}{Height}{DetectorDelayMs}{NoiseThreshold}{ChangeLimit}{NotificationDelay}{KeepImageBuffer}".GetHashCode();
+        return $"{Width}{Height}{DetectorDelayMs}{NoiseThreshold}{ChangeLimit}{TextNotificationDelay}{ImageNotificationDelay}{VideoNotificationDelay}{KeepImageBuffer}".GetHashCode();
     }
 }

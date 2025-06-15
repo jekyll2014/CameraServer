@@ -28,7 +28,7 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
                 && setting.User == User
                 && setting.FrameFormat.Equals(FrameFormat)
                 && (setting.MotionDetectParameters == null && MotionDetectParameters == null
-                    || (setting.MotionDetectParameters?.Equals(MotionDetectParameters) ?? false)))
+                    || setting.MotionDetectParameters.Equals(MotionDetectParameters)))
                 result = true;
         }
 

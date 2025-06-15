@@ -1,0 +1,433 @@
+﻿@using System.Net
+@using CameraServer.Client.Services
+@using CameraServer.Shared
+@using CameraServer.Shared.DTO
+
+@inject HttpClient _http
+@inject IAuthenticationService _authenticationService
+@inject ICurrentUserState _currentUserState
+
+<MudPaper>
+    @if (IsAdmin())
+    {
+        <MudStack Row="true">
+            <MudButton OnClick="@ClickedRefresh"
+                       Variant="Variant.Filled">
+                Refresh camera list
+            </MudButton>
+
+            <MudButton OnClick="@ClickedRestart"
+                       Variant="Variant.Filled">
+                Restart server
+            </MudButton>
+        </MudStack>
+    }
+
+    <MudText Typo="Typo.h3">Cameras</MudText>
+
+    <!--<MudButton OnClick="@ClickedGetCamera"
+    Variant="Variant.Filled">
+        Get cameras
+    </MudButton>-->
+
+    <MudStack Row="true"
+              Justify="Justify.FlexStart"
+              AlignItems="AlignItems.Start">
+        <div>
+            <MudText Typo="Typo.h5">Camera list</MudText>
+            
+            <MudDataGrid T="CameraDto"
+                         ReadOnly="true"
+                         Outlined="true"
+                         Virtualize="false"
+                         Items="@_currentUserState.Cameras?.OrderBy(n => n.Name)"
+                         RowClick="@ClickedCameraRow"
+                         RowStyleFunc="@CameraRowStyleFunc"
+                         Dense="true"
+                         Striped="true"
+                         Bordered="true"
+                         ColumnResizeMode="ResizeMode.None">
+                <NoRecordsContent>
+                    <MudText>@("No cameras found")</MudText>
+                </NoRecordsContent>
+
+                <Columns>
+                    <PropertyColumn Title="Id"
+                                    Property="n => n.Id"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default" />
+
+                    <PropertyColumn Title="Name"
+                                    Property="n => n.Name"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudText>
+                                @context.Item.Name
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Title="Frame format"
+                                    Property="n => n.MaxFrameFormat"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudText>
+                                @context.Item.MaxFrameFormat?.Height * @context.Item.MaxFrameFormat?.Width / @context.Item.MaxFrameFormat?.Format
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Title="Type"
+                                    Property="n => n.Type"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudText>
+                                @context.Item.Type
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Title="PTZ"
+                                    Property="n => n.IsPtz"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudText>
+                                @context.Item.IsPtz
+                            </MudText>
+                        </CellTemplate>
+                    </PropertyColumn>
+
+                    <PropertyColumn Title="Default URL"
+                                    Property="n => n.Url"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudLink Href="@context.Item.Url"
+                                     Target="_blank">
+                                <Mudtext>Link</Mudtext>
+                            </MudLink>
+                        </CellTemplate>
+                    </PropertyColumn>
+                </Columns>
+            </MudDataGrid>
+        </div>
+
+        @if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.FrameFormats != null)
+        {
+            <div>
+                <MudText Typo="Typo.h5">Frame formats</MudText>
+
+                <MudDataGrid T="FrameFormatDto"
+                             ReadOnly="true"
+                             Outlined="true"
+                             Virtualize="false"
+                             Items="@_currentUserState.CameraDescription.FrameFormats.OrderBy(n => n.Width * n.Height).ThenBy(n => n.Format)"
+                             Dense="true"
+                             Striped="true"
+                             Bordered="true"
+                             ColumnResizeMode="ResizeMode.None">
+                    <NoRecordsContent>
+                        <MudText>@("No frame formats found")</MudText>
+                    </NoRecordsContent>
+
+                    <Columns>
+                        <PropertyColumn Title="Width"
+                                        Property="n => n.Width"
+                                        Filterable="false"
+                                        Sortable="true"
+                                        Class="border-solid border-x mud-border-lines-default" />
+
+                        <PropertyColumn Title="Height"
+                                        Property="n => n.Height"
+                                        Filterable="false"
+                                        Sortable="true"
+                                        Class="border-solid border-x mud-border-lines-default" />
+
+                        <PropertyColumn Title="Format"
+                                        Property="n => n.Format"
+                                        Filterable="false"
+                                        Sortable="true"
+                                        Class="border-solid border-x mud-border-lines-default" />
+
+
+                        <PropertyColumn Title="FPS"
+                                        Property="n => n.Fps"
+                                        Filterable="false"
+                                        Sortable="true"
+                                        Class="border-solid border-x mud-border-lines-default" />
+
+
+                        <TemplateColumn Title="URL"
+                                        Filterable="false"
+                                        Sortable="true"
+                                        Class="border-solid border-x mud-border-lines-default">
+                            <CellTemplate>
+                                <MudLink Href="@GenerateCameraUrl(_currentUserState.SelectedCameraId, @context.Item.Width, @context.Item.Height, @context.Item.Format)"
+                                         Target="_blank">
+                                    <Mudtext>Link</Mudtext>
+                                </MudLink>
+                            </CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+            </div>
+        }
+    </MudStack>
+
+    <MudText>Camera type: @_currentUserState.CameraDescription?.Type</MudText>
+
+    <MudText>Camera name: @_currentUserState.CameraDescription?.Name</MudText>
+@if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.IsPtz)
+    {
+        <MudText Typo="Typo.h3">PTZ control</MudText>
+
+        <MudGrid>
+            <MudItem xs="1">
+            </MudItem>
+
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzUp"
+                           Variant="Variant.Filled">
+                    Up
+                </MudButton>
+            </MudItem>
+
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzZoomIn"
+                           Variant="Variant.Filled">
+                    ZoomIn
+                </MudButton>
+            </MudItem>
+
+            <MudFlexBreak/>
+            
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzRight"
+                           Variant="Variant.Filled">
+                    Left
+                </MudButton>
+            </MudItem>
+
+            <MudItem xs="1">
+            </MudItem>
+
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzLeft"
+                           Variant="Variant.Filled">
+                    Right
+                </MudButton>
+            </MudItem>
+            
+            <MudFlexBreak/>
+            
+            <MudItem xs="1">
+            </MudItem>
+
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzDown"
+                           Variant="Variant.Filled">
+                    Down
+                </MudButton>
+            </MudItem>
+            
+            <MudItem xs="1">
+                <MudButton OnClick="@ClickedPtzZoomOut"
+                           Variant="Variant.Filled">
+                    ZoomOut
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    }
+</MudPaper>
+
+@code {
+    protected override async Task<Task> OnInitializedAsync()
+    {
+        Console.WriteLine($"CameraManagementPanel: OnInitialized()");
+
+        _authenticationService.OnLogIn += OnLogin;
+        _authenticationService.OnLogOut += OnLogout;
+
+        if (_currentUserState.Cameras == null)
+            _currentUserState.Cameras = await GetCameras();
+
+        //Console.WriteLine($"CameraManagementPanel: _cameras = {_currentUserState.Cameras?.Count}");
+
+        return base.OnInitializedAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _currentUserState.Cameras = await GetCameras();
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task<List<CameraDto>?> GetCameras()
+    {
+        List<CameraDto>? cameras = null;
+        try
+        {
+            cameras = await _http.GetFromJsonAsync<List<CameraDto>>($"/Camera/GetCameraList");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"CameraManagementPanel: GetCameras() exception{ex}");
+        }
+
+        return cameras;
+    }
+
+    private async void ClickedCameraRow(DataGridRowClickEventArgs<CameraDto> camera)
+    {
+        _currentUserState.SelectedCameraId = camera.Item.Id;
+        _currentUserState.CameraDescription = await GetDescription(camera.Item.Id);
+        StateHasChanged();
+    }
+
+    private async Task<CameraDescriptionDto?> GetDescription(int id)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<CameraDescriptionDto?>($"/Camera/GetCameraDetails?cameraId={id}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"CameraManagementPanel: GetCameras() exception{ex}");
+            return null;
+        }
+    }
+
+    private async Task ClickedRefresh()
+    {
+        var response = await _http.PostAsync($"/Camera/RefreshCameraList", null);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            _currentUserState.Cameras = null;
+            _currentUserState.SelectedCameraId = -1;
+            _currentUserState.Cameras = await GetCameras();
+        }
+        else
+        {
+            // show error message
+        }
+    }
+
+    private async Task ClickedRestart()
+    {
+        var response = await _http.PostAsync($"/System/Restart", null);
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            _currentUserState.Cameras = null;
+            _currentUserState.SelectedCameraId = -1;
+            _currentUserState.Cameras = await GetCameras();
+        }
+        else
+        {
+            // show error message
+        }
+    }
+
+    private async Task ClickedGetCamera()
+    {
+        _currentUserState.Cameras = await GetCameras();
+        StateHasChanged();
+    }
+
+    private bool IsAdmin()
+    {
+        return _authenticationService.UserInfo?.Roles.Contains("Admin") ?? false;
+    }
+
+    private static string GenerateCameraUrl(int cameraId,
+        int xResolution = 0,
+        int yResolution = 0,
+        string? format = "",
+        byte? quality = 90)
+    {
+        return
+            $"/Camera/GetVideoContent?cameraId={cameraId}&xResolution={xResolution}&yResolution={yResolution}&format={format}&quality={quality}";
+    }
+
+    private async Task ClickedPtzUp()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 100 ,0);
+    }
+
+    private async Task ClickedPtzDown()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, -100 ,0);
+    }
+    
+    private async Task ClickedPtzLeft()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 100, 0 ,0);
+    }
+    
+    private async Task ClickedPtzRight()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, -100, 0 ,0);
+    }
+
+    private async Task ClickedPtzZoomIn()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0 ,100);
+    }
+
+    private async Task ClickedPtzZoomOut()
+    {
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0 ,-1000);
+    }
+
+    private async Task<string> MovePtz(int cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
+    {
+        var response = await _http.PostAsync($"/Camera/MoveCameraPtz?cameraId={cameraId}&xSpeed={xSpeed}&ySpeed={ySpeed}&zoomSpeed={zoomSpeed}&delay={delay}", null);
+        if (response.StatusCode != HttpStatusCode.OK)
+            return $"Response code {response.StatusCode}: {response.Content}";
+
+        return string.Empty;
+    }
+    
+    private Func<CameraDto, int, string> CameraRowStyleFunc => (camera, n) =>
+    {
+        return _currentUserState.SelectedCameraId == camera.Id
+            ? "background-color: powderblue" : "background-color: white"
+                                        /*? ";font-weight: bold;"
+                                        : ";font-weight: normal;"*/;
+    };
+
+    private async void OnLogin(UserInfoModel? userInfoModel)
+    {
+        Console.WriteLine("CameraManagementPanel: OnLogin() invoked");
+        try
+        {
+            _currentUserState.Cameras = await GetCameras();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+
+        }
+    }
+
+    private void OnLogout()
+    {
+        Console.WriteLine("CameraManagementPanel: OnLogout() invoked");
+
+        _currentUserState.Cameras = null;
+        StateHasChanged();
+    }
+}

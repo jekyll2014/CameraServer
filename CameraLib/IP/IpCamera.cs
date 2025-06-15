@@ -5,6 +5,7 @@ using OpenCvSharp;
 using QuickNV.Onvif;
 using QuickNV.Onvif.Discovery;
 using QuickNV.Onvif.Media;
+using QuickNV.Onvif.PTZ;
 
 using System;
 using System.Collections.Generic;
@@ -13,17 +14,21 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
+using System.ServiceModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 
 using IPAddress = System.Net.IPAddress;
+using PTZSpeed = QuickNV.Onvif.PTZ.PTZSpeed;
+using Vector1D = QuickNV.Onvif.PTZ.Vector1D;
+using Vector2D = QuickNV.Onvif.PTZ.Vector2D;
 
 namespace CameraLib.IP
 {
     public class IpCamera : ICamera
     {
-        public AuthType AuthenicationType { get; private set; }
+        public AuthType AuthenticationType { get; private set; }
         public string Login { get; private set; }
         public string Password { get; private set; }
         public CameraDescription Description { get; set; }
@@ -31,6 +36,8 @@ namespace CameraLib.IP
         public FrameFormat? CurrentFrameFormat { get; private set; }
         public double CurrentFps { get; private set; }
         public int FrameTimeout { get; set; } = 10000;
+        public bool IsPtz => _onvifClient != null && _ptzClient != null && _ptzProfile != null;
+
         public event ICamera.ImageCapturedEventHandler? ImageCapturedEvent;
         public CancellationToken CancellationToken => _cancellationTokenSource?.Token ?? CancellationToken.None;
 
@@ -47,6 +54,9 @@ namespace CameraLib.IP
         private int _width = 0;
         private int _height = 0;
         private string _format = string.Empty;
+        private OnvifClient? _onvifClient = null;
+        private PTZClient? _ptzClient = null;
+        private Profile? _ptzProfile = null;
         private int _gcCounter = 0;
         private bool _disposedValue;
 
@@ -83,9 +93,13 @@ namespace CameraLib.IP
                     Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
                 }
 
+                if (client.Capabilities.PTZ != null)
+                {
+                    var ptzClient = new PTZClient(client);
+                }
+
                 var mediaClient = new MediaClient(client);
                 var profilesResponse = await mediaClient.GetProfilesAsync();
-
                 foreach (var profile in profilesResponse.Profiles)
                 {
                     var stream = await mediaClient.QuickOnvif_GetStreamUriAsync(profile.token, true);
@@ -123,7 +137,7 @@ namespace CameraLib.IP
 
         public IpCamera(string path,
             string name = "",
-            AuthType authenicationType = AuthType.None,
+            AuthType authenticationType = AuthType.None,
             string login = "",
             string password = "",
             int discoveryTimeout = 1000,
@@ -131,24 +145,19 @@ namespace CameraLib.IP
             ILogger? logger = null)
         {
             _logger = logger;
-            AuthenicationType = authenicationType;
+            AuthenticationType = authenticationType;
             Login = login;
             Password = password;
 
-            if (AuthenicationType == AuthType.Plain)
+            if (AuthenticationType == AuthType.Plain)
                 path = string.Format(path, Login, Password);
 
             name = string.IsNullOrEmpty(name)
                 ? Dns.GetHostAddresses(new Uri(path).Host).FirstOrDefault()?.ToString() ?? path
                 : name;
 
-            if (_lastCamerasFound.Count == 0)
-                _lastCamerasFound = DiscoverOnvifCamerasAsync(discoveryTimeout).Result;
-
             var frameFormats = _lastCamerasFound.Find(n => n.Path == path)?.FrameFormats.ToList() ?? [];
-
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
-
             if (frameFormats.Count == 0 || forceCameraConnect)
             {
                 var cameraUri = new Uri(path);
@@ -165,8 +174,74 @@ namespace CameraLib.IP
 
             Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
+            try
+            {
+                GetPtzController(discoveryTimeout);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception getting PTZ for {path}: {ex}");
+            }
 
             _keepAliveTimer.Elapsed += CheckCameraDisconnected;
+        }
+
+        private void GetPtzController(int discoveryTimeout)
+        {
+            var cameraUri = new Uri(Description.Path);
+            if (!IPAddress.TryParse(cameraUri.Host, out var cameraIp))
+            {
+                var h = Dns.GetHostEntry(cameraUri.Host);
+                string? host = null;
+                if (h.AddressList.Length > 0)
+                    host = h.AddressList[0].ToString();
+                {
+                    IPAddress.TryParse(host, out cameraIp);
+                }
+            }
+
+            var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
+            var devices = discovery.RunDiscovery().Result;
+            if (devices.Length == 0)
+                return;
+
+            foreach (var device in devices)
+            {
+                var uri = new Uri(device.ServiceAddresses[0]);
+                if (uri.Host != cameraUri.Host && uri.Host != cameraIp?.ToString())
+                    continue;
+
+                Console.WriteLine($"Detecting PTZ: {device.ServiceAddresses[0]}");
+                _onvifClient = new OnvifClient(new OnvifClientOptions
+                {
+                    Scheme = uri.Scheme,
+                    Host = uri.Host,
+                    Port = uri.Port
+                });
+
+                try
+                {
+                    _onvifClient.ConnectAsync().Wait(discoveryTimeout);
+                    var mediaClient = new MediaClient(_onvifClient);
+                    var profilesResponse = mediaClient.GetProfilesAsync().Result;
+                    foreach (var profile in profilesResponse.Profiles)
+                    {
+                        if (_onvifClient.Capabilities.PTZ != null)
+                        {
+                            _ptzClient = new PTZClient(_onvifClient);
+                            _ptzProfile = profile;
+                            //_onvifClient.DeviceClient.Close();
+                            //_ptzClient.Close();
+
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
+                }
+            }
         }
 
         private async void CheckCameraDisconnected(object? sender, ElapsedEventArgs e)
@@ -325,6 +400,7 @@ namespace CameraLib.IP
                     {
                         _captureTask?.Wait(5000);
                         _captureDevice?.Release();
+                        ClosePtzClient().Wait(5000);
                     }
                     catch (Exception ex)
                     {
@@ -445,6 +521,93 @@ namespace CameraLib.IP
             return result3;
         }
 
+        private async Task<bool> OpenPtzClient()
+        {
+            if (!IsPtz)
+                return false;
+
+            if (_onvifClient.DeviceClient.State == CommunicationState.Closed)
+            {
+                await _onvifClient.DeviceClient.OpenAsync();
+            }
+
+            if (_ptzClient.State == CommunicationState.Closed)
+            {
+                await _ptzClient.OpenAsync();
+            }
+
+            return true;
+        }
+
+        private async Task<bool> ClosePtzClient()
+        {
+            if (!IsPtz)
+                return false;
+
+            if (_onvifClient.DeviceClient.State == CommunicationState.Opened)
+            {
+                await _onvifClient.DeviceClient.CloseAsync();
+            }
+
+            if (_ptzClient.State == CommunicationState.Opened)
+            {
+                await _ptzClient.CloseAsync();
+            }
+
+            return true;
+        }
+
+        public async Task PtzContinuousMove(int xSpeedPercent, int ySpeedPercent, int zoomSpeedPercent, int delay = 0)
+        {
+            if (!IsPtz)
+                return;
+
+            try
+            {
+                if (xSpeedPercent > 100)
+                    xSpeedPercent = 100;
+                if (xSpeedPercent < -100)
+                    xSpeedPercent = -100;
+                if (ySpeedPercent > 100)
+                    ySpeedPercent = 100;
+                if (ySpeedPercent < -100)
+                    ySpeedPercent = -100;
+                if (zoomSpeedPercent > 100)
+                    zoomSpeedPercent = 100;
+                if (zoomSpeedPercent < -100)
+                    zoomSpeedPercent = -100;
+
+                var xmax = _ptzProfile.PTZConfiguration.PanTiltLimits.Range.XRange.Max;
+                var ymax = _ptzProfile.PTZConfiguration.PanTiltLimits.Range.YRange.Max;
+                var zmax = _ptzProfile.PTZConfiguration.ZoomLimits.Range.XRange.Max;
+                var xSpeed = ((float)xSpeedPercent / 100) * xmax;
+                var ySpeed = ((float)ySpeedPercent / 100) * ymax;
+                var zoomSpeed = ((float)zoomSpeedPercent / 100) * zmax;
+                await _ptzClient.ContinuousMoveAsync(_ptzProfile.token, new PTZSpeed()
+                {
+                    PanTilt = new Vector2D()
+                    {
+                        x = xSpeed,
+                        y = ySpeed
+                    },
+                    Zoom = new Vector1D()
+                    {
+                        x = zoomSpeed
+                    }
+                }, null);
+
+                if (delay > 0)
+                {
+                    await Task.Delay(delay, CancellationToken.None);
+                    await _ptzClient.StopAsync(_ptzProfile.token, true, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(new EventId(0), ex, $"Error using camera PTZ");
+            }
+        }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_disposedValue)
@@ -452,6 +615,7 @@ namespace CameraLib.IP
                 if (disposing)
                 {
                     Stop();
+                    _keepAliveTimer.Elapsed -= CheckCameraDisconnected;
                     _keepAliveTimer.Close();
                     _keepAliveTimer.Dispose();
                     _captureDevice?.Dispose();

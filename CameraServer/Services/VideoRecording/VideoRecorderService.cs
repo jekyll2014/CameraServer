@@ -20,7 +20,7 @@ public class VideoRecorderService : IHostedService, IDisposable
     private const string VideoRecorderTempConfig = "appsettings-recorder.json";
     private const string RecorderConfigSection = "Recorder";
     private const string RecorderStreamId = "Recorder";
-    private const string DefaultVideoFileExtencion = "mp4";
+    private const string DefaultVideoFileExtension = "mp4";
 
     private readonly IUserManager _manager;
     private readonly CameraHubService _collection;
@@ -224,7 +224,7 @@ public class VideoRecorderService : IHostedService, IDisposable
                                                                  $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
                                                                  $"-{currentTime.ToString("yyyy-MM-dd")}" +
                                                                  $"-{currentTime.ToString("HH-mm-ss")}" +
-                                                                 $".{DefaultVideoFileExtencion}")}";
+                                                                 $".{DefaultVideoFileExtension}")}";
                 using (var recorder = new VideoRecorder(fileName,
                            new FrameFormatDto
                            {
@@ -305,9 +305,10 @@ public class VideoRecorderService : IHostedService, IDisposable
             $"Cam{camera.CameraStream.Description.Name}-" +
             $"{streamId}-" +
             $"{currentTime.ToString("yyyy-MM-dd")}_" +
-            $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtencion}");
+            $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtension}");
 
         var tmpImageQueue = new ConcurrentQueue<Mat>();
+        var frameCount = 0;
         try
         {
             var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
@@ -327,7 +328,10 @@ public class VideoRecorderService : IHostedService, IDisposable
                         try
                         {
                             if (image != null)
+                            {
                                 recorder.SaveFrame(image);
+                                frameCount++;
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -346,6 +350,7 @@ public class VideoRecorderService : IHostedService, IDisposable
                         try
                         {
                             recorder.SaveFrame(image);
+                            frameCount++;
                             image?.Dispose();
                         }
                         catch (Exception ex)
@@ -372,8 +377,11 @@ public class VideoRecorderService : IHostedService, IDisposable
         tmpImageQueue.Clear();
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
+        if (frameCount == 0)
+            throw new ApplicationException($"No frames written to file: {fileName}");
+
         if (!File.Exists(fileName))
-            throw new ApplicationException($"Can't write file {fileName}");
+            throw new ApplicationException($"Error writing to file. File doesn't exist: {fileName}");
 
         return fileName;
     }

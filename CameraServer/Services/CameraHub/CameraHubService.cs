@@ -45,10 +45,11 @@ public class CameraHubService
         }
 
         List<CameraDescription> ipCameras = new();
+        Task<List<CameraDescription>> t = null;
         if (_settings.AutoSearchIp)
         {
             _logger.Log(LogLevel.Information, "Detect IP cameras started...");
-            ipCameras = await IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
+            t = IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
             _logger.Log(LogLevel.Information, "Detect IP cameras stopped...");
         }
 
@@ -56,6 +57,7 @@ public class CameraHubService
 
         // add custom cameras again
         Parallel.ForEach(_settings.CustomCameras, (c) =>
+        //foreach (var c in _settings.CustomCameras)
         {
             _logger.Log(LogLevel.Information, $"{c.Name}");
 
@@ -66,7 +68,7 @@ public class CameraHubService
                     new IpCamera(
                         path: c.Path,
                         name: c.Name,
-                        authenicationType: c.AuthenicationType,
+                        authenticationType: c.AuthenticationType,
                         login: c.Login,
                         password: c.Password,
                         forceCameraConnect: _settings.ForceCameraConnect,
@@ -80,7 +82,7 @@ public class CameraHubService
                     new MjpegCamera(
                         path: c.Path,
                         name: c.Name,
-                        authenicationType: c.AuthenicationType,
+                        authenticationType: c.AuthenticationType,
                         login: c.Login,
                         password: c.Password,
                         discoveryTimeout: _settings.DiscoveryTimeOut,
@@ -108,6 +110,7 @@ public class CameraHubService
 
             serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
             _cameras.TryAdd(serverCamera, new ConcurrentDictionary<CameraQueueItem, ConcurrentQueue<Mat>>());
+            //}
         });
 
         if (_settings.AutoSearchUsbFC)
@@ -140,6 +143,7 @@ public class CameraHubService
         if (_settings.AutoSearchIp)
         {
             _logger.Log(LogLevel.Information, "Autodetecting IP cameras...");
+            ipCameras = t.Result;
             foreach (var c in ipCameras)
                 _logger.Log(LogLevel.Information, $"IP-Camera: {c.Name} - [{c.Path}]");
 
@@ -180,7 +184,16 @@ public class CameraHubService
         var camera = _cameras
             .FirstOrDefault(n => n.Key.CameraStream.Description.Path == cameraItem.CameraId);
 
-        if (camera.Value.Count == 0)
+        if (camera.Key == null || !camera.Value.TryAdd(
+                cameraItem,
+                srcImageQueue))
+        {
+            _logger.Log(LogLevel.Error, $"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
+
+            return CancellationToken.None;
+        }
+
+        if (camera.Value.Count == 1)
         {
             camera.Key.CameraStream.ImageCapturedEvent += GetImageFromCameraStream;
             if (!await camera.Key.CameraStream.Start(cameraItem.FrameFormat.Width,
@@ -189,14 +202,6 @@ public class CameraHubService
                     CancellationToken.None))
             {
                 _logger.Log(LogLevel.Error, $"Failed to connect to camera {cameraItem.CameraId}");
-
-                return CancellationToken.None;
-            }
-
-            if (!camera.Value.TryAdd(cameraItem, srcImageQueue))
-            {
-                camera.Key.CameraStream.Stop();
-                _logger.Log(LogLevel.Error, $"Failed to attach client {cameraItem.QueueId} to camera {cameraItem.CameraId}");
 
                 return CancellationToken.None;
             }
@@ -218,7 +223,6 @@ public class CameraHubService
         if (camera.Value.TryRemove(cameraItem, out _))
         {
             _logger.Log(LogLevel.Information, $"Client {cameraItem.QueueId} detached from camera {cameraItem.CameraId}");
-
             if (camera.Key != null && camera.Value.IsEmpty)
             {
                 camera.Key.CameraStream.ImageCapturedEvent -= GetImageFromCameraStream;
@@ -269,7 +273,7 @@ public class CameraHubService
 
                     _logger.Log(LogLevel.Information, $"Camera {clientStream.Key.CameraId} queue is full");
 
-                    // stop streaming if consumer can't cosume fast enough
+                    // stop streaming if consumer can't consume fast enough
                     //UnHookCamera(clientStream.Key);
                     //break;
                 }
@@ -279,6 +283,6 @@ public class CameraHubService
         }
 
         image.Dispose();
-        GC.Collect();
+        //GC.Collect();
     }
 }

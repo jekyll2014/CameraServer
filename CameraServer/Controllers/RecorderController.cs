@@ -38,16 +38,16 @@ public class RecorderController : ControllerBase
         _recorder = recorder;
     }
 
-    [HttpGet]
-    [Route("GetRecordTasksList")]
+    [HttpGet("GetRecordTasksList")]
+    //[Route("GetRecordTasksList")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string[]))]
     public IActionResult GetRecordTasksList()
     {
         return Ok(_recorder.TaskList.ToArray());
     }
 
-    [HttpGet]
-    [Route("StartRecordByName")]
+    [HttpGet("StartRecordByName")]
+    //[Route("StartRecordByName")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartRecordByName(string cameraName,
         int? xResolution = 0,
@@ -64,8 +64,8 @@ public class RecorderController : ControllerBase
         return StartRecordInternal(cameraId, xResolution, yResolution, fps, format, quality);
     }
 
-    [HttpGet]
-    [Route("StartRecord")]
+    [HttpGet("StartRecord")]
+    //[Route("StartRecord")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartRecord(int cameraId,
         int? xResolution = 0,
@@ -136,8 +136,8 @@ public class RecorderController : ControllerBase
         }
     }
 
-    [HttpGet]
-    [Route("StopRecord")]
+    [HttpGet("StopRecord")]
+    //[Route("StopRecord")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StopRecord(string taskId)
     {

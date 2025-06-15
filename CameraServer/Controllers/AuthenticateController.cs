@@ -38,8 +38,8 @@ public class AuthenticateController : ControllerBase
         _accessor = accessor;
     }
 
-    [HttpPost]
-    [Route("Login")]
+    [HttpPost("Login")]
+    //[Route("Login")]
     public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
     {
         try
@@ -105,6 +105,7 @@ public class AuthenticateController : ControllerBase
     }
 
     [HttpGet("IsLoggedIn")]
+    //[Route("IsLoggedIn")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(UserInfoModel))]
     public IActionResult IsLoggedIn()
     {
@@ -119,8 +120,8 @@ public class AuthenticateController : ControllerBase
         return BadRequest();
     }
 
-    [HttpPost]
-    [Route("Logout")]
+    [HttpPost("Logout")]
+    //[Route("Logout")]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync();

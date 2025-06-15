@@ -38,8 +38,8 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     public IEnumerable<string> TaskList => _detectorTasks.Select(n => n.Key.TaskId);
 
-    public delegate void MotionDetectPrcessedEventHandler(MotionDetectionCameraTask detectorTask, Mat? image);
-    public event MotionDetectPrcessedEventHandler? ImageProcessedEvent;
+    public delegate void MotionDetectProcessedEventHandler(MotionDetectionCameraTask detectorTask, Mat? image);
+    public event MotionDetectProcessedEventHandler? ImageProcessedEvent;
 
     private readonly ConcurrentDictionary<MotionDetectionCameraTask, Task> _detectorTasks = new();
     private readonly ConcurrentDictionary<string, Task> _videoRecordingTasks = new();
@@ -422,7 +422,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             var dest = notificationParam.Destination;
             if (_notificationsTextLast.TryGetValue(dest, out var lastNotificationTime))
             {
-                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
+                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.TextNotificationDelay)
                     continue;
 
                 _notificationsTextLast[dest] = currentTime;
@@ -463,7 +463,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             var dest = notificationParam.Destination;
             if (_notificationsImageLast.TryGetValue(dest, out var lastNotificationTime))
             {
-                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.NotificationDelay)
+                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.ImageNotificationDelay)
                     continue;
 
                 _notificationsImageLast[dest] = currentTime;
@@ -548,7 +548,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                     if (_notificationsVideoLast.TryGetValue(dest, out var lastNotificationTime))
                     {
                         if (currentTime.Subtract(lastNotificationTime).TotalSeconds <
-                            Settings.DefaultMotionDetectParameters.NotificationDelay)
+                            Settings.DefaultMotionDetectParameters.VideoNotificationDelay)
                             continue;
 
                         _notificationsVideoLast[dest] = currentTime;
