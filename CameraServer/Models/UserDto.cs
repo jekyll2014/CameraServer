@@ -8,6 +8,8 @@ public class UserDto : ICameraUser
     public string Login { get; set; } = string.Empty;
     [Required]
     public List<Roles> Roles { get; set; } = new();
+    public string Name { get; set; } = string.Empty;
     public long TelegramId { get; set; } = 0;
+    public string TelegramName { get; set; } = string.Empty;
     public string DefaultCodec { get; set; } = "AVC"; //FourCC.MP4V better compression, FourCC.AVC - better compatibility
 }

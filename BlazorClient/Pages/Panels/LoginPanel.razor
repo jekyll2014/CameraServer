@@ -44,11 +44,11 @@
         _authenticationService.OnLogIn += OnLogin;
         _authenticationService.OnLogOut += OnLogout;
 
-        Console.WriteLine($"LoginComponent: UserInfo = {_authenticationService.UserInfo?.UserName}");
+        Console.WriteLine($"LoginComponent: UserInfo = {_authenticationService.UserInfo?.Login}");
 
         if (_authenticationService.UserInfo != null)
         {
-            _loginModel.UserName = _authenticationService.UserInfo.UserName;
+            _loginModel.UserName = _authenticationService.UserInfo.Login;
             _loginModel.RememberLogin = true;
         }
     }
@@ -70,7 +70,7 @@
         {
             await InvokeAsync(() =>
             {
-                _loginModel.UserName = userInfoModel?.UserName ?? string.Empty;
+                _loginModel.UserName = userInfoModel?.Login ?? string.Empty;
                 _loginModel.Password = string.Empty;
                 StateHasChanged();
             });

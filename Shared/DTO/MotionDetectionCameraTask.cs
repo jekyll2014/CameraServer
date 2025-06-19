@@ -1,10 +1,11 @@
-﻿namespace CameraServer.Server.Services.MotionDetection;
+﻿using CameraServer.Shared.DTO;
+
+namespace CameraServer.Server.Services.MotionDetection;
 
 public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
 {
-    public Guid Id { get; set; } = new Guid();
+    public Guid Id { get; set; } = Guid.NewGuid();
     public DateTime CreationDateTime { get; set; } = DateTime.Now;
-    public string TaskId { get; set; } = string.Empty;
 
     public MotionDetectionCameraTask()
     { }
@@ -23,7 +24,7 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
         var result = false;
         if (obj is MotionDetectionCameraTask setting)
         {
-            if (setting.TaskId == TaskId
+            if (setting.Id == Id
                 && setting.CameraId == CameraId
                 && setting.User == User
                 && setting.FrameFormat.Equals(FrameFormat)
@@ -33,10 +34,5 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
         }
 
         return result;
-    }
-
-    public override int GetHashCode()
-    {
-        return TaskId.GetHashCode();
     }
 }

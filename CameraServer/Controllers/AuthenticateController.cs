@@ -39,7 +39,7 @@ public class AuthenticateController : ControllerBase
     }
 
     [HttpPost("Login")]
-    //[Route("Login")]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(UserInfoModel))]
     public async Task<IActionResult> Login([FromBody] LoginModel loginModel)
     {
         try
@@ -95,7 +95,15 @@ public class AuthenticateController : ControllerBase
 
             _logger.Log(LogLevel.Error, $"User {user.Login} authenticated");
 
-            return Ok(new UserInfoModel { UserName = user.Login, Roles = user.Roles.Select(n => n.ToString()) });
+            return Ok(new UserInfoModel
+            {
+                Login = user.Login,
+                Roles = user.Roles.Select(n => n.ToString()),
+                Name = user.Name,
+                TelegramName = user.TelegramName,
+                TelegramId = user.TelegramId,
+                DefaultCodec = user.DefaultCodec
+            });
 
         }
         catch (AuthenticationException ex)
@@ -105,7 +113,6 @@ public class AuthenticateController : ControllerBase
     }
 
     [HttpGet("IsLoggedIn")]
-    //[Route("IsLoggedIn")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(UserInfoModel))]
     public IActionResult IsLoggedIn()
     {
@@ -113,15 +120,23 @@ public class AuthenticateController : ControllerBase
         {
             var name = HttpContext.User.FindFirst(c => c.Type == ClaimTypes.Name)?.Value;
             var roles = HttpContext.User.FindAll(c => c.Type == ClaimTypes.Role).Select(c => c.Value);
+            var userInfo = _manager.GetUserInfo(name ?? string.Empty);
 
-            return Ok(new UserInfoModel { UserName = name, Roles = roles });
+            return Ok(new UserInfoModel
+            {
+                Login = name,
+                Roles = roles,
+                Name = userInfo?.Name ?? string.Empty,
+                TelegramId = userInfo?.TelegramId ?? 0,
+                DefaultCodec = userInfo?.DefaultCodec ?? string.Empty,
+                TelegramName = userInfo?.TelegramName ?? string.Empty
+            });
         }
 
         return BadRequest();
     }
 
     [HttpPost("Logout")]
-    //[Route("Logout")]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync();

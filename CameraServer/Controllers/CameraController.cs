@@ -46,7 +46,6 @@ public class CameraController : ControllerBase
     }
 
     [HttpPost("RefreshCameraList")]
-    //[Route("RefreshCameraList")]
     [SwaggerResponse((int)HttpStatusCode.OK)]
     public async Task<IActionResult> RefreshCameraList()
     {
@@ -60,7 +59,6 @@ public class CameraController : ControllerBase
     }
 
     [HttpGet("GetCameraList")]
-    //[Route("GetCameraList")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(List<CameraDto>))]
     public IActionResult GetCameraList()
     {
@@ -103,7 +101,6 @@ public class CameraController : ControllerBase
     }
 
     [HttpGet("GetCameraDetails")]
-    //[Route("GetCameraDetails")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(CameraDescriptionDto))]
     public IActionResult GetCameraDetails(int cameraId)
     {
@@ -135,7 +132,6 @@ public class CameraController : ControllerBase
     }
 
     [HttpGet("GetVideoContentByName")]
-    //[Route("GetVideoContentByName")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
     public async Task<IActionResult> GetVideoContentByName(string cameraName, int? xResolution, int? yResolution, string? format, byte? quality)
     {
@@ -149,15 +145,76 @@ public class CameraController : ControllerBase
     }
 
     [HttpGet("GetVideoContent")]
-    //[Route("GetVideoContent")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
     [SwaggerResponse((int)HttpStatusCode.BadRequest)]
-
     public async Task<IActionResult> GetVideoContent(int cameraId, int? xResolution, int? yResolution, string? format, byte? quality)
     {
         await GetVideoContentInternal(cameraId, xResolution, yResolution, format, quality);
 
         return new EmptyResult();
+    }
+
+    [HttpGet("GenerateCameraUrl")]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
+    public static string GenerateCameraUrl(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
+    {
+        return GenerateCameraUrlInternal(cameraId, xResolution, yResolution, format, quality);
+    }
+
+    private static string GenerateCameraUrlInternal(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
+    {
+        return
+            $"/{nameof(CameraController)[..^"Controller".Length]}/{nameof(GetVideoContent)}?{nameof(cameraId)}={cameraId}&{nameof(xResolution)}={xResolution ?? 0}&{nameof(yResolution)}={yResolution ?? 0}&{nameof(format)}={format ?? string.Empty}&{nameof(quality)}={quality ?? 90}";
+    }
+    [HttpPost("ReCheckPtz")]
+    [SwaggerResponse((int)HttpStatusCode.OK)]
+    public async Task<IActionResult> ReCheckPtz(int cameraId)
+    {
+        var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+        if (user == null || !_manager.HasAdminRole(user))
+            return BadRequest("Only allowed for Admin");
+
+        var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+        if (userRoles == null || userRoles.Count == 0)
+            return BadRequest("No such camera");
+
+        var camera = _collection.Cameras.FirstOrDefault(n => n.Id == cameraId);
+        if (!(camera?.AllowedRoles.Intersect(userRoles).Any() ?? false))
+            return BadRequest("No such camera");
+
+        if (camera.CameraStream is not IpCamera ipCam)
+            return BadRequest($"Camera is not {nameof(IpCamera)}");
+
+        await ipCam.GetPtzControllerAsync(5000);
+
+        return ipCam.IsPtz ? Ok() : BadRequest($"Camera is not PTZ-capable or PTZ controller is not available");
+    }
+
+    [HttpPost("MoveCameraPtz")]
+    [SwaggerResponse((int)HttpStatusCode.OK)]
+    public async Task<IActionResult> MoveCameraPtz(int cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
+    {
+        var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+        if (user == null || !_manager.HasAdminRole(user))
+            return BadRequest("Only allowed for Admin");
+
+        var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
+        if (userRoles == null || userRoles.Count == 0)
+            return BadRequest("No such camera");
+
+        var camera = _collection.Cameras.FirstOrDefault(n => n.Id == cameraId);
+        if (!(camera?.AllowedRoles.Intersect(userRoles).Any() ?? false))
+            return BadRequest("No such camera");
+
+        if (camera.CameraStream is not IpCamera ipCam)
+            return BadRequest($"Camera is not {nameof(IpCamera)}");
+
+        if (!ipCam.IsPtz)
+            return BadRequest($"Camera is not PTZ-capable");
+
+        await ipCam.PtzContinuousMove(xSpeed, ySpeed, zoomSpeed, delay);
+
+        return Ok();
     }
 
     private async Task<IActionResult> GetVideoContentInternal(int cameraId, int? width, int? height, string? format, byte? quality)
@@ -257,47 +314,5 @@ public class CameraController : ControllerBase
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
         return new EmptyResult();
-    }
-
-    [HttpGet("GenerateCameraUrl")]
-    //[Route("GenerateCameraUrl")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
-    public static string GenerateCameraUrl(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
-    {
-        return GenerateCameraUrlInternal(cameraId, xResolution, yResolution, format, quality);
-    }
-
-    private static string GenerateCameraUrlInternal(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
-    {
-        return
-            $"/{nameof(CameraController)[..^"Controller".Length]}/{nameof(GetVideoContent)}?{nameof(cameraId)}={cameraId}&{nameof(xResolution)}={xResolution ?? 0}&{nameof(yResolution)}={yResolution ?? 0}&{nameof(format)}={format ?? string.Empty}&{nameof(quality)}={quality ?? 90}";
-    }
-
-    [HttpPost("MoveCameraPtz")]
-    //[Route("MoveCameraPtz")]
-    [SwaggerResponse((int)HttpStatusCode.OK)]
-    public async Task<IActionResult> MoveCameraPtz(int cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
-    {
-        var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
-        if (user == null || !_manager.HasAdminRole(user))
-            return BadRequest("Only allowed for Admin");
-
-        var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
-        if (userRoles == null || userRoles.Count == 0)
-            return BadRequest("No such camera");
-
-        var camera = _collection.Cameras.FirstOrDefault(n => n.Id == cameraId);
-        if (!(camera?.AllowedRoles.Intersect(userRoles).Any() ?? false))
-            return BadRequest("No such camera");
-
-        if (camera.CameraStream is not IpCamera ipCam)
-            return BadRequest($"Camera is not {nameof(IpCamera)}");
-
-        if (!ipCam.IsPtz)
-            return BadRequest($"Camera is not PTZ-capable");
-
-        await ipCam.PtzContinuousMove(xSpeed, ySpeed, zoomSpeed, delay);
-
-        return Ok();
     }
 }

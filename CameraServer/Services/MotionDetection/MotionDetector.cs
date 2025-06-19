@@ -1,4 +1,6 @@
-﻿using OpenCvSharp;
+﻿using CameraServer.Shared.DTO;
+
+using OpenCvSharp;
 
 using Size = OpenCvSharp.Size;
 

@@ -23,7 +23,7 @@ public class SystemController : ControllerBase
     private readonly IUserManager _manager;
     private readonly HealthCheckService _healthCheckService;
     private readonly IHostApplicationLifetime _appLifetime;
-    private readonly ILogger<CameraController>? _logger;
+    private readonly ILogger<CameraController> _logger;
 
     public SystemController(IUserManager manager,
         HealthCheckService healthCheckService,
@@ -37,7 +37,6 @@ public class SystemController : ControllerBase
     }
 
     [HttpGet("Get")]
-    //[Route("Get")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(HealthReport))]
     public async Task<IActionResult> Get()
     {
@@ -47,11 +46,12 @@ public class SystemController : ControllerBase
     }
 
     [HttpPost("Restart")]
-    //[Route("Restart")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult Restart()
     {
         var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
+        _logger.LogInformation($"Restart requested by {HttpContext.User.Identity?.Name}");
+
         if (user == null || !_manager.HasAdminRole(user))
             return BadRequest("Only allowed for Admin");
 

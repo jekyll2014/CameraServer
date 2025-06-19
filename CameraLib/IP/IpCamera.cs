@@ -140,7 +140,7 @@ namespace CameraLib.IP
             AuthType authenticationType = AuthType.None,
             string login = "",
             string password = "",
-            int discoveryTimeout = 1000,
+            int discoveryTimeout = 5000,
             bool forceCameraConnect = false,
             ILogger? logger = null)
         {
@@ -176,7 +176,7 @@ namespace CameraLib.IP
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
             try
             {
-                GetPtzController(discoveryTimeout);
+                GetPtzControllerAsync(discoveryTimeout).Wait();
             }
             catch (Exception ex)
             {
@@ -186,12 +186,12 @@ namespace CameraLib.IP
             _keepAliveTimer.Elapsed += CheckCameraDisconnected;
         }
 
-        private void GetPtzController(int discoveryTimeout)
+        public async Task GetPtzControllerAsync(int discoveryTimeout)
         {
             var cameraUri = new Uri(Description.Path);
             if (!IPAddress.TryParse(cameraUri.Host, out var cameraIp))
             {
-                var h = Dns.GetHostEntry(cameraUri.Host);
+                var h = await Dns.GetHostEntryAsync(cameraUri.Host);
                 string? host = null;
                 if (h.AddressList.Length > 0)
                     host = h.AddressList[0].ToString();
@@ -201,7 +201,7 @@ namespace CameraLib.IP
             }
 
             var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
-            var devices = discovery.RunDiscovery().Result;
+            var devices = await discovery.RunDiscovery();
             if (devices.Length == 0)
                 return;
 
@@ -221,9 +221,9 @@ namespace CameraLib.IP
 
                 try
                 {
-                    _onvifClient.ConnectAsync().Wait(discoveryTimeout);
+                    await _onvifClient.ConnectAsync();
                     var mediaClient = new MediaClient(_onvifClient);
-                    var profilesResponse = mediaClient.GetProfilesAsync().Result;
+                    var profilesResponse = await mediaClient.GetProfilesAsync();
                     foreach (var profile in profilesResponse.Profiles)
                     {
                         if (_onvifClient.Capabilities.PTZ != null)
@@ -254,9 +254,9 @@ namespace CameraLib.IP
             }
         }
 
-        public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
+        public async Task<List<CameraDescription>> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
-            return DiscoverOnvifCamerasAsync(discoveryTimeout).Result;
+            return await DiscoverOnvifCamerasAsync(discoveryTimeout);
         }
 
         public async Task<bool> Start(int width, int height, string format, CancellationToken token)
@@ -541,17 +541,17 @@ namespace CameraLib.IP
 
         private async Task<bool> ClosePtzClient()
         {
-            if (!IsPtz)
-                return false;
-
-            if (_onvifClient.DeviceClient.State == CommunicationState.Opened)
+            if (IsPtz)
             {
-                await _onvifClient.DeviceClient.CloseAsync();
-            }
+                if (_onvifClient.DeviceClient.State == CommunicationState.Opened)
+                {
+                    await _onvifClient.DeviceClient.CloseAsync();
+                }
 
-            if (_ptzClient.State == CommunicationState.Opened)
-            {
-                await _ptzClient.CloseAsync();
+                if (_ptzClient.State == CommunicationState.Opened)
+                {
+                    await _ptzClient.CloseAsync();
+                }
             }
 
             return true;

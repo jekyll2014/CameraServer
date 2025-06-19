@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Server.Services.MotionDetection;
+﻿namespace CameraServer.Shared.Enum;
 
 public enum MessageType
 {

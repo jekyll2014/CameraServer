@@ -1,4 +1,4 @@
-﻿namespace CameraServer.Server.Services.MotionDetection;
+﻿namespace CameraServer.Shared.DTO;
 
 public class MotionDetectorParametersDto
 {

@@ -23,19 +23,12 @@
         </MudStack>
     }
 
-    <MudText Typo="Typo.h3">Cameras</MudText>
-
-    <!--<MudButton OnClick="@ClickedGetCamera"
-    Variant="Variant.Filled">
-        Get cameras
-    </MudButton>-->
-
     <MudStack Row="true"
               Justify="Justify.FlexStart"
               AlignItems="AlignItems.Start">
         <div>
             <MudText Typo="Typo.h5">Camera list</MudText>
-            
+
             <MudDataGrid T="CameraDto"
                          ReadOnly="true"
                          Outlined="true"
@@ -172,7 +165,7 @@
                                         Sortable="true"
                                         Class="border-solid border-x mud-border-lines-default">
                             <CellTemplate>
-                                <MudLink Href="@GenerateCameraUrl(_currentUserState.SelectedCameraId, @context.Item.Width, @context.Item.Height, @context.Item.Format)"
+                                <MudLink Href="@GenerateCameraUrl(_currentUserState.SelectedCamera.Id, @context.Item.Width, @context.Item.Height, @context.Item.Format)"
                                          Target="_blank">
                                     <Mudtext>Link</Mudtext>
                                 </MudLink>
@@ -187,16 +180,17 @@
     <MudText>Camera type: @_currentUserState.CameraDescription?.Type</MudText>
 
     <MudText>Camera name: @_currentUserState.CameraDescription?.Name</MudText>
-@if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.IsPtz)
-    {
-        <MudText Typo="Typo.h3">PTZ control</MudText>
 
+    <MudText Typo="Typo.h3">PTZ control</MudText>
+    @if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.IsPtz)
+    {
         <MudGrid>
             <MudItem xs="1">
             </MudItem>
 
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzUp"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
                     Up
                 </MudButton>
@@ -204,15 +198,17 @@
 
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzZoomIn"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
-                    ZoomIn
+                    Zoom In
                 </MudButton>
             </MudItem>
 
-            <MudFlexBreak/>
-            
+            <MudFlexBreak />
+
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzRight"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
                     Left
                 </MudButton>
@@ -223,45 +219,52 @@
 
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzLeft"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
                     Right
                 </MudButton>
             </MudItem>
-            
-            <MudFlexBreak/>
-            
+
+            <MudFlexBreak />
+
             <MudItem xs="1">
             </MudItem>
 
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzDown"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
                     Down
                 </MudButton>
             </MudItem>
-            
+
             <MudItem xs="1">
                 <MudButton OnClick="@ClickedPtzZoomOut"
+                           Size="Size.Small"
                            Variant="Variant.Filled">
-                    ZoomOut
+                    Zoom Out
                 </MudButton>
             </MudItem>
         </MudGrid>
+    }
+    else
+    {
+        <MudText>PTZ control is not available for this camera</MudText>
+        <MudButton OnClick="@ReCheckPtz"
+                   Variant="Variant.Filled">
+            Re-check PTZ capabilities
+        </MudButton>
     }
 </MudPaper>
 
 @code {
     protected override async Task<Task> OnInitializedAsync()
     {
-        Console.WriteLine($"CameraManagementPanel: OnInitialized()");
-
         _authenticationService.OnLogIn += OnLogin;
         _authenticationService.OnLogOut += OnLogout;
 
         if (_currentUserState.Cameras == null)
             _currentUserState.Cameras = await GetCameras();
-
-        //Console.WriteLine($"CameraManagementPanel: _cameras = {_currentUserState.Cameras?.Count}");
 
         return base.OnInitializedAsync();
     }
@@ -293,7 +296,7 @@
 
     private async void ClickedCameraRow(DataGridRowClickEventArgs<CameraDto> camera)
     {
-        _currentUserState.SelectedCameraId = camera.Item.Id;
+        _currentUserState.SelectedCamera = camera.Item;
         _currentUserState.CameraDescription = await GetDescription(camera.Item.Id);
         StateHasChanged();
     }
@@ -317,7 +320,7 @@
         if (response.StatusCode == HttpStatusCode.OK)
         {
             _currentUserState.Cameras = null;
-            _currentUserState.SelectedCameraId = -1;
+            _currentUserState.SelectedCamera = null;
             _currentUserState.Cameras = await GetCameras();
         }
         else
@@ -332,7 +335,7 @@
         if (response.StatusCode == HttpStatusCode.OK)
         {
             _currentUserState.Cameras = null;
-            _currentUserState.SelectedCameraId = -1;
+            _currentUserState.SelectedCamera = null;
             _currentUserState.Cameras = await GetCameras();
         }
         else
@@ -364,49 +367,71 @@
 
     private async Task ClickedPtzUp()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 100 ,0);
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 100, 0);
     }
 
     private async Task ClickedPtzDown()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, -100 ,0);
+        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 0, -100, 0);
     }
-    
+
     private async Task ClickedPtzLeft()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 100, 0 ,0);
+        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 100, 0, 0);
     }
-    
+
     private async Task ClickedPtzRight()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, -100, 0 ,0);
+        var response = await MovePtz(_currentUserState.CameraDescription?.Id, -100, 0, 0);
     }
 
     private async Task ClickedPtzZoomIn()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0 ,100);
+        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 0, 0, 100);
     }
 
     private async Task ClickedPtzZoomOut()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0 ,-1000);
+        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0, -1000);
     }
 
-    private async Task<string> MovePtz(int cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
+    private async Task<string> MovePtz(int? cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
     {
+        if (cameraId == null)
+            return "Camera ID is null";
+
         var response = await _http.PostAsync($"/Camera/MoveCameraPtz?cameraId={cameraId}&xSpeed={xSpeed}&ySpeed={ySpeed}&zoomSpeed={zoomSpeed}&delay={delay}", null);
         if (response.StatusCode != HttpStatusCode.OK)
             return $"Response code {response.StatusCode}: {response.Content}";
 
         return string.Empty;
     }
-    
+
+    private async Task ReCheckPtz()
+    {
+        var response = await ReCheckPtz(_currentUserState.CameraDescription?.Id);
+    }
+
+    private async Task<string> ReCheckPtz(int? cameraId)
+    {
+        if (cameraId == null)
+            return "Camera ID is null";
+
+        var response = await _http.PostAsync($"/Camera/ReCheckPtz?cameraId={cameraId}", null);
+        if (response.StatusCode != HttpStatusCode.OK)
+            return $"Response code {response.StatusCode}: {response.Content}";
+
+        _currentUserState.Cameras = await GetCameras();
+        StateHasChanged();
+
+        return string.Empty;
+    }
+
     private Func<CameraDto, int, string> CameraRowStyleFunc => (camera, n) =>
     {
-        return _currentUserState.SelectedCameraId == camera.Id
-            ? "background-color: powderblue" : "background-color: white"
-                                        /*? ";font-weight: bold;"
-                                        : ";font-weight: normal;"*/;
+        return _currentUserState.SelectedCamera?.Id == camera.Id
+            ? "background-color: powderblue; font-weight: bold; "
+            : "background-color: white; font-weight: normal; ";
     };
 
     private async void OnLogin(UserInfoModel? userInfoModel)

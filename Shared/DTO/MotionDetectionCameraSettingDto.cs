@@ -1,6 +1,4 @@
-﻿using CameraServer.Shared.DTO;
-
-namespace CameraServer.Server.Services.MotionDetection;
+﻿namespace CameraServer.Shared.DTO;
 
 public class MotionDetectionCameraSettingDto
 {

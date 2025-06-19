@@ -21,6 +21,11 @@ public class FrameFormatDto
         return result;
     }
 
+    public override string ToString()
+    {
+        return $"{Width}x{Height} {Format} @ {Fps} FPS";
+    }
+
     public override int GetHashCode()
     {
         return $"{Width}{Height}{Format}{Fps}".GetHashCode();

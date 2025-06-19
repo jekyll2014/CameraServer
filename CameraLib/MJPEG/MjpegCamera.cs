@@ -112,7 +112,7 @@ namespace CameraLib.MJPEG
         }
 
         // can not be implemented
-        public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
+        public async Task<List<CameraDescription>> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
             return [];
         }

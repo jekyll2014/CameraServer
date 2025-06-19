@@ -1,11 +1,15 @@
-﻿using CameraServer.Shared.DTO;
+﻿using CameraServer.Server.Services.MotionDetection;
+using CameraServer.Shared.DTO;
 
 namespace CameraServer.Client.Services
 {
     public interface ICurrentUserState
     {
         List<CameraDto>? Cameras { get; set; }
-        int SelectedCameraId { get; set; }
+        CameraDto? SelectedCamera { get; set; }
         CameraDescriptionDto? CameraDescription { get; set; }
+
+        List<MotionDetectionCameraTask>? Detectors { get; set; }
+        MotionDetectionCameraTask SelectedDetector { get; set; }
     }
 }

@@ -1,0 +1,12 @@
+﻿@using CameraServer.Client.Services
+
+@inject IAuthenticationService _authenticationService
+
+<MudPaper>
+        <MudText Typo="Typo.h3">Username: @_authenticationService.UserInfo?.Login</MudText>
+    <MudText Typo="Typo.h3">User roles:</MudText>
+    @foreach (var role in _authenticationService.UserInfo?.Roles ?? [])
+    {
+        <MudText> - @role</MudText>
+    }
+</MudPaper>

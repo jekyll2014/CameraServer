@@ -1,6 +1,6 @@
 ﻿using CameraServer.Shared.Enum;
 
-namespace CameraServer.Server.Services.MotionDetection;
+namespace CameraServer.Shared.DTO;
 
 public class NotificationParametersDto
 {

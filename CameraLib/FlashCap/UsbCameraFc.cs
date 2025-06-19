@@ -71,7 +71,7 @@ namespace CameraLib.FlashCap
             }
         }
 
-        public List<CameraDescription> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
+        public async Task<List<CameraDescription>> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
         {
             return DiscoverUsbCameras();
         }

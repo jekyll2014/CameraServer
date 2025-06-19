@@ -1,5 +1,4 @@
 ﻿using CameraServer.Shared;
-using CameraServer.Shared.DTO;
 
 using System.Net.Http.Json;
 
@@ -34,7 +33,7 @@ namespace CameraServer.Client.Services
             _httpClient = httpClient;
             IsLoggedIn();
 
-            Console.WriteLine($"AuthenticationService: UserInfo = {UserInfo?.UserName}");
+            Console.WriteLine($"AuthenticationService: UserInfo = {UserInfo?.Login}");
         }
 
         public async Task<bool> IsLoggedIn()

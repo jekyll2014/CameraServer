@@ -26,30 +26,19 @@ else
         </MudTabPanel>
 
         <MudTabPanel Text="Motion detection">
-            <MudPaper>
-
-            </MudPaper>
+            <MotionDetectionPanel />
         </MudTabPanel>
 
         <MudTabPanel Text="Recording">
-            <MudPaper>
-
-            </MudPaper>
+            <RecordingPanel />
         </MudTabPanel>
 
         <MudTabPanel Text="Settings">
-            <MudPaper>
-            </MudPaper>
+            <SettingsPanel />
         </MudTabPanel>
 
-        <MudTabPanel Text="User management">
-            <MudPaper>
-                <MudText Typo="Typo.h3">User roles</MudText>
-                @foreach (var role in _authenticationService.UserInfo?.Roles ?? [])
-                {
-                    <MudText>@role</MudText>
-                }
-            </MudPaper>
+        <MudTabPanel Text="User info">
+            <UserInfoPanel />
         </MudTabPanel>
     </MudTabs>
 }
@@ -69,7 +58,7 @@ else
         Console.WriteLine("Index: OnLogin() invoked");
         try
         {
-                StateHasChanged();
+            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -83,5 +72,4 @@ else
 
         StateHasChanged();
     }
-
 }

@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 
 using System.Collections.Concurrent;
-
+using CameraServer.Shared.DTO;
 using Telegram.Bot.Types;
 
 using DateTime = System.DateTime;
@@ -36,7 +36,8 @@ public class MotionDetectionService : IHostedService, IDisposable
     public readonly MotionDetectionSettings Settings;
     public readonly Config<List<MotionDetectionCameraSettingDto>> TaskConfig = new(MotioDetectorTempConfig);
 
-    public IEnumerable<string> TaskList => _detectorTasks.Select(n => n.Key.TaskId);
+    public IEnumerable<Guid> TaskList => _detectorTasks.Select(n => n.Key.Id);
+    public IEnumerable<MotionDetectionCameraTask> TaskDescriptions => _detectorTasks.Select(n => n.Key);
 
     public delegate void MotionDetectProcessedEventHandler(MotionDetectionCameraTask detectorTask, Mat? image);
     public event MotionDetectProcessedEventHandler? ImageProcessedEvent;
@@ -73,7 +74,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             try
             {
                 _logger.Log(LogLevel.Information, $"Starting motion detector for: {record.CameraId}");
-                if (!string.IsNullOrEmpty(Start(record)))
+                if (Start(record) == Guid.Empty)
                 {
                     throw new Exception("Motion detector not started");
                 }
@@ -92,7 +93,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             {
                 _logger.Log(LogLevel.Information, $"Restoring motion detector for: {record.CameraId}");
 
-                if (string.IsNullOrEmpty(Start(record)))
+                if (Start(record) == Guid.Empty)
                 {
                     throw new Exception("Motion detector not restored");
                 }
@@ -109,10 +110,10 @@ public class MotionDetectionService : IHostedService, IDisposable
         Dispose();
     }
 
-    public string Start(MotionDetectionCameraSettingDto detectTask)
+    public Guid Start(MotionDetectionCameraSettingDto detectTask)
     {
         if (!detectTask.Notifications.Any())
-            return string.Empty;
+            return Guid.Empty;
 
         detectTask.MotionDetectParameters ??= Settings.DefaultMotionDetectParameters;
 
@@ -147,13 +148,10 @@ public class MotionDetectionService : IHostedService, IDisposable
             throw new ApplicationException($"User [{detectTask.User}] not authorised to start recording.");
         }
 
-        var taskId = GenerateTaskId(camera.CameraStream.Description.Path, detectTask.User);
-        var task = new MotionDetectionCameraTask(detectTask)
-        {
-            TaskId = taskId,
-        };
+        var task = new MotionDetectionCameraTask(detectTask);
+        var taskId = task.Id;
 
-        _logger.Log(LogLevel.Information, $"Starting detection task [{task.TaskId}] for user [{task.User}]");
+        _logger.Log(LogLevel.Information, $"Starting detection task [{taskId}] for user [{task.User}]");
 
         var t = new Task(async () => await MotionDetectorTask(task));
 
@@ -174,13 +172,16 @@ public class MotionDetectionService : IHostedService, IDisposable
             TaskConfig.SaveConfig();
         }
         else
-            taskId = string.Empty;
+            taskId = Guid.Empty;
 
         return taskId;
     }
 
     public void Stop(Guid taskId)
     {
+        if (taskId == Guid.Empty)
+            return;
+
         try
         {
             var task = _detectorTasks.FirstOrDefault(n => n.Key.Id == taskId);
@@ -193,16 +194,9 @@ public class MotionDetectionService : IHostedService, IDisposable
         }
     }
 
-    public void Stop(string taskId)
-    {
-        var task = _detectorTasks.FirstOrDefault(n => n.Key.TaskId == taskId);
-        if (task.Key != null)
-            Stop(task.Key);
-    }
-
     private void Stop(MotionDetectionCameraTask detectionTask)
     {
-        _logger.Log(LogLevel.Information, $"Stopping detection task [{detectionTask.TaskId}] for user [{detectionTask.User}]");
+        _logger.Log(LogLevel.Information, $"Stopping detection task [{detectionTask.Id}] for user [{detectionTask.User}]");
         if (_detectorTasks.TryRemove(detectionTask, out var t))
         {
             var existingTask = TaskConfig.ConfigStorage.FirstOrDefault(n => n.Equals(detectionTask));
@@ -259,7 +253,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         }
 
         var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
-            MotionDetectionStreamId + motionDetectTask.TaskId,
+            MotionDetectionStreamId + motionDetectTask.Id,
             motionDetectTask.FrameFormat);
 
         var imageQueue = new ConcurrentQueue<Mat>();
@@ -289,7 +283,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                         {
                             _logger.Log(LogLevel.Information, "Motion detected!!!");
 
-                            List<Mat?> buffer = lastImagesQueue.ToList();
+                            var buffer = lastImagesQueue.ToList();
                             lastImagesQueue = new ConcurrentQueue<Mat?>();
                             SendNotifications(motionDetectTask.Notifications,
                                 camera,
@@ -313,7 +307,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                     else
                         await Task.Delay(10);
 
-                    stopTask = !_detectorTasks.Any(n => n.Key.TaskId == motionDetectTask.TaskId);
+                    stopTask = !_detectorTasks.Any(n => n.Key.Id == motionDetectTask.Id);
                 }
             }
         }
@@ -589,9 +583,10 @@ public class MotionDetectionService : IHostedService, IDisposable
         _videoRecordingTasks.TryAdd(tmpRecordtaskId, t);
     }
 
-    public static string GenerateTaskId(string cameraPath, string user)
+    public Guid GetTaskId(string cameraPath, string user)
     {
-        return cameraPath + user;
+        var task = _detectorTasks.FirstOrDefault(n => n.Key.CameraId == cameraPath && n.Key.User == user);
+        return task.Key.Id;
     }
 
     protected virtual void Dispose(bool disposing)

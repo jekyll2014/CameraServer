@@ -37,7 +37,7 @@ public class Program
             .MinimumLevel.Verbose()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
             .Enrich.FromLogContext()
-            //.WriteTo.Console()
+            .WriteTo.Console(LogEventLevel.Information)
             .WriteTo.Logger(l => l
                 .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
                 .WriteTo.File(

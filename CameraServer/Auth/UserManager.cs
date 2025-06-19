@@ -51,7 +51,15 @@ public class UserManager : IUserManager
         else
             user = GetUsers()?.FirstOrDefault(n => n.Login == name);
 
-        return user == null ? null : new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId, DefaultCodec = user.DefaultCodec };
+        return user == null ? null : new UserDto()
+        {
+            Login = user.Login,
+            Name = user.Name,
+            Roles = user.Roles,
+            TelegramId = user.TelegramId,
+            TelegramName = user.TelegramName,
+            DefaultCodec = user.DefaultCodec,
+        };
     }
 
     public UserDto? GetUserInfo(long telegramId)
@@ -67,7 +75,15 @@ public class UserManager : IUserManager
         else
             user = GetUsers()?.FirstOrDefault(n => n.TelegramId == telegramId);
 
-        return user == null ? null : new UserDto() { Login = user.Login, Roles = user.Roles, TelegramId = user.TelegramId, DefaultCodec = user.DefaultCodec };
+        return user == null ? null : new UserDto()
+        {
+            Login = user.Login,
+            Name = user.Name,
+            Roles = user.Roles,
+            TelegramId = user.TelegramId,
+            TelegramName = user.TelegramName,
+            DefaultCodec = user.DefaultCodec
+        };
     }
 
     public IEnumerable<User>? GetUsers()

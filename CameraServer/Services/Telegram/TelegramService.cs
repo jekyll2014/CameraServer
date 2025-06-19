@@ -147,7 +147,7 @@ public class TelegramService : IHostedService, IDisposable
             if (admins != null)
             {
                 foreach (var admin in admins)
-                    await _botClient.SendMessage(admin.TelegramId, "CameraServer started");
+                    await _botClient.SendMessage(admin.TelegramId, "CameraServer started", cancellationToken: cancellationToken);
             }
         }
         catch (Exception ex)
@@ -267,7 +267,7 @@ public class TelegramService : IHostedService, IDisposable
         }
     }
 
-    public async Task<Message?> SendMenu(ChatId chatId,
+    private async Task<Message?> SendMenu(ChatId chatId,
         string text,
         ReplyMarkup menu,
         CancellationToken cancellationToken)
@@ -693,9 +693,9 @@ public class TelegramService : IHostedService, IDisposable
                              .Intersect(user.Roles)
                              .Any()))
             {
-                var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
-                var running = motionDetectionService.TaskList.Any(n => n == taskId) ? "running" : "stopped";
-                var action = motionDetectionService.TaskList.Any(n => n == taskId) ? " stop" : " start";
+                var detectorIsRunning = motionDetectionService.TaskDescriptions.Any(n => n.User == user.Login && n.CameraId == camera.CameraStream.Description.Path);
+                var running = detectorIsRunning ? "running" : "stopped";
+                var action = detectorIsRunning ? " stop" : " start";
                 buttonsRow.Add(new InlineKeyboardButton($"[{running}] {GetCameraMenuLine(camera.CameraStream, camera.Id)}")
                 {
                     CallbackData = $"{MotionDetectorCommand} {camera.Id}{action}"
@@ -725,33 +725,32 @@ public class TelegramService : IHostedService, IDisposable
                 return;
             }
 
-            var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
-
             if (tokens[2] == "stop")
             {
+                var taskId = motionDetectionService.GetTaskId(camera.CameraStream.Description.Path, user.Login);
                 motionDetectionService.Stop(taskId);
                 await SendText(chatId, $"Motion detect stopped for camera {camera.CameraStream.Description.Name}", cancellationToken);
             }
             else if (tokens[2] == "start")
             {
-                var started = motionDetectionService.TaskList.Any(n => n == taskId) ? "stop" : "start";
-                buttonsRow.Add(new InlineKeyboardButton("text")
+                var started = motionDetectionService.GetTaskId(camera.CameraStream.Description.Path, user.Login) != Guid.Empty ? "stop" : "start";
+                buttonsRow.Add(new InlineKeyboardButton(Shared.Enum.MessageType.Text.ToString())
                 {
-                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} text"
+                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} {Shared.Enum.MessageType.Text.ToString()}"
                 });
                 buttons.Add(buttonsRow.ToArray());
                 buttonsRow.Clear();
 
-                buttonsRow.Add(new InlineKeyboardButton("image")
+                buttonsRow.Add(new InlineKeyboardButton(Shared.Enum.MessageType.Image.ToString())
                 {
-                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} image"
+                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} {Shared.Enum.MessageType.Image.ToString()}"
                 });
                 buttons.Add(buttonsRow.ToArray());
                 buttonsRow.Clear();
 
-                buttonsRow.Add(new InlineKeyboardButton("video")
+                buttonsRow.Add(new InlineKeyboardButton(Shared.Enum.MessageType.Video.ToString())
                 {
-                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} video"
+                    CallbackData = $"{MotionDetectorCommand} {cameraNumber} {started} {Shared.Enum.MessageType.Video.ToString()}"
                 });
                 buttons.Add(buttonsRow.ToArray());
                 buttonsRow.Clear();
@@ -783,14 +782,11 @@ public class TelegramService : IHostedService, IDisposable
             var message = "Incorrect command";
             if (tokens[2] == "start")
             {
-                var messageType = MotionDetection.MessageType.Text;
-                if (tokens[3] == "image")
-                    messageType = MotionDetection.MessageType.Image;
-                else if (tokens[3] == "video")
-                    messageType = MotionDetection.MessageType.Video;
-
                 try
                 {
+                    if (!Enum.TryParse<Shared.Enum.MessageType>(tokens[3], out var messageType))
+                        throw new Exception($"Motion detection not started: message type '{tokens[3]}' incorrect");
+
                     var motionTask = new MotionDetectionCameraSettingDto()
                     {
                         CameraId = camera.CameraStream.Description.Path,
@@ -810,7 +806,7 @@ public class TelegramService : IHostedService, IDisposable
                             }
                     };
 
-                    if (!string.IsNullOrEmpty(motionDetectionService.Start(motionTask)))
+                    if (motionDetectionService.Start(motionTask) != Guid.Empty)
                         message = $"Motion detect started for camera {camera.CameraStream.Description.Name}";
                     else
                         throw new Exception($"Motion detection not started");
@@ -823,7 +819,7 @@ public class TelegramService : IHostedService, IDisposable
             }
             else if (tokens[2] == "stop")
             {
-                var taskId = MotionDetectionService.GenerateTaskId(camera.CameraStream.Description.Path, user.Login);
+                var taskId = motionDetectionService.GetTaskId(camera.CameraStream.Description.Path, user.Login);
                 motionDetectionService.Stop(taskId);
                 message = $"Motion detect stopped for camera {camera.CameraStream.Description.Name}";
             }

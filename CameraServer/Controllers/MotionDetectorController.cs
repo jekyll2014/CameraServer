@@ -47,15 +47,15 @@ public class MotionDetectorController : ControllerBase
     }
 
     [HttpGet("GetDetectorTasksList")]
-    //[Route("GetDetectorTasksList")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string[]))]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MotionDetectionCameraTask[]))]
     public IActionResult GetDetectorTasksList()
     {
-        return Ok(_motionDetector.TaskList.ToArray());
+        return Ok(_motionDetector.TaskDescriptions
+            .Where(n => n.User == (HttpContext.User.Identity?.Name ?? string.Empty))
+            .ToArray());
     }
 
     [HttpGet("StartDetectorByName")]
-    //[Route("StartDetectorByName")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartDetectorByName(string cameraName,
         int? xResolution,
@@ -87,7 +87,6 @@ public class MotionDetectorController : ControllerBase
     }
 
     [HttpGet("StartDetector")]
-    //[Route("StartDetector")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
     public IActionResult StartDetector(int cameraId,
         int? xResolution,
@@ -111,6 +110,28 @@ public class MotionDetectorController : ControllerBase
             destination,
             messageType,
             message);
+    }
+
+    [HttpGet("StopDetector")]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
+    public IActionResult StopDetector(Guid taskId)
+    {
+        _motionDetector.Stop(taskId);
+
+        return Ok();
+    }
+
+    [HttpGet("GetMotionDetectorStream")]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
+    public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
+    {
+        if (_motionDetector.TaskList.Count() <= detectorTask)
+            return BadRequest("No such detector task");
+
+        var detectorTaskId = _motionDetector.TaskList.ToArray()[detectorTask];
+        await GetMotionDetectorStreamInternal(detectorTaskId);
+
+        return new EmptyResult();
     }
 
     private IActionResult StartDetectorInternal(int cameraId,
@@ -186,42 +207,7 @@ public class MotionDetectorController : ControllerBase
         }
     }
 
-    [HttpGet("StopDetectorById")]
-    //[Route("StopDetector")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
-    public IActionResult StopDetector(string taskId)
-    {
-        _motionDetector.Stop(taskId);
-
-        return Ok();
-    }
-
-    [HttpGet("StopDetector")]
-    //[Route("StopDetector")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
-    public IActionResult StopDetector(Guid taskId)
-    {
-        _motionDetector.Stop(taskId);
-
-        return Ok();
-    }
-
-    [HttpGet("GetMotionDetectorStream")]
-    //[Route("GetMotionDetectorStream")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-    public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
-    {
-        if (_motionDetector.TaskList.Count() <= detectorTask)
-            return BadRequest("No such detector task");
-
-        string detectorTaskId = _motionDetector.TaskList.ToArray()[detectorTask];
-
-        await GetMotionDetectorStreamInternal(detectorTaskId);
-
-        return new EmptyResult();
-    }
-
-    private async Task<IActionResult> GetMotionDetectorStreamInternal(string detectorTaskId)
+    private async Task<IActionResult> GetMotionDetectorStreamInternal(Guid detectorTaskId)
     {
         if (!_motionDetector.TaskList.Contains(detectorTaskId))
             return BadRequest("No such detector task");
@@ -250,7 +236,7 @@ public class MotionDetectorController : ControllerBase
         {
             try
             {
-                if (image != null && detectorTask.TaskId == detectorTaskId)
+                if (image != null && detectorTask.Id == detectorTaskId)
                 {
                     var jpegBuffer = image.ToBytes(".jpg",
                         new ImageEncodingParam[]
