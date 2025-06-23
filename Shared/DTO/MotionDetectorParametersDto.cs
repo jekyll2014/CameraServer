@@ -5,9 +5,10 @@ public class MotionDetectorParametersDto
     public int Width { get; set; } = 640;
     public int Height { get; set; } = 480;
     public uint DetectorDelayMs { get; set; } = 1000;
+    // noise threshold, 0-255, 0 - no noise, 255 - full noise
     public byte NoiseThreshold { get; set; } = 70;
     //percent of the total image area
-    public double ChangeLimit { get; set; } = 0.1;
+    public double ChangeLimit { get; set; } = 10.0;
     public uint TextNotificationDelay { get; set; } = 10;
     public uint ImageNotificationDelay { get; set; } = 10;
     public uint VideoNotificationDelay { get; set; } = 1;

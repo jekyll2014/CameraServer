@@ -14,6 +14,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 
+using MudBlazor.Services;
+
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -102,6 +104,8 @@ public class Program
 
         builder.Host.UseSerilog(_logger);
 
+        builder.Services.AddMudServices();
+
         // Add services to the container.
         builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
         builder.Services.AddTransient<IUserManager, UserManager>();
@@ -171,14 +175,13 @@ public class Program
         //app.UseHttpsRedirection();
 
         app.UseRouting();
+        app.UseAntiforgery();
 
         app.UseAuthentication();
         app.UseAuthorization();
 
         app.MapControllers();
-        /*app.MapControllerRoute(
-                name: "default",
-                pattern: "{controller=Home}/{action=Index}/{id?}");*/
+
 
         app.UseBlazorFrameworkFiles();
         app.UseStaticFiles();

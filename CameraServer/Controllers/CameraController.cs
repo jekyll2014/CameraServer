@@ -8,8 +8,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-using MudBlazor;
-
 using OpenCvSharp;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -18,7 +16,6 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using CameraLib.IP;
-using static MudBlazor.CategoryTypes;
 
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using Size = OpenCvSharp.Size;
@@ -36,9 +33,7 @@ public class CameraController : ControllerBase
     private readonly CameraHubService _collection;
     private readonly ILogger<CameraController> _logger;
 
-    public CameraController(IUserManager manager,
-        CameraHubService collection,
-        ILogger<CameraController> logger)
+    public CameraController(IUserManager manager, CameraHubService collection, ILogger<CameraController> logger)
     {
         _logger = logger;
         _manager = manager;
@@ -89,46 +84,24 @@ public class CameraController : ControllerBase
             cameraList.Add(new CameraDto()
             {
                 Id = camera.Id,
+                Path = camera.CameraStream.Description.Path,
                 Name = camera.CameraStream.Description.Name,
                 Type = camera.CameraStream.Description.Type.ToString(),
                 IsPtz = camera.CameraStream is IpCamera ipCam && ipCam.IsPtz,
                 MaxFrameFormat = maxFrameDto,
-                Url = GenerateCameraUrlInternal(camera.Id)
+                Url = GenerateCameraUrlInternal(camera.Id),
+                FrameFormats = camera.CameraStream.Description.FrameFormats
+                    .Select(n => new FrameFormatDto()
+                    {
+                        Width = n.Width,
+                        Height = n.Height,
+                        Format = n.Format,
+                        Fps = n.Fps
+                    })
             });
         }
 
         return Ok(cameraList);
-    }
-
-    [HttpGet("GetCameraDetails")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(CameraDescriptionDto))]
-    public IActionResult GetCameraDetails(int cameraId)
-    {
-        if (_collection.Cameras.All(n => n.Id != cameraId))
-            return BadRequest("No such camera");
-
-        var userRoles = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty)?.Roles;
-        if (userRoles == null || userRoles.Count == 0)
-            return BadRequest("No such camera");
-
-        var camera = _collection.Cameras.First(n => n.Id == cameraId);
-        if (!camera.AllowedRoles.Intersect(userRoles).Any())
-            return BadRequest("No such camera");
-
-        var formats = camera.CameraStream.Description.FrameFormats
-            .Select(n => new FrameFormatDto()
-            {
-                Width = n.Width,
-                Height = n.Height,
-                Format = n.Format,
-                Fps = n.Fps
-            });
-
-        return Ok(new CameraDescriptionDto(cameraId,
-            camera.CameraStream.Description.Name,
-            camera.CameraStream.Description.Type.ToString(),
-            camera.CameraStream is IpCamera ipCam && ipCam.IsPtz,
-            formats));
     }
 
     [HttpGet("GetVideoContentByName")]
@@ -161,11 +134,6 @@ public class CameraController : ControllerBase
         return GenerateCameraUrlInternal(cameraId, xResolution, yResolution, format, quality);
     }
 
-    private static string GenerateCameraUrlInternal(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
-    {
-        return
-            $"/{nameof(CameraController)[..^"Controller".Length]}/{nameof(GetVideoContent)}?{nameof(cameraId)}={cameraId}&{nameof(xResolution)}={xResolution ?? 0}&{nameof(yResolution)}={yResolution ?? 0}&{nameof(format)}={format ?? string.Empty}&{nameof(quality)}={quality ?? 90}";
-    }
     [HttpPost("ReCheckPtz")]
     [SwaggerResponse((int)HttpStatusCode.OK)]
     public async Task<IActionResult> ReCheckPtz(int cameraId)
@@ -314,5 +282,11 @@ public class CameraController : ControllerBase
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
 
         return new EmptyResult();
+    }
+
+    private static string GenerateCameraUrlInternal(int cameraId, int? xResolution = 0, int? yResolution = 0, string? format = "", byte? quality = 90)
+    {
+        return
+            $"/{nameof(CameraController)[..^"Controller".Length]}/{nameof(GetVideoContent)}?{nameof(cameraId)}={cameraId}&{nameof(xResolution)}={xResolution ?? 0}&{nameof(yResolution)}={yResolution ?? 0}&{nameof(format)}={format ?? string.Empty}&{nameof(quality)}={quality ?? 90}";
     }
 }

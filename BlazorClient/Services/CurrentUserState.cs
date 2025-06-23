@@ -7,8 +7,6 @@ namespace CameraServer.Client.Services
     {
         public List<CameraDto>? Cameras { get; set; }
         public CameraDto? SelectedCamera { get; set; }
-        public CameraDescriptionDto? CameraDescription { get; set; }
-
         public List<MotionDetectionCameraTask>? Detectors { get; set; }
         public MotionDetectionCameraTask? SelectedDetector { get; set; }
     }

@@ -23,8 +23,8 @@ public class NotificationParametersDto
                 && Message == notification.Message
                 && VideoLengthSec == notification.VideoLengthSec;
         }
-        else
-            return false;
+
+        return false;
     }
 
     public override int GetHashCode()

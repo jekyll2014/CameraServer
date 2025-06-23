@@ -3,15 +3,15 @@
 @inject IAuthenticationService _authenticationService
 
 <MudPaper>
-    <MudText Typo="Typo.h5">User login: @_authenticationService.UserInfo?.Login</MudText>
-    <MudText Typo="Typo.h5">User name: @_authenticationService.UserInfo?.Name</MudText>
-    <MudText Typo="Typo.h5">User Telegram name: @_authenticationService.UserInfo?.TelegramName</MudText>
-    <MudText Typo="Typo.h5">User Telegram Id: @_authenticationService.UserInfo?.TelegramId</MudText>
-    <MudText Typo="Typo.h5">User default codec: @_authenticationService.UserInfo?.DefaultCodec</MudText>
-    <MudText Typo="Typo.h5">User roles:</MudText>
+    <MudText Typo="Typo.body1">User login: @_authenticationService.UserInfo?.Login</MudText>
+    <MudText Typo="Typo.body1">User name: @_authenticationService.UserInfo?.Name</MudText>
+    <MudText Typo="Typo.body1">User Telegram name: @_authenticationService.UserInfo?.TelegramName</MudText>
+    <MudText Typo="Typo.body1">User Telegram Id: @_authenticationService.UserInfo?.TelegramId</MudText>
+    <MudText Typo="Typo.body1">User default codec: @_authenticationService.UserInfo?.DefaultCodec</MudText>
+    <MudText Typo="Typo.body1">User roles:</MudText>
 
     @foreach (var role in _authenticationService.UserInfo?.Roles ?? [])
     {
-        <MudText> - @role</MudText>
+        <MudText Typo="Typo.body1">User login: @role</MudText>
     }
 </MudPaper>

@@ -177,7 +177,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         return taskId;
     }
 
-    public void Stop(Guid taskId)
+    public async Task Stop(Guid taskId)
     {
         if (taskId == Guid.Empty)
             return;
@@ -185,7 +185,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         try
         {
             var task = _detectorTasks.FirstOrDefault(n => n.Key.Id == taskId);
-            Stop(task.Key);
+            await Stop(task.Key);
         }
         catch (Exception e)
         {
@@ -194,7 +194,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         }
     }
 
-    private void Stop(MotionDetectionCameraTask detectionTask)
+    private async Task Stop(MotionDetectionCameraTask detectionTask)
     {
         _logger.Log(LogLevel.Information, $"Stopping detection task [{detectionTask.Id}] for user [{detectionTask.User}]");
         if (_detectorTasks.TryRemove(detectionTask, out var t))
@@ -210,7 +210,7 @@ public class MotionDetectionService : IHostedService, IDisposable
 
             try
             {
-                t?.Wait(5000);
+                await t?.WaitAsync(CancellationToken.None);
                 t?.Dispose();
             }
             catch (Exception ex)

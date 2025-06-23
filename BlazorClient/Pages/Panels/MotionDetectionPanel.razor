@@ -1,17 +1,21 @@
-﻿@using CameraServer.Client.Services
+﻿@using System.Net
+@using CameraServer.Client.Services
 @using CameraServer.Server.Services.MotionDetection
 @using CameraServer.Shared.DTO
+@using CameraServer.Shared.Enum
 
 @inject HttpClient _http
+@inject IAuthenticationService _authenticationService
 @inject ICurrentUserState _currentUserState
+@inject ILogger<MotionDetectionPanel> Logger
 
 <MudPaper>
     <MudStack Row="true"
               Justify="Justify.FlexStart"
               AlignItems="AlignItems.Start">
         <div>
-            <MudText Typo="Typo.h5">Detectors list</MudText>
-            
+            <MudText Typo="Typo.h6">h6</MudText>
+
             <MudButton OnClick="@ClickedRefresh"
                        Variant="Variant.Filled">
                 Refresh detectors list
@@ -38,6 +42,30 @@
                                     Filterable="false"
                                     Sortable="true"
                                     Class="border-solid border-x mud-border-lines-default" />
+
+                    <TemplateColumn Title="Open stream"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudLink Href="@GenerateDetectorUrl(_currentUserState.SelectedDetector?.Id)"
+                                     Target="_blank">
+                                <Mudtext>Link</Mudtext>
+                            </MudLink>
+                        </CellTemplate>
+                    </TemplateColumn>
+
+                    <TemplateColumn Title="Stop"
+                                    Filterable="false"
+                                    Sortable="true"
+                                    Class="border-solid border-x mud-border-lines-default">
+                        <CellTemplate>
+                            <MudButton OnClick="@(() => ClickedStop(context.Item))"
+                                       StartIcon="@Icons.Material.Filled.StopCircle"
+                                       Variant="Variant.Filled">
+                            </MudButton>
+                        </CellTemplate>
+                    </TemplateColumn>
                 </Columns>
             </MudDataGrid>
         </div>
@@ -45,25 +73,23 @@
         @if (_currentUserState.SelectedDetector != null)
         {
             <div>
-                <MudText Typo="Typo.h5">Detector description</MudText>
+                <MudText Typo="Typo.h6">Detector parameters</MudText>
 
-                <MudText Typo="Typo.h5">CreationDateTime: @_currentUserState.SelectedDetector.CreationDateTime</MudText>
-                <MudText Typo="Typo.h5">User: @_currentUserState.SelectedDetector.User</MudText>
-                <MudText Typo="Typo.h5">CameraId: @_currentUserState.SelectedDetector.CameraId</MudText>
-                <MudText Typo="Typo.h5">FrameFormat: @_currentUserState.SelectedDetector.FrameFormat</MudText>
+                <MudText Typo="Typo.body1">CreationDateTime: @_currentUserState.SelectedDetector.CreationDateTime</MudText>
+                <MudText Typo="Typo.body1">User: @_currentUserState.SelectedDetector.User</MudText>
+                <MudText Typo="Typo.body1">CameraId: @_currentUserState.SelectedDetector.CameraId</MudText>
+                <MudText Typo="Typo.body1">Camera Name: @(_currentUserState.Cameras?.FirstOrDefault(n => n.Path == _currentUserState.SelectedDetector.CameraId)?.Name ?? string.Empty)</MudText>
+                <MudText Typo="Typo.body1">FrameFormat: @_currentUserState.SelectedDetector.FrameFormat</MudText>
+
                 <br>
-                <MudText Typo="Typo.h5">Detection parameters</MudText>
-                <MudText Typo="Typo.h5">TextNotificationDelay: @_currentUserState.SelectedDetector.MotionDetectParameters.TextNotificationDelay</MudText>
-                <MudText Typo="Typo.h5">ImageNotificationDelay: @_currentUserState.SelectedDetector.MotionDetectParameters.ImageNotificationDelay</MudText>
-                <MudText Typo="Typo.h5">VideoNotificationDelay: @_currentUserState.SelectedDetector.MotionDetectParameters.VideoNotificationDelay</MudText>
-                <MudText Typo="Typo.h5">ChangeLimit: @_currentUserState.SelectedDetector.MotionDetectParameters.ChangeLimit</MudText>
-                <MudText Typo="Typo.h5">DetectorDelayMs: @_currentUserState.SelectedDetector.MotionDetectParameters.DetectorDelayMs</MudText>
-                <MudText Typo="Typo.h5">Height: @_currentUserState.SelectedDetector.MotionDetectParameters.Height</MudText>
-                <MudText Typo="Typo.h5">Width: @_currentUserState.SelectedDetector.MotionDetectParameters.Width</MudText>
-                <MudText Typo="Typo.h5">KeepImageBuffer: @_currentUserState.SelectedDetector.MotionDetectParameters.KeepImageBuffer</MudText>
-                <MudText Typo="Typo.h5">NoiseThreshold: @_currentUserState.SelectedDetector.MotionDetectParameters.NoiseThreshold</MudText>
-                
-                <MudText Typo="Typo.h6">@_currentUserState.SelectedDetector.Id</MudText>
+
+                <MudText Typo="Typo.h6">Detection parameters</MudText>
+                <MudText Typo="Typo.body1">ChangeLimit: @_currentUserState.SelectedDetector.MotionDetectParameters?.ChangeLimit</MudText>
+                <MudText Typo="Typo.body1">DetectorDelayMs: @_currentUserState.SelectedDetector.MotionDetectParameters?.DetectorDelayMs</MudText>
+                <MudText Typo="Typo.body1">NoiseThreshold: @_currentUserState.SelectedDetector.MotionDetectParameters?.NoiseThreshold</MudText>
+
+                <MudText Typo="Typo.h6">Notification parameters</MudText>
+
                 <MudDataGrid T="NotificationParametersDto"
                              ReadOnly="true"
                              Outlined="true"
@@ -118,12 +144,144 @@
             </div>
         }
     </MudStack>
+
+    <div>
+        <MudText Typo="Typo.h6">Add new detector parameters</MudText>
+
+        <MudText Typo="Typo.body1">Camera</MudText>
+
+        <MudSelect 
+                   @bind-Value="_newDetector.CameraId"
+                   Label="Select camera"
+                   Variant="Variant.Outlined"
+                   Dense="true">
+            <MudSelectItem T="string"
+                           Value="@("")">
+            </MudSelectItem>
+
+            @foreach (var item in _currentUserState.Cameras ?? [])
+            {
+                Logger.LogInformation($"Cameras: {@item.Id.ToString()}");
+                <MudSelectItem Value="@item.Id.ToString()">
+                    @item.Id: @item.Name
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="FrameFormatDto"
+                   @bind-Value="_newDetector.FrameFormat"
+                   Label="Select frame format"
+                   Variant="Variant.Outlined"
+                   Dense="true">
+            <MudSelectItem T="FrameFormatDto"
+                           Value="null">
+                Not selected
+            </MudSelectItem>
+
+            @foreach (var item in _currentUserState.Cameras?.FirstOrDefault(n => n.Id.ToString() == _newDetector.CameraId)?.FrameFormats ?? [])
+            {
+                Logger.LogInformation($"FrameFormats: {@item.ToString()}");
+                <MudSelectItem Value="@item">
+                    @item
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <br>
+
+        <MudText Typo="Typo.h6">Detection parameters</MudText>
+
+        <MudText Typo="Typo.body1">ChangeLimit:</MudText>
+        <MudTextField Label="ChangeLimit (0-100%)"
+                      @bind-value="_newDetector.MotionDetectParameters.ChangeLimit" />
+
+        <MudText Typo="Typo.body1">NoiseThreshold:</MudText>
+        <MudTextField Label="Noise Threshold (0-255)"
+                      @bind-value="_newDetector.MotionDetectParameters.NoiseThreshold" />
+
+        <MudText Typo="Typo.body1">DetectorDelayMs:</MudText>
+        <MudTextField Label="Detector Delay [ms]"
+                      @bind-value="_newDetector.MotionDetectParameters.DetectorDelayMs" />
+
+        <MudText Typo="Typo.body1">KeepImageBuffer:</MudText>
+        <MudTextField Label="Detector Delay [ms]"
+                      @bind-value="_newDetector.MotionDetectParameters.DetectorDelayMs" />
+                      
+        <br>
+
+        <MudText Typo="Typo.h6">Notification parameters</MudText>
+        <MudText Typo="Typo.body1">Transport</MudText>
+        <MudSelect T="NotificationTransport"
+                   @bind-Value="_newDetector.Notifications[0].Transport"
+                   Label="Select transport"
+                   Variant="Variant.Outlined"
+                   Dense="true"
+                   Class="mb-2">
+            @foreach (var item in Enum.GetValues<NotificationTransport>())
+            {
+                <MudSelectItem T="NotificationTransport"
+                               Value="@item">
+                    @item
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudText Typo="Typo.body1">MessageType</MudText>
+        <MudSelect T="MessageType"
+                   @bind-Value="_newDetector.Notifications[0].MessageType"
+                   Label="Select message type"
+                   Variant="Variant.Outlined"
+                   Dense="true"
+                   Class="mb-2">
+            @foreach (var item in Enum.GetValues<MessageType>())
+            {
+                <MudSelectItem T="MessageType"
+                               Value="@item">
+                    @item
+                </MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudText Typo="Typo.body1">Destination</MudText>
+        <MudTextField Label="Destination"
+                      @bind-value="_newDetector.Notifications[0].Destination" />
+
+        <MudText Typo="Typo.body1">Message</MudText>
+        <MudTextField Label="Message"
+                      @bind-value="_newDetector.Notifications[0].Message" />
+
+        <MudText Typo="Typo.body1">Save Notification Content</MudText>
+        <MudCheckBox Label="Save notification content"
+                     @bind-Value="_newDetector.Notifications[0].SaveNotificationContent" />
+
+        <MudText Typo="Typo.body1">Video Length (s)</MudText>
+        <MudTextField Label="Video Length [s]"
+                      @bind-value="_newDetector.Notifications[0].VideoLengthSec" />
+
+        <MudButton OnClick="@AddDetectorClicked"
+                   Variant="Variant.Filled">
+            Add detector
+        </MudButton>
+
+    </div>
 </MudPaper>
 
 @code {
+    MotionDetectionCameraSettingDto _newDetector = new MotionDetectionCameraSettingDto();
 
     protected override async Task<Task> OnInitializedAsync()
     {
+        _newDetector = new MotionDetectionCameraSettingDto()
+        {
+            FrameFormat = new FrameFormatDto(),
+            MotionDetectParameters = new MotionDetectorParametersDto(),
+            User = _authenticationService?.UserInfo?.Login ?? string.Empty,
+            Notifications = new List<NotificationParametersDto>()
+            {
+                new NotificationParametersDto()
+            }
+        };
+
         if (_currentUserState.Detectors == null)
             _currentUserState.Detectors = await GetRunningMotionDetectors();
 
@@ -131,7 +289,6 @@
     }
 
     //StartDetector
-    //StopDetector
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -157,7 +314,7 @@
         return detectors;
     }
 
-    private async void ClickedCameraRow(DataGridRowClickEventArgs<MotionDetectionCameraTask> detector)
+    private void ClickedCameraRow(DataGridRowClickEventArgs<MotionDetectionCameraTask> detector)
     {
         _currentUserState.SelectedDetector = detector.Item;
         StateHasChanged();
@@ -171,6 +328,78 @@
         StateHasChanged();
     }
 
+    private async Task ClickedStop(MotionDetectionCameraTask task)
+    {
+        if (await StopMotionDetector(task.Id))
+        {
+            _currentUserState.Detectors = null;
+            _currentUserState.SelectedDetector = null;
+            _currentUserState.Detectors = await GetRunningMotionDetectors();
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddDetectorClicked()
+    {
+        int.TryParse(_newDetector.CameraId, out var camId);
+        if (await StartMotionDetector(camId,
+                _newDetector.FrameFormat.Width,
+                _newDetector.FrameFormat.Height,
+                _newDetector.FrameFormat.Format,
+                (uint)(_newDetector.MotionDetectParameters?.ChangeLimit ?? 10),
+                _newDetector.MotionDetectParameters?.NoiseThreshold ?? 30,
+                _newDetector.MotionDetectParameters?.DetectorDelayMs ?? 1000,
+                _newDetector.Notifications[0].Transport,
+                _newDetector.Notifications[0].Destination,
+                _newDetector.Notifications[0].MessageType,
+                _newDetector.Notifications[0].Message))
+        {
+            _newDetector = new MotionDetectionCameraSettingDto();
+            _currentUserState.Detectors = null;
+            _currentUserState.SelectedDetector = null;
+            _currentUserState.Detectors = await GetRunningMotionDetectors();
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task<bool> StartMotionDetector(int cameraId,
+        int? xResolution,
+        int? yResolution,
+        string? format,
+        uint? changeLimit,
+        byte? noiseThreshold,
+        uint? detectorDelayMs,
+        NotificationTransport transport,
+        string destination,
+        MessageType messageType,
+        string? message)
+    {
+        message ??= string.Empty;
+        var response = await _http.GetAsync($"/MotionDetector/StartDetector?cameraId={cameraId}" +
+                                             $"&xResolution={xResolution}" +
+                                             $"&yResolution={yResolution}" +
+                                             $"&format={format}" +
+                                             $"&changeLimit={changeLimit}" +
+                                             $"&noiseThreshold={noiseThreshold}" +
+                                             $"&detectorDelayMs={detectorDelayMs}" +
+                                             $"&transport={transport}" +
+                                             $"&destination={destination}" +
+                                             $"&messageType={messageType}" +
+                                             $"&message={message}");
+
+        return response.StatusCode == HttpStatusCode.OK;
+    }
+
+    private async Task<bool> StopMotionDetector(Guid? id)
+    {
+        if (id == null || id == Guid.Empty)
+            return false;
+
+        var response = await _http.GetAsync($"/MotionDetector/StopDetector?taskId={id}");
+        return response.StatusCode == HttpStatusCode.OK;
+    }
+
     private Func<MotionDetectionCameraTask, int, string> DetectorRowStyleFunc => (detector, n) =>
     {
         return _currentUserState.SelectedDetector?.Id == detector.Id
@@ -178,9 +407,10 @@
             : "background-color: white; font-weight: normal; ";
     };
 
-    private static string GenerateDetectorUrl(int cameraId )
+    private static string GenerateDetectorUrl(Guid? id)
     {
+        id ??= Guid.Empty;
         return
-            $"/MotionDetector/GetMotionDetectorStream?detectorTask={cameraId}";
+            $"/MotionDetector/GetMotionDetectorStream?taskId={id}";
     }
 }

@@ -115,7 +115,7 @@
             </MudDataGrid>
         </div>
 
-        @if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.FrameFormats != null)
+        @if (_currentUserState.SelectedCamera?.FrameFormats != null && _currentUserState.SelectedCamera.FrameFormats != null)
         {
             <div>
                 <MudText Typo="Typo.h5">Frame formats</MudText>
@@ -124,7 +124,7 @@
                              ReadOnly="true"
                              Outlined="true"
                              Virtualize="false"
-                             Items="@_currentUserState.CameraDescription.FrameFormats.OrderBy(n => n.Width * n.Height).ThenBy(n => n.Format)"
+                             Items="@_currentUserState.SelectedCamera.FrameFormats.OrderBy(n => n.Width * n.Height).ThenBy(n => n.Format)"
                              Dense="true"
                              Striped="true"
                              Bordered="true"
@@ -177,12 +177,12 @@
         }
     </MudStack>
 
-    <MudText>Camera type: @_currentUserState.CameraDescription?.Type</MudText>
+    <MudText>Camera type: @_currentUserState.SelectedCamera?.Type</MudText>
 
-    <MudText>Camera name: @_currentUserState.CameraDescription?.Name</MudText>
+    <MudText>Camera name: @_currentUserState.SelectedCamera?.Name</MudText>
 
     <MudText Typo="Typo.h3">PTZ control</MudText>
-    @if (_currentUserState.CameraDescription != null && _currentUserState.CameraDescription.IsPtz)
+    @if (_currentUserState.SelectedCamera != null && _currentUserState.SelectedCamera.IsPtz)
     {
         <MudGrid>
             <MudItem xs="1">
@@ -297,21 +297,7 @@
     private async void ClickedCameraRow(DataGridRowClickEventArgs<CameraDto> camera)
     {
         _currentUserState.SelectedCamera = camera.Item;
-        _currentUserState.CameraDescription = await GetDescription(camera.Item.Id);
         StateHasChanged();
-    }
-
-    private async Task<CameraDescriptionDto?> GetDescription(int id)
-    {
-        try
-        {
-            return await _http.GetFromJsonAsync<CameraDescriptionDto?>($"/Camera/GetCameraDetails?cameraId={id}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"CameraManagementPanel: GetCameras() exception{ex}");
-            return null;
-        }
     }
 
     private async Task ClickedRefresh()
@@ -367,32 +353,32 @@
 
     private async Task ClickedPtzUp()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 100, 0);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, 0, 100, 0);
     }
 
     private async Task ClickedPtzDown()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 0, -100, 0);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, 0, -100, 0);
     }
 
     private async Task ClickedPtzLeft()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 100, 0, 0);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, 100, 0, 0);
     }
 
     private async Task ClickedPtzRight()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription?.Id, -100, 0, 0);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, -100, 0, 0);
     }
 
     private async Task ClickedPtzZoomIn()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription?.Id, 0, 0, 100);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, 0, 0, 100);
     }
 
     private async Task ClickedPtzZoomOut()
     {
-        var response = await MovePtz(_currentUserState.CameraDescription.Id, 0, 0, -1000);
+        var response = await MovePtz(_currentUserState.SelectedCamera?.Id, 0, 0, -1000);
     }
 
     private async Task<string> MovePtz(int? cameraId, int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
@@ -409,7 +395,7 @@
 
     private async Task ReCheckPtz()
     {
-        var response = await ReCheckPtz(_currentUserState.CameraDescription?.Id);
+        var response = await ReCheckPtz(_currentUserState.SelectedCamera?.Id);
     }
 
     private async Task<string> ReCheckPtz(int? cameraId)

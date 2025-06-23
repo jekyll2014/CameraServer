@@ -2,7 +2,6 @@
 
 public enum NotificationTransport
 {
-    None,
     Telegram,
     Email
 }

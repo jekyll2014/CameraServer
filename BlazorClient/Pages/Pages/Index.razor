@@ -1,4 +1,5 @@
-﻿@page "/"
+﻿@layout MainLayout
+@page "/"
 
 @using CameraServer.Client.Pages.Panels
 @using CameraServer.Client.Services
@@ -10,7 +11,7 @@
 
 <MudText Typo="Typo.h2">CameraServer app</MudText>
 
-<LoginComponent />
+<LoginPanel />
 
 @if (!_authenticationService.IsAuthenticated)
 {

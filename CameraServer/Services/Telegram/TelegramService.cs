@@ -728,7 +728,7 @@ public class TelegramService : IHostedService, IDisposable
             if (tokens[2] == "stop")
             {
                 var taskId = motionDetectionService.GetTaskId(camera.CameraStream.Description.Path, user.Login);
-                motionDetectionService.Stop(taskId);
+                await motionDetectionService.Stop(taskId);
                 await SendText(chatId, $"Motion detect stopped for camera {camera.CameraStream.Description.Name}", cancellationToken);
             }
             else if (tokens[2] == "start")
@@ -820,7 +820,7 @@ public class TelegramService : IHostedService, IDisposable
             else if (tokens[2] == "stop")
             {
                 var taskId = motionDetectionService.GetTaskId(camera.CameraStream.Description.Path, user.Login);
-                motionDetectionService.Stop(taskId);
+                await motionDetectionService.Stop(taskId);
                 message = $"Motion detect stopped for camera {camera.CameraStream.Description.Name}";
             }
 

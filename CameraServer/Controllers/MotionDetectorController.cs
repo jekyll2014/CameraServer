@@ -64,9 +64,9 @@ public class MotionDetectorController : ControllerBase
         uint? changeLimit,
         byte? noiseThreshold,
         uint? detectorDelayMs,
-        NotificationTransport? transport,
-        string? destination,
-        MessageType? messageType,
+        NotificationTransport transport,
+        string destination,
+        MessageType messageType,
         string? message)
     {
         if (string.IsNullOrEmpty(cameraName))
@@ -95,9 +95,9 @@ public class MotionDetectorController : ControllerBase
         uint? changeLimit,
         byte? noiseThreshold,
         uint? detectorDelayMs,
-        NotificationTransport? transport,
-        string? destination,
-        MessageType? messageType,
+        NotificationTransport transport,
+        string destination,
+        MessageType messageType,
         string? message)
     {
         return StartDetectorInternal(cameraId,
@@ -114,22 +114,21 @@ public class MotionDetectorController : ControllerBase
 
     [HttpGet("StopDetector")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
-    public IActionResult StopDetector(Guid taskId)
+    public async Task<IActionResult> StopDetector(Guid taskId)
     {
-        _motionDetector.Stop(taskId);
+        await _motionDetector.Stop(taskId);
 
         return Ok();
     }
 
     [HttpGet("GetMotionDetectorStream")]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(MemoryStream))]
-    public async Task<IActionResult> GetMotionDetectorStream(int detectorTask)
+    public async Task<IActionResult> GetMotionDetectorStream(Guid taskId)
     {
-        if (_motionDetector.TaskList.Count() <= detectorTask)
+        if (_motionDetector.TaskDescriptions.All(n => n.Id != taskId))
             return BadRequest("No such detector task");
 
-        var detectorTaskId = _motionDetector.TaskList.ToArray()[detectorTask];
-        await GetMotionDetectorStreamInternal(detectorTaskId);
+        await GetMotionDetectorStreamInternal(taskId);
 
         return new EmptyResult();
     }
@@ -141,9 +140,9 @@ public class MotionDetectorController : ControllerBase
         uint? changeLimit,
         byte? noiseThreshold,
         uint? detectorDelayMs,
-        NotificationTransport? transport,
-        string? destination,
-        MessageType? messageType,
+        NotificationTransport transport,
+        string destination,
+        MessageType messageType,
         string? message)
     {
         if (_collection.Cameras.All(n => n.Id != cameraId))
@@ -188,9 +187,9 @@ public class MotionDetectorController : ControllerBase
                 [
                     new()
                         {
-                            Transport = transport ?? NotificationTransport.None,
-                            Destination = destination ?? string.Empty,
-                            MessageType = messageType ?? MessageType.Text,
+                            Transport = transport,
+                            Destination = destination,
+                            MessageType = messageType,
                             Message = message ?? string.Empty
                         }
                 ]
