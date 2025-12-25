@@ -1,4 +1,8 @@
-﻿using CameraServer.Shared.DTO;
+﻿using CameraLib;
+
+using CameraServer.Shared.DTO;
+
+using Microsoft.Extensions.Logging;
 
 using OpenCvSharp;
 
@@ -16,17 +20,28 @@ public class MotionDetector : IDisposable
     private readonly int _width;
     private readonly int _height;
     private readonly double _changeLimit;
-    private Mat? _backgroundFrame = null; //new Mat(,CV_32FC1);
+    private readonly MatPoolManager _matPoolManager;
+    private readonly ILogger? _logger;
+    private Mat? _backgroundFrame = null;
     private DateTime _nextFrameProcessTime = DateTime.Now;
     private bool _disposedValue;
 
-    public MotionDetector(MotionDetectorParametersDto parametersDto)
+    public MotionDetector(MotionDetectorParametersDto parametersDto, ILogger? logger = null)
     {
         _changeLimit = parametersDto.ChangeLimit;
         _width = parametersDto.Width;
         _height = parametersDto.Height;
         _noiseThreshold = parametersDto.NoiseThreshold;
         _detectorDelayMs = parametersDto.DetectorDelayMs;
+        _logger = logger;
+
+        // Create pool manager with appropriate size for motion detection
+        // We typically need 5-6 Mats per detection cycle
+        _matPoolManager = new MatPoolManager(maxPoolSize: 20, logger);
+
+        _logger?.LogInformation(
+            "MotionDetector initialized with Mat pooling: {Width}x{Height}",
+            _width, _height);
     }
 
     public bool DetectMovement(Mat? frame)
@@ -39,88 +54,97 @@ public class MotionDetector : IDisposable
         if (_nextFrameProcessTime < currentTime.AddMilliseconds(-DETECTOR_RESTART_MS - _detectorDelayMs))
             _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
 
-        // movement detection
         if (_backgroundFrame != null)
         {
             if (currentTime < _nextFrameProcessTime)
                 return false;
 
-            // resize
-            var currFrame = frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest)
-                .CvtColor(ColorConversionCodes.BGR2GRAY)
-                .GaussianBlur(new Size(21, 21), 0)
-                .EqualizeHist();
+            // Use pooled Mats for all intermediate operations
+            using var resized = _matPoolManager.RentScoped(_width, _height);
+            using var gray = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var blurred = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var equalized = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var backgroundGray = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var diff = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var thresh = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var accumulateMask = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
 
-            // compare
-            var backgroundFrameGray = new Mat();
-            Cv2.ConvertScaleAbs(_backgroundFrame, backgroundFrameGray);
-            var imgAbsDiff = new Mat();
-            Cv2.Absdiff(currFrame, backgroundFrameGray, imgAbsDiff);
-            backgroundFrameGray.Dispose();
+            // Process input frame into grayscale
+            Cv2.Resize(frame, resized.Mat, new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+            Cv2.CvtColor(resized.Mat, gray.Mat, ColorConversionCodes.BGR2GRAY);
+            Cv2.GaussianBlur(gray.Mat, blurred.Mat, new Size(21, 21), 0);
+            Cv2.EqualizeHist(blurred.Mat, equalized.Mat);
 
-            // update background frame
-            if (result)
-                Cv2.AccumulateWeighted(currFrame, _backgroundFrame, 0.1, new Mat());
-            else
-                Cv2.AccumulateWeighted(currFrame, _backgroundFrame, 0.5, new Mat());
+            // Convert background to grayscale
+            Cv2.ConvertScaleAbs(_backgroundFrame, backgroundGray.Mat);
 
-            currFrame.Dispose();
+            // Calculate difference
+            Cv2.Absdiff(equalized.Mat, backgroundGray.Mat, diff.Mat);
 
-            // filter out the noise
-            Cv2.Threshold(imgAbsDiff, ProcessedFrame, _noiseThreshold, 255, ThresholdTypes.Binary);
-            imgAbsDiff.Dispose();
+            // Update background frame
+            var alpha = result ? 0.1 : 0.5;
+            Cv2.AccumulateWeighted(equalized.Mat, _backgroundFrame, alpha, accumulateMask.Mat);
 
-            // Find contours around the blobs
-            Cv2.FindContours(ProcessedFrame,
+            // Threshold to find changed pixels
+            Cv2.Threshold(diff.Mat, thresh.Mat, _noiseThreshold, 255, ThresholdTypes.Binary);
+
+            // Copy thresholded result to ProcessedFrame for external access
+            thresh.Mat.CopyTo(ProcessedFrame);
+
+            // Find contours to detect motion regions
+            Cv2.FindContours(thresh.Mat,
                 out var contours,
                 out _,
                 RetrievalModes.External,
-                ContourApproximationModes.ApproxSimple); // ApproxTC89L1, ApproxSimple
+                ContourApproximationModes.ApproxSimple);
 
-            //Find big blobs to activate alarm
-            //var n = 0;
+            // Check if motion detected
             foreach (var c in contours)
             {
                 var r = Cv2.BoundingRect(c);
-                //var r2 = Cv2.MinAreaRect(c);
-                var pixelCount = CountPixels(ProcessedFrame, r);
-                //var pixelCount = Cv2.ContourArea(c);
+                var pixelCount = CountPixels(thresh.Mat, r);
                 if ((double)pixelCount / (_width * _height) * 100.0d >= _changeLimit)
                 {
                     result = true;
-
                     break;
                 }
-
-                // draw metainfo on the frame
-                // only possible for RGB image
-                /*Cv2.DrawContours(ProcessedFrame, contours, n, new Scalar(0, 255, 0));
-                Cv2.Rectangle(ProcessedFrame, r, new Scalar(0, 0, 255));
-                n++; */
             }
 
             _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);
+
+            // All pooled Mats automatically returned here
         }
         else
         {
+            // Initialize background frame on first run
+            using var resized = _matPoolManager.RentScoped(_width, _height);
+            using var gray = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var blurred = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+            using var equalized = _matPoolManager.RentScoped(_width, _height, MatType.CV_8UC1);
+
+            Cv2.Resize(frame, resized.Mat, new Size(_width, _height), interpolation: InterpolationFlags.Nearest);
+            Cv2.CvtColor(resized.Mat, gray.Mat, ColorConversionCodes.BGR2GRAY);
+            Cv2.GaussianBlur(gray.Mat, blurred.Mat, new Size(21, 21), 0);
+            Cv2.EqualizeHist(blurred.Mat, equalized.Mat);
+
             _backgroundFrame = new Mat(_width, _height, MatType.CV_32FC1);
-            frame.Resize(new Size(_width, _height), interpolation: InterpolationFlags.Nearest)
-                .CvtColor(ColorConversionCodes.BGR2GRAY)
-                .GaussianBlur(new Size(21, 21), 0)
-                .EqualizeHist()
-                .AssignTo(_backgroundFrame, MatType.CV_32FC1);
+            equalized.Mat.AssignTo(_backgroundFrame, MatType.CV_32FC1);
         }
 
         return result;
     }
 
-    private static int CountPixels(Mat image, Rect r)
+    private int CountPixels(Mat image, Rect r)
     {
-        var region = image.Clone(r);
-        var count = region?.CountNonZero();
-        region?.Dispose();
+        // Use pooled Mat for region extraction
+        using var region = _matPoolManager.RentScoped(r.Width, r.Height, MatType.CV_8UC1);
 
-        return count ?? 0;
+        // Extract region
+        var roi = new Mat(image, r);
+        roi.CopyTo(region.Mat);
+
+        var count = region.Mat.CountNonZero();
+        return count;
     }
 
     protected virtual void Dispose(bool disposing)
@@ -129,8 +153,13 @@ public class MotionDetector : IDisposable
         {
             if (disposing)
             {
+                // Log pooling statistics before disposal
+                _logger?.LogInformation("MotionDetector pooling statistics:");
+                _matPoolManager?.LogStatistics();
+
                 ProcessedFrame?.Dispose();
                 _backgroundFrame?.Dispose();
+                _matPoolManager?.Dispose();
             }
 
             _disposedValue = true;

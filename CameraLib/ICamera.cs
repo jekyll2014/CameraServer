@@ -15,15 +15,21 @@ namespace CameraLib
         double CurrentFps { get; }
         int FrameTimeout { get; set; }
 
+        /// <summary>
+        /// Event raised when a frame is captured. 
+        /// CRITICAL: Subscribers MUST dispose the Mat object after use to prevent memory leaks.
+        /// The Mat object ownership is transferred to the subscriber.
+        /// </summary>
         delegate void ImageCapturedEventHandler(ICamera camera, Mat image);
         event ImageCapturedEventHandler? ImageCapturedEvent;
 
         CancellationToken CancellationToken { get; }
 
-        Task<List<CameraDescription>> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token);
-        Task<bool> Start(int width, int height, string format, CancellationToken token);
+        public Task<bool> GetImageDataAsync(int discoveryTimeout = 5000);
+        public List<CameraDescription> DiscoverCameras(int discoveryTimeout);
+        public Task<bool> StartAsync(int width, int height, string format, CancellationToken token);
         void Stop();
-        Task<Mat?> GrabFrame(CancellationToken token);
+        public Task<Mat?> GrabFrameAsync(CancellationToken token, int width = 0, int height = 0, string format = "");
         IAsyncEnumerable<Mat> GrabFrames(CancellationToken token);
         FrameFormat GetNearestFormat(int width, int height, string format);
     }

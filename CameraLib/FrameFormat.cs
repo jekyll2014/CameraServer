@@ -2,16 +2,8 @@
 
 namespace CameraLib
 {
-    public class FrameFormat
+    public class FrameFormat : FrameFormatBase
     {
-        public int Width { get; set; } = 0;
-        public int Height { get; set; } = 0;
-        public string Format { get; set; } = string.Empty;
-        public double Fps { get; set; } = 0.0;
-
-        public FrameFormat()
-        { }
-
         public FrameFormat(int width = 0, int height = 0, string format = "", double fps = 0)
         {
             Width = width;

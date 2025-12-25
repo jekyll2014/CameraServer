@@ -17,6 +17,7 @@ namespace CameraLib.FlashCap
 {
     public class UsbCameraFc : ICamera
     {
+        public CaptureDevice? CaptureDevice => _captureDevice;
         public CameraDescription Description { get; set; }
         public bool IsRunning { get; private set; } = false;
         public FrameFormat? CurrentFrameFormat { get; private set; }
@@ -29,14 +30,12 @@ namespace CameraLib.FlashCap
         private CancellationTokenSource? _cancellationTokenSource;
         private readonly CaptureDeviceDescriptor _usbCamera;
         private CaptureDevice? _captureDevice;
-        private readonly object _getPictureThreadLock = new();
         private readonly Stopwatch _fpsTimer = new();
         private byte _frameCount;
         private readonly System.Timers.Timer _keepAliveTimer = new();
         private int _width = 0;
         private int _height = 0;
         private string _format = string.Empty;
-        private int _gcCounter = 0;
         private bool _disposedValue;
 
         public UsbCameraFc(string path, string name = "", ILogger? logger = null)
@@ -55,23 +54,37 @@ namespace CameraLib.FlashCap
             if (string.IsNullOrEmpty(name))
                 name = path;
 
-            Description = new CameraDescription(CameraType.USB_FC, path, name, GetAllAvailableResolution(_usbCamera));
+            Description = new CameraDescription(CameraType.USB_FC, path, name, GetAllAvailableResolution(_usbCamera).ToArray());
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
 
             _keepAliveTimer.Elapsed += CheckCameraDisconnected;
         }
 
+        public async Task<bool> GetImageDataAsync(int discoveryTimeout = 1000)
+        {
+            Description.FrameFormats = GetAllAvailableResolution(_usbCamera).ToArray();
+
+            return Description.FrameFormats.Any();
+        }
+
         private async void CheckCameraDisconnected(object? sender, ElapsedEventArgs e)
         {
-            if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
+            try
             {
-                _logger?.LogDebug($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
-                Stop(false);
-                await Start(_width, _height, _format, CancellationToken.None);
+                if (_fpsTimer.ElapsedMilliseconds > FrameTimeout)
+                {
+                    _logger?.LogDebug($"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToLongTimeString()} Camera connection restarted ({_fpsTimer.ElapsedMilliseconds} timeout)");
+                    Stop(false);
+                    await StartAsync(_width, _height, _format, CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error in camera disconnect handler");
             }
         }
 
-        public async Task<List<CameraDescription>> DiscoverCamerasAsync(int discoveryTimeout, CancellationToken token)
+        public List<CameraDescription> DiscoverCameras(int discoveryTimeout)
         {
             return DiscoverUsbCameras();
         }
@@ -86,7 +99,7 @@ namespace CameraLib.FlashCap
             var result = new List<CameraDescription>();
             foreach (var camera in descriptors)
             {
-                var formats = GetAllAvailableResolution(camera);
+                var formats = GetAllAvailableResolution(camera).ToArray();
                 result.Add(new CameraDescription(CameraType.USB_FC, camera.Identity.ToString() ?? string.Empty, camera.Name, formats));
             }
 
@@ -96,7 +109,7 @@ namespace CameraLib.FlashCap
         private static List<FrameFormat> GetAllAvailableResolution(CaptureDeviceDescriptor usbCamera)
         {
             var formats = new List<FrameFormat>();
-            foreach (var cameraCharacteristic in usbCamera.Characteristics.Where(n => n.PixelFormat != PixelFormats.Unknown))
+            foreach (var cameraCharacteristic in usbCamera.Characteristics)
             {
                 formats.Add(new FrameFormat(cameraCharacteristic.Width,
                     cameraCharacteristic.Height,
@@ -107,7 +120,7 @@ namespace CameraLib.FlashCap
             return formats;
         }
 
-        public async Task<bool> Start(int width, int height, string format, CancellationToken token)
+        public async Task<bool> StartAsync(int width, int height, string format, CancellationToken token)
         {
             if (IsRunning)
                 return true;
@@ -118,6 +131,9 @@ namespace CameraLib.FlashCap
 
             try
             {
+                if (_captureDevice != null)
+                    await _captureDevice.DisposeAsync();
+
                 _captureDevice = await _usbCamera.OpenAsync(cameraCharacteristics, OnPixelBufferArrived, token);
             }
             catch (Exception ex)
@@ -132,10 +148,12 @@ namespace CameraLib.FlashCap
             _width = width;
             _height = height;
             _format = format;
+            CurrentFrameFormat = new FrameFormat(_width, _height, _format);
 
+            _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new CancellationTokenSource();
-            _frameCount = 0;
             _fpsTimer.Reset();
+            _frameCount = 0;
             _keepAliveTimer.Interval = FrameTimeout;
             _keepAliveTimer.Start();
 
@@ -168,7 +186,8 @@ namespace CameraLib.FlashCap
             if (width > 0 && height > 0)
             {
                 characteristics = characteristics
-                    .Where(n => n.Width == width && n.Height == height).ToList();
+                    .Where(n => n.Width == width && n.Height == height)
+                    .ToList();
             }
             else
             {
@@ -179,7 +198,8 @@ namespace CameraLib.FlashCap
                             return n;
                         else
                             return m;
-                    })];
+                    })
+                ];
             }
 
             return characteristics.FirstOrDefault();
@@ -187,53 +207,43 @@ namespace CameraLib.FlashCap
 
         private void OnPixelBufferArrived(PixelBufferScope bufferScope)
         {
-            if (Monitor.IsEntered(_getPictureThreadLock))
+            Mat? frame = null;
+            try
             {
+                frame = Cv2.ImDecode(bufferScope.Buffer.ReferImage(), ImreadModes.Color);
                 bufferScope.ReleaseNow();
 
-                return;
-            }
-
-            lock (_getPictureThreadLock)
-            {
-                try
+                if (frame == null || frame.Empty())
                 {
-                    var imageBuffer = bufferScope.Buffer.CopyImage();
-                    bufferScope.ReleaseNow();
-                    var frame = Cv2.ImDecode(imageBuffer, ImreadModes.Color);
-                    if (frame == null)
-                        return;
+                    frame?.Dispose();
+                    return;
+                }
 
-                    CurrentFrameFormat ??= new FrameFormat(frame.Width, frame.Height);
-                    ImageCapturedEvent?.Invoke(this, frame);
-                    if (!_fpsTimer.IsRunning)
+                ImageCapturedEvent?.Invoke(this, frame);
+
+                if (!_fpsTimer.IsRunning)
+                {
+                    _fpsTimer.Start();
+                    _frameCount = 0;
+                }
+                else
+                {
+                    _frameCount++;
+                    if (_frameCount >= 100)
                     {
-                        _fpsTimer.Start();
+                        if (_fpsTimer.ElapsedMilliseconds > 0)
+                            CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
+
+                        _fpsTimer.Reset();
                         _frameCount = 0;
                     }
-                    else
-                    {
-                        _frameCount++;
-                        if (_frameCount >= 100)
-                        {
-                            if (_fpsTimer.ElapsedMilliseconds > 0)
-                                CurrentFps = (double)_frameCount / ((double)_fpsTimer.ElapsedMilliseconds / (double)1000);
-
-                            _fpsTimer.Reset();
-                            _frameCount = 0;
-                        }
-                    }
                 }
-                catch
-                {
-                    Stop();
-                    _gcCounter++;
-                    if (_gcCounter >= 10)
-                    {
-                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
-                        _gcCounter = 0;
-                    }
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error in OnPixelBufferArrived");
+                frame?.Dispose();
+                Stop();
             }
         }
 
@@ -247,80 +257,63 @@ namespace CameraLib.FlashCap
             if (!IsRunning)
                 return;
 
-            lock (_getPictureThreadLock)
+            _keepAliveTimer.Stop();
+
+            if (_captureDevice != null)
             {
-                IsRunning = false;
-                _keepAliveTimer.Stop();
-
-                if (cancellation)
-                    _cancellationTokenSource?.Cancel();
-
-                if (_captureDevice != null)
+                try
                 {
-                    try
-                    {
-                        _captureDevice?.StopAsync().Wait(5000);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError($"Camera Stop() failed: {ex}");
-                    }
+                    _captureDevice?.StopAsync();
                 }
-
-                CurrentFrameFormat = null;
-                _fpsTimer.Reset();
-                IsRunning = false;
+                catch (Exception ex)
+                {
+                    _logger?.LogError($"Camera Stop() failed: {ex}");
+                }
             }
+
+            if (cancellation)
+                _cancellationTokenSource?.Cancel();
+
+            CurrentFrameFormat = null;
+            _fpsTimer.Reset();
+            IsRunning = false;
         }
 
-        public async Task<Mat?> GrabFrame(CancellationToken token)
+        public async Task<Mat?> GrabFrameAsync(CancellationToken token, int width = 0, int height = 0, string format = "")
         {
             if (IsRunning)
-            {
-                Mat? frame = null;
-                ImageCapturedEvent += CameraImageCapturedEvent;
-                while (IsRunning && frame == null && !token.IsCancellationRequested)
-                    await Task.Delay(10, token);
+                return null;
 
-                ImageCapturedEvent -= CameraImageCapturedEvent;
-
-                return frame;
-
-                void CameraImageCapturedEvent(ICamera camera, Mat image)
-                {
-                    frame = image?.Clone();
-                }
-            }
-
-            Mat? image = null;
+            Mat? frame = null;
             await Task.Run(async () =>
             {
                 try
                 {
-                    var cameraCharacteristics = GetCaptureDevice(0, 0, string.Empty);
+                    var cameraCharacteristics = GetCaptureDevice(width, height, format);
                     if (cameraCharacteristics == null)
                         return;
 
                     var imageData = await _usbCamera.TakeOneShotAsync(cameraCharacteristics, token);
-                    image = Cv2.ImDecode(imageData, ImreadModes.Color);
-                    CurrentFrameFormat ??= new FrameFormat(image?.Width ?? 0, image?.Height ?? 0);
+                    frame = Cv2.ImDecode(imageData, ImreadModes.Color);
+                    CurrentFrameFormat ??= new FrameFormat(frame?.Width ?? 0, frame?.Height ?? 0);
+
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex.Message);
+                    Console.WriteLine(ex);
                 }
             }, token);
 
-            return image;
+            return frame;
         }
 
         public async IAsyncEnumerable<Mat> GrabFrames([EnumeratorCancellation] CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                var image = await GrabFrame(token);
+                var image = await GrabFrameAsync(token);
                 if (image == null)
-                    await Task.Delay(10, token);
+                    await Task.Delay(10, CancellationToken.None);
                 else
                     yield return image;
             }

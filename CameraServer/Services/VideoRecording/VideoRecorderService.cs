@@ -1,7 +1,8 @@
-﻿using CameraServer.Server.Auth;
+﻿using CameraLib;
+
+using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
-using CameraServer.Shared.DTO;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 
 using System.Collections.Concurrent;
+using System.Threading.Channels;
 
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -25,6 +27,7 @@ public class VideoRecorderService : IHostedService, IDisposable
     private readonly IUserManager _manager;
     private readonly CameraHubService _collection;
     private readonly ILogger<VideoRecorderService> _logger;
+    private readonly MatPoolManager _matPoolManager;
     public readonly RecorderSettings Settings;
     public readonly Config<List<RecordCameraSettingDto>> TaskConfig = new Config<List<RecordCameraSettingDto>>(VideoRecorderTempConfig);
 
@@ -44,6 +47,13 @@ public class VideoRecorderService : IHostedService, IDisposable
         _collection = collection;
         Settings = configuration.GetSection(RecorderConfigSection)?.Get<RecorderSettings>() ?? new RecorderSettings();
         Directory.CreateDirectory(Settings.StoragePath);
+
+        // Create Mat pool manager for video recording operations
+        // Pool size based on expected concurrent recordings
+        _matPoolManager = new MatPoolManager(maxPoolSize: 50, logger);
+
+        _logger.LogInformation(
+            "VideoRecorderService initialized with Mat pooling, max pool size: 50");
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -88,6 +98,14 @@ public class VideoRecorderService : IHostedService, IDisposable
 
     public string Start(RecordCameraSettingDto recordTask)
     {
+        ArgumentNullException.ThrowIfNull(recordTask);
+
+        if (string.IsNullOrWhiteSpace(recordTask.User))
+            throw new ArgumentException("User cannot be null or empty", nameof(recordTask));
+
+        if (string.IsNullOrWhiteSpace(recordTask.CameraId))
+            throw new ArgumentException("CameraId cannot be null or empty", nameof(recordTask));
+
         var userDto = _manager.GetUserInfo(recordTask.User);
         if (userDto == null)
             throw new ApplicationException($"User [{recordTask.User}] not authorised to start recording.");
@@ -137,7 +155,10 @@ public class VideoRecorderService : IHostedService, IDisposable
         try
         {
             var task = _recorderTasks.FirstOrDefault(n => n.Key.Id == taskId);
-            Stop(task.Key);
+            if (task.Key != null)
+                Stop(task.Key);
+            else
+                _logger.LogWarning($"Recording task {taskId} not found");
         }
         catch (Exception e)
         {
@@ -153,8 +174,14 @@ public class VideoRecorderService : IHostedService, IDisposable
             Stop(task.Key);
     }
 
-    public void Stop(RecordCameraTask recordTask)
+    public void Stop(RecordCameraTask? recordTask)
     {
+        if (recordTask == null)
+        {
+            _logger.LogWarning("Attempted to stop null recording task");
+            return;
+        }
+
         if (_recorderTasks.TryRemove(recordTask, out var t))
         {
             var existingTask = TaskConfig.ConfigStorage.FirstOrDefault(n => n.Equals(recordTask));
@@ -167,7 +194,6 @@ public class VideoRecorderService : IHostedService, IDisposable
 
             try
             {
-                t?.Wait(5000);
                 t?.Dispose();
             }
             catch (Exception ex)
@@ -179,6 +205,9 @@ public class VideoRecorderService : IHostedService, IDisposable
 
     public static string GenerateTaskId(string cameraPath, int width, int height)
     {
+        if (string.IsNullOrWhiteSpace(cameraPath))
+            throw new ArgumentException("Camera path cannot be null or empty", nameof(cameraPath));
+
         return cameraPath + width + height;
     }
 
@@ -203,17 +232,21 @@ public class VideoRecorderService : IHostedService, IDisposable
             RecorderStreamId,
             newTask.FrameFormat);
 
-        var imageQueue = new ConcurrentQueue<Mat>();
         try
         {
-            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
+            // Use Channel-based async frame delivery (eliminates polling)
+            var (cameraCancellationToken, channelReader) = await _collection.HookCamera(
+                newCameraItem,
+                CancellationToken.None,
+                BoundedChannelFullMode.DropOldest);  // Drop oldest if encoder falls behind
 
-            if (cameraCancellationToken == CancellationToken.None)
+            if (channelReader == null || cameraCancellationToken == CancellationToken.None)
             {
-                _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
-
+                _logger.LogError($"Can not connect to camera [{camera.CameraStream.Description.Path}]");
                 return;
             }
+
+            _logger.LogInformation($"Video recorder started with Channel-based delivery (task: {newTask.TaskId})");
 
             var stopTask = false;
             while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
@@ -222,11 +255,12 @@ public class VideoRecorderService : IHostedService, IDisposable
                 var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
                                $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
                                                                  $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
-                                                                 $"-{currentTime.ToString("yyyy-MM-dd")}" +
-                                                                 $"-{currentTime.ToString("HH-mm-ss")}" +
+                                                                 $"-{currentTime:yyyy-MM-dd}" +
+                                                                 $"-{currentTime:HH-mm-ss}" +
                                                                  $".{DefaultVideoFileExtension}")}";
+
                 using (var recorder = new VideoRecorder(fileName,
-                           new FrameFormatDto
+                           new CameraServer.Shared.DTO.FrameFormatDto
                            {
                                Width = 0,
                                Height = 0,
@@ -234,52 +268,66 @@ public class VideoRecorderService : IHostedService, IDisposable
                                Fps = camera.CameraStream.CurrentFps
                            },
                            newTask.Quality,
-                           _logger)
+                           _logger,
+                           _matPoolManager)
                 {
                     Codec = newTask.Codec
                 })
                 {
                     var timeOut = DateTime.Now.AddSeconds(Settings.VideoFileLengthSeconds);
-                    while (DateTime.Now < timeOut && !cameraCancellationToken.IsCancellationRequested &&
-                           !stopTask)
-                    {
-                        if (imageQueue.TryDequeue(out var image))
-                        {
-                            try
-                            {
-                                recorder.SaveFrame(image);
-                                image?.Dispose();
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Log(LogLevel.Error, $"Exception while video file (Task) recording: {ex}");
-                                image?.Dispose();
-                            }
-                        }
-                        else
-                            await Task.Delay(10);
 
+                    // Event-driven frame processing - NO POLLING! ✅
+                    await foreach (var image in channelReader.ReadAllAsync(cameraCancellationToken))
+                    {
+                        // Check timeout
+                        if (DateTime.Now >= timeOut)
+                            break;
+
+                        try
+                        {
+                            recorder.SaveFrame(image);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"Exception while video file (Task) recording: {ex}");
+                        }
+                        finally
+                        {
+                            _collection.ReturnOrDisposeMat(image);
+                        }
+
+                        // Check if task should stop
                         stopTask = !_recorderTasks.TryGetValue(newTask, out _);
+                        if (stopTask)
+                            break;
                     }
                 }
 
                 stopTask = !_recorderTasks.TryGetValue(newTask, out _);
             }
 
+            _logger.LogInformation($"Video recorder stopped (task: {newTask.TaskId})");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation($"Video recorder cancelled (task: {newTask.TaskId})");
+        }
+        catch (ChannelClosedException)
+        {
+            _logger.LogInformation($"Video recorder channel closed (task: {newTask.TaskId})");
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Error, $"Exception in VideoRecorder task: {ex}");
+            _logger.LogError($"Exception in VideoRecorder task: {ex}");
         }
-
-        _collection.UnHookCamera(newCameraItem);
-        while (imageQueue.TryDequeue(out var image))
+        finally
         {
-            image?.Dispose();
-        }
+            // Clean up
+            _collection.UnHookCamera(newCameraItem);
+            _recorderTasks.TryRemove(newTask, out _);
 
-        _recorderTasks.TryRemove(newTask, out _);
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            _logger.LogInformation($"Video recorder cleanup complete (task: {newTask.TaskId})");
+        }
     }
 
     public async Task<string> RecordVideoFile(ServerCamera camera,
@@ -287,14 +335,25 @@ public class VideoRecorderService : IHostedService, IDisposable
         string fileStoragePath,
         string filePrefix,
         uint recordLengthSec,
-        FrameFormatDto? frameFormat = null,
+        CameraServer.Shared.DTO.FrameFormatDto? frameFormat = null,
         byte quality = 90,
         string codec = "",
         List<Mat?>? imageBuffer = null)
     {
+        ArgumentNullException.ThrowIfNull(camera);
+
+        if (string.IsNullOrWhiteSpace(streamId))
+            throw new ArgumentException("Stream ID cannot be null or empty", nameof(streamId));
+
+        if (string.IsNullOrWhiteSpace(fileStoragePath))
+            throw new ArgumentException("File storage path cannot be null or empty", nameof(fileStoragePath));
+
+        if (string.IsNullOrWhiteSpace(filePrefix))
+            throw new ArgumentException("File prefix cannot be null or empty", nameof(filePrefix));
+
         var currentTime = DateTime.Now;
         imageBuffer ??= [];
-        frameFormat ??= new FrameFormatDto();
+        frameFormat ??= new CameraServer.Shared.DTO.FrameFormatDto();
         var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
             streamId,
             frameFormat);
@@ -304,23 +363,29 @@ public class VideoRecorderService : IHostedService, IDisposable
             $"{filePrefix}-" +
             $"Cam{camera.CameraStream.Description.Name}-" +
             $"{streamId}-" +
-            $"{currentTime.ToString("yyyy-MM-dd")}_" +
-            $"{currentTime.ToString("HH-mm-ss")}.{DefaultVideoFileExtension}");
+            $"{currentTime:yyyy-MM-dd}_" +
+            $"{currentTime:HH-mm-ss}.{DefaultVideoFileExtension}");
 
-        var tmpImageQueue = new ConcurrentQueue<Mat>();
         var frameCount = 0;
         try
         {
-            var tmpCameraCancellationToken = await _collection.HookCamera(newCameraItem, tmpImageQueue);
-            if (tmpCameraCancellationToken == CancellationToken.None)
+            // Use Channel-based async frame delivery (eliminates polling)
+            var (tmpCameraCancellationToken, channelReader) = await _collection.HookCamera(
+                newCameraItem,
+                CancellationToken.None,
+                BoundedChannelFullMode.DropOldest);
+
+            if (channelReader == null || tmpCameraCancellationToken == CancellationToken.None)
                 throw new ApplicationException($"Can not connect to camera#{camera.CameraStream.Description.Name}");
 
             if (frameFormat.Fps <= 0)
                 frameFormat.Fps = camera.CameraStream.CurrentFps;
 
-            using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger))
+            using (var recorder = new VideoRecorder(fileName, frameFormat, quality, _logger, _matPoolManager))
             {
                 recorder.Codec = codec;
+
+                // Encode buffered frames first (from motion detection, etc.)
                 if (imageBuffer.Count > 0)
                 {
                     foreach (var image in imageBuffer)
@@ -335,47 +400,56 @@ public class VideoRecorderService : IHostedService, IDisposable
                         }
                         catch (Exception ex)
                         {
-                            _logger.Log(LogLevel.Error, $"Exception while video file (Buffer) recording: {ex}");
-
+                            _logger.LogError($"Exception while video file (Buffer) recording: {ex}");
                             break;
                         }
                     }
                 }
 
                 var timeOut = DateTime.Now.AddSeconds(recordLengthSec);
-                while (DateTime.Now < timeOut)
+
+                // Event-driven frame encoding - NO POLLING! ✅
+                await foreach (var image in channelReader.ReadAllAsync(tmpCameraCancellationToken))
                 {
-                    if (tmpImageQueue.TryDequeue(out var image))
+                    // Check timeout
+                    if (DateTime.Now >= timeOut)
+                        break;
+
+                    try
                     {
-                        try
-                        {
-                            recorder.SaveFrame(image);
-                            frameCount++;
-                            image?.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Log(LogLevel.Error, $"Exception while video file (Stream) recording: {ex}");
-                            timeOut = DateTime.Now;
-                            image?.Dispose();
-                        }
+                        recorder.SaveFrame(image);
+                        frameCount++;
                     }
-                    else
-                        await Task.Delay(10, CancellationToken.None);
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Exception while video file (Stream) recording: {ex}");
+                        break;  // Exit on encoding error
+                    }
+                    finally
+                    {
+                        _collection.ReturnOrDisposeMat(image);
+                    }
                 }
             }
+
+            _logger.LogInformation($"Video file recording complete: {fileName}, frames: {frameCount}");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation($"Video file recording cancelled: {fileName}");
+        }
+        catch (ChannelClosedException)
+        {
+            _logger.LogInformation($"Video file recording channel closed: {fileName}");
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Error, $"Exception in video file recorder: {ex}");
+            _logger.LogError($"Exception in video file recorder: {ex}");
         }
-
-        _collection.UnHookCamera(newCameraItem);
-        while (tmpImageQueue.TryDequeue(out var image))
-            image.Dispose();
-
-        tmpImageQueue.Clear();
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+        finally
+        {
+            _collection.UnHookCamera(newCameraItem);
+        }
 
         if (frameCount == 0)
             throw new ApplicationException($"No frames written to file: {fileName}");
@@ -393,6 +467,12 @@ public class VideoRecorderService : IHostedService, IDisposable
             if (disposing)
             {
                 _logger.Log(LogLevel.Information, "Disposing VideoRecorderService");
+
+                // Log pooling statistics before disposal
+                _logger.LogInformation("VideoRecorderService pooling statistics:");
+                _matPoolManager?.LogStatistics();
+                _matPoolManager?.Dispose();
+
                 /*foreach (var k in _recorderTasks.Select(n => n.Key).ToArray())
                     Stop(k);*/
             }

@@ -419,7 +419,7 @@ public class TelegramService : IHostedService, IDisposable
                 return;
             }
 
-            var image = await camera.CameraStream.GrabFrame(cancellationToken);
+            var image = await camera.CameraStream.GrabFrameAsync(cancellationToken, 0, 0, "");
             if (image != null)
             {
                 await SendImage(chatId, image, $"CameraStream[{n}]: {camera.CameraStream.Description.Name}", cancellationToken);
@@ -638,7 +638,7 @@ public class TelegramService : IHostedService, IDisposable
                     {
                         CameraId = camera.CameraStream.Description.Path,
                         User = user.Login,
-                        FrameFormat = new FrameFormatDto(),
+                        FrameFormat = new Shared.DTO.FrameFormatDto(),
                         Quality = 95,
                         Codec = user.DefaultCodec
                     };
@@ -791,7 +791,7 @@ public class TelegramService : IHostedService, IDisposable
                     {
                         CameraId = camera.CameraStream.Description.Path,
                         User = user.Login,
-                        FrameFormat = new FrameFormatDto(),
+                        FrameFormat = new Shared.DTO.FrameFormatDto(),
                         MotionDetectParameters = motionDetectionService.Settings.DefaultMotionDetectParameters,
                         Notifications = new List<NotificationParametersDto>()
                             {

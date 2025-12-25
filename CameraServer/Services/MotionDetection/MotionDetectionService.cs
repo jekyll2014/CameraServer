@@ -3,6 +3,7 @@ using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.Telegram;
 using CameraServer.Server.Services.VideoRecording;
+using CameraServer.Shared.DTO;
 using CameraServer.Shared.Enum;
 
 using Microsoft.Extensions.Configuration;
@@ -12,7 +13,8 @@ using Microsoft.Extensions.Logging;
 using OpenCvSharp;
 
 using System.Collections.Concurrent;
-using CameraServer.Shared.DTO;
+using System.Threading.Channels;
+
 using Telegram.Bot.Types;
 
 using DateTime = System.DateTime;
@@ -112,6 +114,14 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     public Guid Start(MotionDetectionCameraSettingDto detectTask)
     {
+        ArgumentNullException.ThrowIfNull(detectTask);
+
+        if (string.IsNullOrWhiteSpace(detectTask.User))
+            throw new ArgumentException("User cannot be null or empty", nameof(detectTask));
+
+        if (string.IsNullOrWhiteSpace(detectTask.CameraId))
+            throw new ArgumentException("CameraId cannot be null or empty", nameof(detectTask));
+
         if (!detectTask.Notifications.Any())
             return Guid.Empty;
 
@@ -185,7 +195,10 @@ public class MotionDetectionService : IHostedService, IDisposable
         try
         {
             var task = _detectorTasks.FirstOrDefault(n => n.Key.Id == taskId);
-            await Stop(task.Key);
+            if (task.Key != null)
+                await Stop(task.Key);
+            else
+                _logger.LogWarning($"Task {taskId} not found");
         }
         catch (Exception e)
         {
@@ -194,8 +207,14 @@ public class MotionDetectionService : IHostedService, IDisposable
         }
     }
 
-    private async Task Stop(MotionDetectionCameraTask detectionTask)
+    private async Task Stop(MotionDetectionCameraTask? detectionTask)
     {
+        if (detectionTask == null)
+        {
+            _logger.LogWarning("Attempted to stop null detection task");
+            return;
+        }
+
         _logger.Log(LogLevel.Information, $"Stopping detection task [{detectionTask.Id}] for user [{detectionTask.User}]");
         if (_detectorTasks.TryRemove(detectionTask, out var t))
         {
@@ -256,75 +275,102 @@ public class MotionDetectionService : IHostedService, IDisposable
             MotionDetectionStreamId + motionDetectTask.Id,
             motionDetectTask.FrameFormat);
 
-        var imageQueue = new ConcurrentQueue<Mat>();
         var lastImagesQueue = new ConcurrentQueue<Mat?>();
+        ChannelReader<Mat>? channelReader = null;
+
         try
         {
-            var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
-            if (cameraCancellationToken == CancellationToken.None)
-            {
-                _logger.Log(LogLevel.Error, $"Can not connect to camera [{camera.CameraStream.Description.Path}]");
+            // Use Channel-based async frame delivery (eliminates polling)
+            var (cameraCancellationToken, reader) = await _collection.HookCamera(
+                newCameraItem,
+                CancellationToken.None,
+                BoundedChannelFullMode.DropOldest);  // Drop oldest frames if processing is slow
 
+            if (reader == null || cameraCancellationToken == CancellationToken.None)
+            {
+                _logger.LogError($"Can not connect to camera [{camera.CameraStream.Description.Path}]");
                 return;
             }
 
-            //start looking for motion
+            channelReader = reader;
+
+            // Start motion detection
             var stopTask = false;
             motionDetectTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
-            using (var motionDetector = new MotionDetector(motionDetectTask.MotionDetectParameters))
+
+            using (var motionDetector = new MotionDetector(motionDetectTask.MotionDetectParameters, _logger))
             {
                 var maxBufferCount = Settings.DefaultMotionDetectParameters.KeepImageBuffer;
-                while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
+
+                _logger.LogInformation($"Motion detector started with Channel-based delivery (task: {motionDetectTask.Id})");
+
+                // Event-driven frame processing - NO POLLING! ✅
+                await foreach (var image in channelReader.ReadAllAsync(cameraCancellationToken))
                 {
-                    if (imageQueue.TryDequeue(out var image))
+                    lastImagesQueue.Enqueue(image);
+
+                    if (motionDetector.DetectMovement(image))
                     {
-                        lastImagesQueue.Enqueue(image);
-                        if (motionDetector.DetectMovement(image))
-                        {
-                            _logger.Log(LogLevel.Information, "Motion detected!!!");
+                        _logger.LogInformation("Motion detected!!!");
 
-                            var buffer = lastImagesQueue.ToList();
-                            lastImagesQueue = new ConcurrentQueue<Mat?>();
-                            SendNotifications(motionDetectTask.Notifications,
-                                camera,
-                                userDto,
-                                buffer,
-                                cameraCancellationToken);
+                        var buffer = lastImagesQueue.ToList();
+                        lastImagesQueue = new ConcurrentQueue<Mat?>();
 
-                            foreach (var img in buffer)
-                                img?.Dispose();
-                        }
+                        SendNotifications(motionDetectTask.Notifications,
+                            camera,
+                            userDto,
+                            buffer,
+                            cameraCancellationToken);
 
-                        if (ImageProcessedEvent != null)
-                            ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
-
-                        while (lastImagesQueue.Count >= maxBufferCount)
-                        {
-                            if (lastImagesQueue.TryDequeue(out var oldImage))
-                                oldImage?.Dispose();
-                        }
+                        foreach (var img in buffer)
+                            _collection.ReturnOrDisposeMat(img);
                     }
-                    else
-                        await Task.Delay(10);
+
+                    if (ImageProcessedEvent != null)
+                        ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
+
+                    // Maintain buffer size
+                    while (lastImagesQueue.Count >= maxBufferCount)
+                    {
+                        if (lastImagesQueue.TryDequeue(out var oldImage))
+                            _collection.ReturnOrDisposeMat(oldImage);
+                    }
+
+                    // Check if task should stop
+                    if (stopTask || !_detectorTasks.ContainsKey(motionDetectTask))
+                        break;
 
                     stopTask = !_detectorTasks.Any(n => n.Key.Id == motionDetectTask.Id);
                 }
+
+                _logger.LogInformation($"Motion detector stopped (task: {motionDetectTask.Id})");
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation($"Motion detector cancelled (task: {motionDetectTask.Id})");
+        }
+        catch (ChannelClosedException)
+        {
+            _logger.LogInformation($"Motion detector channel closed (task: {motionDetectTask.Id})");
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Error, $"Exception in MotionDetector task: {ex}");
+            _logger.LogError($"Exception in MotionDetector task: {ex}");
         }
+        finally
+        {
+            // Clean up
+            _collection.UnHookCamera(newCameraItem);
 
-        _collection.UnHookCamera(newCameraItem);
-        while (imageQueue.TryDequeue(out var image))
-            image?.Dispose();
+            // Return any buffered frames to pool
+            while (lastImagesQueue.TryDequeue(out var oldImage))
+                _collection.ReturnOrDisposeMat(oldImage);
 
-        while (lastImagesQueue.TryDequeue(out var oldImage))
-            oldImage?.Dispose();
+            _detectorTasks.TryRemove(motionDetectTask, out _);
 
-        _detectorTasks.TryRemove(motionDetectTask, out _);
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            _logger.LogInformation($"Motion detector cleanup complete (task: {motionDetectTask.Id})");
+        }
     }
 
     private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
@@ -333,6 +379,11 @@ public class MotionDetectionService : IHostedService, IDisposable
         List<Mat?> bufferedImages,
         CancellationToken cameraCancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(notificationParams);
+        ArgumentNullException.ThrowIfNull(camera);
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(bufferedImages);
+
         var tasks = new List<Task>();
         var imageNotifications = notificationParams
             .Where(n => n.Transport == NotificationTransport.Telegram
@@ -407,12 +458,17 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
     {
+        ArgumentNullException.ThrowIfNull(notificationParams);
+
         if (notificationParams.Count == 0)
             return;
 
         var currentTime = DateTime.Now;
         foreach (var notificationParam in notificationParams)
         {
+            if (notificationParam == null || string.IsNullOrWhiteSpace(notificationParam.Destination))
+                continue;
+
             var dest = notificationParam.Destination;
             if (_notificationsTextLast.TryGetValue(dest, out var lastNotificationTime))
             {
@@ -448,12 +504,18 @@ public class MotionDetectionService : IHostedService, IDisposable
         Mat? image,
         NotificationParametersDto[] notificationParams)
     {
+        ArgumentNullException.ThrowIfNull(camera);
+        ArgumentNullException.ThrowIfNull(notificationParams);
+
         if (notificationParams.Length <= 0)
             return;
 
         var currentTime = DateTime.Now;
         foreach (var notificationParam in notificationParams)
         {
+            if (notificationParam == null || string.IsNullOrWhiteSpace(notificationParam.Destination))
+                continue;
+
             var dest = notificationParam.Destination;
             if (_notificationsImageLast.TryGetValue(dest, out var lastNotificationTime))
             {
@@ -509,12 +571,23 @@ public class MotionDetectionService : IHostedService, IDisposable
         List<Mat?>? bufferedImages,
         byte quality)
     {
+        ArgumentNullException.ThrowIfNull(camera);
+        ArgumentNullException.ThrowIfNull(notificationParams);
+
         if (notificationParams.Count == 0)
             return;
 
         var destinationTotal = notificationParams
+            .Where(n => n != null && !string.IsNullOrWhiteSpace(n.Destination))
             .Select(n => n.Destination)
             .Aggregate((n, m) => m += $" {n}");
+
+        if (string.IsNullOrWhiteSpace(destinationTotal))
+        {
+            _logger.LogWarning("No valid destinations for video notifications");
+            return;
+        }
+
         var tmpRecordtaskId =
             $"{TmpVideoStreamId}-{destinationTotal}-{camera.CameraStream.Description.Path}";
         if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
@@ -538,6 +611,9 @@ public class MotionDetectionService : IHostedService, IDisposable
 
                 foreach (var notificationParam in notificationParams)
                 {
+                    if (notificationParam == null || string.IsNullOrWhiteSpace(notificationParam.Destination))
+                        continue;
+
                     var dest = notificationParam.Destination;
                     if (_notificationsVideoLast.TryGetValue(dest, out var lastNotificationTime))
                     {
@@ -585,8 +661,14 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     public Guid GetTaskId(string cameraPath, string user)
     {
+        if (string.IsNullOrWhiteSpace(cameraPath))
+            throw new ArgumentException("Camera path cannot be null or empty", nameof(cameraPath));
+
+        if (string.IsNullOrWhiteSpace(user))
+            throw new ArgumentException("User cannot be null or empty", nameof(user));
+
         var task = _detectorTasks.FirstOrDefault(n => n.Key.CameraId == cameraPath && n.Key.User == user);
-        return task.Key.Id;
+        return task.Key?.Id ?? Guid.Empty;
     }
 
     protected virtual void Dispose(bool disposing)

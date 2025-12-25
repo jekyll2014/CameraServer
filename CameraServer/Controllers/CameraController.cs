@@ -1,4 +1,6 @@
-﻿using CameraServer.Server.Auth;
+﻿using CameraLib.IP;
+
+using CameraServer.Server.Auth;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Shared.DTO;
 
@@ -12,12 +14,10 @@ using OpenCvSharp;
 
 using Swashbuckle.AspNetCore.Annotations;
 
-using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
-using CameraLib.IP;
+using System.Threading.Channels;
 
-using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 using Size = OpenCvSharp.Size;
 
 namespace CameraServer.Server.Controllers;
@@ -194,7 +194,6 @@ public class CameraController : ControllerBase
         if (userRoles == null || userRoles.Count == 0)
             return BadRequest("No such camera");
 
-        var imageQueue = new ConcurrentQueue<Mat>();
         var camera = _collection.Cameras.FirstOrDefault(n => n.Id == cameraId);
         if (!(camera?.AllowedRoles.Intersect(userRoles).Any() ?? false))
             return BadRequest("No such camera");
@@ -209,77 +208,121 @@ public class CameraController : ControllerBase
         var newCameraItem = new CameraQueueItem(camera.CameraStream.Description.Path,
             Request.HttpContext.TraceIdentifier,
             frameFormat);
-        var cameraCancellationToken = await _collection.HookCamera(newCameraItem, imageQueue);
 
-        if (cameraCancellationToken == CancellationToken.None)
+        // Use Channel-based async frame delivery (eliminates polling)
+        var (cameraCancellationToken, channelReader) = await _collection.HookCamera(
+            newCameraItem,
+            HttpContext.RequestAborted,
+            BoundedChannelFullMode.DropNewest);  // Drop newest for smooth streaming (keep buffered frames)
+
+        if (channelReader == null || cameraCancellationToken == CancellationToken.None)
+        {
+            _logger.LogWarning($"Cannot connect to camera #{cameraId}");
             return Problem("Can not connect to camera#",
                 cameraId.ToString(),
                 StatusCodes.Status204NoContent);
+        }
 
         var qlt = quality ?? 95;
         if (qlt < 1)
             qlt = 1;
         else if (qlt > 100)
             qlt = 100;
+
+        Mat? outImage = null;
         try
         {
             Response.ContentType = "multipart/x-mixed-replace; boundary=" + Boundary;
-            while (!Request.HttpContext.RequestAborted.IsCancellationRequested
-                   && !Response.HttpContext.RequestAborted.IsCancellationRequested
-                   && !HttpContext.RequestAborted.IsCancellationRequested
-                   && !cameraCancellationToken.IsCancellationRequested)
+
+            _logger.LogInformation($"Camera #{cameraId} streaming started with Channel-based delivery (client: {Request.HttpContext.TraceIdentifier})");
+
+            // Event-driven frame streaming - NO POLLING! ✅
+            await foreach (var image in channelReader.ReadAllAsync(HttpContext.RequestAborted))
             {
-                if (imageQueue.TryDequeue(out var image))
+                if (image == null || image.IsDisposed || image.Empty())
                 {
-                    Mat? outImage;
+                    _collection.ReturnOrDisposeMat(image);
+                    continue;
+                }
+
+                try
+                {
+                    // Resize if needed
                     if (frameFormat.Width > 0
                         && frameFormat.Height > 0
                         && image.Width > frameFormat.Width
                         && image.Height > frameFormat.Height)
                     {
-                        outImage = image
-                            .Resize(new Size(frameFormat.Width, frameFormat.Height), interpolation: InterpolationFlags.Nearest);
+                        if (outImage == null || outImage.IsDisposed || outImage.Empty())
+                            outImage = new Mat();
+
+                        Cv2.Resize(image, outImage, new Size(frameFormat.Width, frameFormat.Height),
+                            interpolation: InterpolationFlags.Nearest);
                     }
                     else
+                    {
                         outImage = image;
+                    }
 
-                    if (outImage != null)
+                    if (!outImage.IsDisposed && !outImage.Empty())
                     {
                         var jpegBuffer = outImage.ToBytes(".jpg",
                             new ImageEncodingParam[]
                             {
-                                    new(ImwriteFlags.JpegOptimize, 1),
-                                    new(ImwriteFlags.JpegQuality, qlt)
+                                new(ImwriteFlags.JpegOptimize, 1),
+                                new(ImwriteFlags.JpegQuality, qlt)
                             });
+
                         var header = $"\r\n{Boundary}\r\n" +
                                      $"Content-Type: image/jpeg\r\n" +
                                      $"Content-Length: {jpegBuffer.Length}\r\n" +
                                      $"\r\n";
-                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), CancellationToken.None);
-                        await Response.Body.WriteAsync(jpegBuffer, CancellationToken.None);
-                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, CancellationToken.None);
-                    }
 
-                    outImage?.Dispose();
-                    image?.Dispose();
+                        await Response.Body.WriteAsync(Encoding.ASCII.GetBytes(header), HttpContext.RequestAborted);
+                        await Response.Body.WriteAsync(jpegBuffer, HttpContext.RequestAborted);
+                        await Response.Body.WriteAsync(new byte[] { 0x0d, 0x0a }, HttpContext.RequestAborted);
+                    }
                 }
-                else
+                catch (OperationCanceledException)
                 {
-                    await Task.Delay(10, Response.HttpContext.RequestAborted);
+                    // Client disconnected
+                    _logger.LogInformation($"Camera #{cameraId} streaming cancelled by client (client: {Request.HttpContext.TraceIdentifier})");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error streaming frame from camera #{cameraId}: {ex.Message}");
+                }
+                finally
+                {
+                    _collection.ReturnOrDisposeMat(image);
                 }
             }
+
+            _logger.LogInformation($"Camera #{cameraId} streaming stopped (client: {Request.HttpContext.TraceIdentifier})");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation($"Camera #{cameraId} streaming cancelled (client: {Request.HttpContext.TraceIdentifier})");
+        }
+        catch (ChannelClosedException)
+        {
+            _logger.LogInformation($"Camera #{cameraId} streaming channel closed (client: {Request.HttpContext.TraceIdentifier})");
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Error, ex.ToString());
+            _logger.LogError($"Exception in camera streaming: {ex}");
         }
+        finally
+        {
+            // Clean up
+            if (outImage != null && outImage != null)
+                outImage?.Dispose();
 
-        _collection.UnHookCamera(newCameraItem);
+            _collection.UnHookCamera(newCameraItem);
 
-        while (imageQueue.TryDequeue(out var image))
-            image?.Dispose();
-
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
+            _logger.LogInformation($"Camera #{cameraId} streaming cleanup complete (client: {Request.HttpContext.TraceIdentifier})");
+        }
 
         return new EmptyResult();
     }

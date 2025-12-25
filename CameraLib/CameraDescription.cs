@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace CameraLib
 {
@@ -18,7 +17,7 @@ namespace CameraLib
             Type = type;
             Path = path;
             Name = name;
-            FrameFormats = frameFormats ?? Array.Empty<FrameFormat>();
+            FrameFormats = frameFormats ?? [];
         }
     }
 }

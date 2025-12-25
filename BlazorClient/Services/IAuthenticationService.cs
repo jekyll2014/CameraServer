@@ -1,5 +1,4 @@
 ﻿using CameraServer.Shared;
-using CameraServer.Shared.DTO;
 
 namespace CameraServer.Client.Services
 {

@@ -157,12 +157,13 @@ public class Program
 
         app.UseSerilogRequestLogging();
 
+        app.UseSwagger();
+        app.UseSwaggerUI();
+
         if (app.Environment.IsDevelopment())
         {
             app.UseDeveloperExceptionPage();
             app.UseWebAssemblyDebugging();
-            app.UseSwagger();
-            app.UseSwaggerUI();
         }
         else
         {
