@@ -1,157 +1,98 @@
-#See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+# Multi-stage Dockerfile for CameraServer using OpenCvSharp official image
+# Using pre-built OpenCvSharp image with OpenCV and .NET support
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# Stage 1: Build application
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS app-builder
+
+WORKDIR /src
+
+# Copy project files
+COPY ["CameraServer/CameraServer.Server.csproj", "CameraServer/"]
+COPY ["CameraLib/CameraLib.csproj", "CameraLib/"]
+COPY ["BlazorClient/CameraServer.Client.csproj", "BlazorClient/"]
+COPY ["Shared/CameraServer.Shared.csproj", "Shared/"]
+
+# Copy NuGet configuration
+COPY nuget.config ./
+
+# Set environment variables
+ENV NUGET_FALLBACK_PACKAGES=""
+
+# Copy source code
+COPY . .
+
+# Clean NuGet caches
+RUN rm -rf /root/.nuget /root/.dotnet /root/.config /tmp/NuGetScratch 2>/dev/null || true
+
+# Build all projects
+RUN dotnet build "Shared/CameraServer.Shared.csproj" -c Release \
+    -p:DisableImplicitNuGetFallbackFolder=true \
+    -p:RestoreUseStaticGraphEvaluation=false 2>&1 | tail -5
+
+RUN dotnet build "CameraLib/CameraLib.csproj" -c Release \
+    -p:DisableImplicitNuGetFallbackFolder=true \
+    -p:RestoreUseStaticGraphEvaluation=false 2>&1 | tail -5
+
+RUN dotnet build "BlazorClient/CameraServer.Client.csproj" -c Release \
+    -p:DisableImplicitNuGetFallbackFolder=true \
+    -p:RestoreUseStaticGraphEvaluation=false 2>&1 | tail -5
+
+RUN dotnet build "CameraServer/CameraServer.Server.csproj" -c Release \
+    -p:DisableImplicitNuGetFallbackFolder=true \
+    -p:RestoreUseStaticGraphEvaluation=false 2>&1 | tail -5
+
+# Publish application
+RUN dotnet publish "CameraServer/CameraServer.Server.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+# Stage 2: Final runtime using OpenCvSharp official image
+# This image includes OpenCV 4.7.0 and .NET 6 runtime
+# We need to add .NET 8 runtime for our app
+FROM ghcr.io/shimat/opencvsharp/ubuntu22-dotnet6-opencv4.7.0:20230114 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV OPENCV_VERSION=4.8.0
+WORKDIR /app
 
-WORKDIR /
-EXPOSE 80
-EXPOSE 443
-
-# Install opencv dependencies
-RUN apt-get update && apt-get -y install --no-install-recommends \
-      apt-transport-https \
-      software-properties-common \
-      wget \
-      unzip \
-      ca-certificates \
-      build-essential \
-      cmake \
-      git \
-      libtbb-dev \
-      libatlas-base-dev \
-      libgtk2.0-dev \
-      libavcodec-dev \
-      libavformat-dev \
-      libswscale-dev \
-      libdc1394-dev \
-      libxine2-dev \
-      libv4l-dev \
-      libtheora-dev \
-      libvorbis-dev \
-      libxvidcore-dev \
-      libopencore-amrnb-dev \
-      libopencore-amrwb-dev \
-      x264 \
-      libtesseract-dev \
-      libgdiplus \
-    && apt-get -y clean \
+# Update system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Setup opencv and opencv-contrib source
-RUN wget -q https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.zip && \
-    unzip -q ${OPENCV_VERSION}.zip && \
-    rm ${OPENCV_VERSION}.zip && \
-    mv opencv-${OPENCV_VERSION} opencv && \
-    wget -q https://github.com/opencv/opencv_contrib/archive/${OPENCV_VERSION}.zip && \
-    unzip -q ${OPENCV_VERSION}.zip && \
-    rm ${OPENCV_VERSION}.zip && \
-    mv opencv_contrib-${OPENCV_VERSION} opencv_contrib
+# Install .NET 8 ASP.NET Core runtime alongside .NET 6
+# Download the ASP.NET Core runtime tarball (includes base runtime)
+RUN mkdir -p /tmp/dotnet8 && \
+    cd /tmp/dotnet8 && \
+    wget https://dotnetcli.blob.core.windows.net/dotnet/aspnetcore/Runtime/8.0.0/aspnetcore-runtime-8.0.0-linux-x64.tar.gz -q && \
+    tar -xzf aspnetcore-runtime-8.0.0-linux-x64.tar.gz -C /usr/share/dotnet && \
+    rm -rf /tmp/dotnet8
 
-# Build OpenCV
-RUN cd opencv && mkdir build && cd build && \
-    cmake \
-    -D OPENCV_EXTRA_MODULES_PATH=/opencv_contrib/modules \
-    -D CMAKE_BUILD_TYPE=RELEASE \
-    -D BUILD_SHARED_LIBS=OFF \
-    -D ENABLE_CXX11=ON \
-    -D BUILD_EXAMPLES=OFF \
-    -D BUILD_DOCS=OFF \
-    -D BUILD_PERF_TESTS=OFF \
-    -D BUILD_TESTS=OFF \
-    -D BUILD_JAVA=OFF \
-    -D BUILD_opencv_app=OFF \
-    -D BUILD_opencv_barcode=OFF \
-    -D BUILD_opencv_java_bindings_generator=OFF \
-    -D BUILD_opencv_js_bindings_generator=OFF \
-    -D BUILD_opencv_python_bindings_generator=OFF \
-    -D BUILD_opencv_python_tests=OFF \
-    -D BUILD_opencv_ts=OFF \
-    -D BUILD_opencv_js=OFF \
-    -D BUILD_opencv_bioinspired=OFF \
-    -D BUILD_opencv_ccalib=OFF \
-    -D BUILD_opencv_datasets=OFF \
-    -D BUILD_opencv_dnn_objdetect=OFF \
-    -D BUILD_opencv_dpm=OFF \
-    -D BUILD_opencv_fuzzy=OFF \
-    -D BUILD_opencv_gapi=OFF \
-    -D BUILD_opencv_intensity_transform=OFF \
-    -D BUILD_opencv_mcc=OFF \
-    -D BUILD_opencv_objc_bindings_generator=OFF \
-    -D BUILD_opencv_rapid=OFF \
-    -D BUILD_opencv_reg=OFF \
-    -D BUILD_opencv_stereo=OFF \
-    -D BUILD_opencv_structured_light=OFF \
-    -D BUILD_opencv_surface_matching=OFF \
-    -D BUILD_opencv_videostab=OFF \
-    -D BUILD_opencv_wechat_qrcode=ON \
-    -D WITH_GSTREAMER=OFF \
-    -D WITH_ADE=OFF \
-    -D OPENCV_ENABLE_NONFREE=ON \
-    .. && make -j$(nproc) && make install && ldconfig
+# Verify both .NET versions are installed
+RUN /usr/share/dotnet/dotnet --info | head -20
 
-# Download OpenCvSharp
-RUN git clone https://github.com/shimat/opencvsharp.git && cd opencvsharp
+# Verify OpenCV is available
+RUN ldconfig -p | grep -i opencv | head -5 && echo "? OpenCV libraries available"
 
-# Install the Extern lib.
-RUN mkdir /opencvsharp/make && cd /opencvsharp/make && \
-    cmake -D CMAKE_INSTALL_PREFIX=/opencvsharp/make /opencvsharp/src && \
-    make -j$(nproc) && make install && \
-    rm -rf /opencv && \
-    rm -rf /opencv_contrib && \
-    cp /opencvsharp/make/OpenCvSharpExtern/libOpenCvSharpExtern.so /usr/lib/ && \
-    mkdir /artifacts && \
-    cp /opencvsharp/make/OpenCvSharpExtern/libOpenCvSharpExtern.so /artifacts/
+# Set environment variables
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV ASPNETCORE_URLS=http://+:80
+ENV ASPNETCORE_ENVIRONMENT=Production
 
-########## Test native .so file ##########
+# Create necessary directories
+RUN mkdir -p /app/config \
+    && mkdir -p /app/Videos \
+    && mkdir -p /app/MotionRecords \
+    && mkdir -p /app/logs
 
-FROM base
-RUN apt-get update && apt-get -y install --no-install-recommends gcc
-# /usr/lib/libOpenCvSharpExtern.so
-# /usr/local/lib/libopencv_*.a
-COPY --from=builder /usr/lib /usr/lib
-#COPY --from=builder /usr/local/lib /usr/local/lib
+# Copy application from builder
+COPY --from=app-builder /app/publish/ .
 
-RUN echo "\n\
-#include <stdio.h> \n\
-int core_Mat_sizeof(); \n\
-int main(){ \n\
-  int i = core_Mat_sizeof(); \n\
-  printf(\"sizeof(Mat) = %d\", i); \n\
-  return 0; \n\
-}" > /test.c && \
-    gcc -I./ -L./ test.c -o test -lOpenCvSharpExtern && \
-    LD_LIBRARY_PATH=. ./test
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:80/healthcheck || exit 1
 
-########## Test .NET class libraries ##########
+# Expose ports
+EXPOSE 80 443
 
-FROM base
-COPY --from=builder /usr/lib /usr/lib
-# Install Build the C# part of OpenCvSharp
-RUN git clone https://github.com/shimat/opencvsharp.git && cd opencvsharp
-RUN cd /opencvsharp/src/OpenCvSharp && \
-    dotnet build -c Release -f net6.0 && \
-    cd /opencvsharp/src/OpenCvSharp.Extensions && \
-    dotnet build -c Release -f net6.0
-
-RUN dotnet test /opencvsharp/test/OpenCvSharp.Tests/OpenCvSharp.Tests.csproj -c Release -f net6.0 --runtime ubuntu.20.04-x64 --logger "trx;LogFileName=test-results.trx" < /dev/null
-
-FROM base AS build
-ARG BUILD_CONFIGURATION=Release
-WORKDIR /src
-COPY ["CameraServer/CameraServer.csproj", "CameraServer/"]
-COPY ["CameraLib/CameraLib.csproj", "CameraLib/"]
-RUN dotnet restore "./CameraServer/CameraServer.csproj"
-COPY . .
-WORKDIR "/src/CameraServer"
-RUN dotnet build "./CameraServer.csproj" -c $BUILD_CONFIGURATION -o /app/build
-
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./CameraServer.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
-
-FROM base AS final
-WORKDIR /app
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "CameraServer.dll"]
+# Run application
+ENTRYPOINT ["dotnet", "CameraServer.Server.dll"]

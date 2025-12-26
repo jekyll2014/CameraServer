@@ -42,15 +42,30 @@ public class CameraController : ControllerBase
 
     [HttpPost("RefreshCameraList")]
     [SwaggerResponse((int)HttpStatusCode.OK)]
+    [SwaggerResponse((int)HttpStatusCode.Conflict, Description = "Refresh already in progress")]
     public async Task<IActionResult> RefreshCameraList()
     {
         var user = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
         if (user == null || !_manager.HasAdminRole(user))
             return BadRequest("Only allowed for Admin");
 
+        // Check if refresh already in progress
+        if (_collection.IsRefreshing)
+        {
+            _logger.LogWarning("Camera refresh requested while refresh already in progress");
+            return Conflict("Camera refresh already in progress. Please wait...");
+        }
+
         await _collection.RefreshCameraCollection(CancellationToken.None);
 
         return Ok();
+    }
+
+    [HttpGet("GetCameraRefreshStatus")]
+    [SwaggerResponse((int)HttpStatusCode.OK, Description = "Returns IsRefreshing (bool) and CameraCount (int)")]
+    public IActionResult GetCameraRefreshStatus()
+    {
+        return Ok(new { IsRefreshing = _collection.IsRefreshing, CameraCount = _collection.Cameras.Count() });
     }
 
     [HttpGet("GetCameraList")]

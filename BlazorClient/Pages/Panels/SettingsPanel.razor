@@ -46,6 +46,403 @@
                 </MudText>
             </MudTabPanel>
 
+            <!-- Telegram Settings Tab -->
+            <MudTabPanel Text="Telegram" Icon="@Icons.Material.Filled.ChatBubble">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">Telegram Configuration</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@SaveRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Save
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_runtimeErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeErrorMessage = null)">
+                            @_runtimeErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_runtimeSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeSuccessMessage = null)">
+                            @_runtimeSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isRuntimeLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="2" Class="pa-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">Telegram Bot Settings</MudText>
+                            <MudAlert Severity="Severity.Info" Class="mb-3">
+                                Changes are applied immediately without server restart.
+                            </MudAlert>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_runtimeSettings.TelegramSettings.Token"
+                                                  Label="Bot Token"
+                                                  Variant="Variant.Outlined"
+                                                  HelperText="Your Telegram bot token"
+                                                  Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.TelegramSettings.ReconnectTimeout"
+                                                     Label="Reconnect Timeout (seconds)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.TelegramSettings.DefaultVideoTime"
+                                                     Label="Default Video Time (seconds)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.TelegramSettings.DefaultVideoQuality"
+                                                     Label="Default Video Quality (1-100)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1" Max="100"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="byte" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.TelegramSettings.DefaultImageQuality"
+                                                     Label="Default Image Quality (1-100)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1" Max="100"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="byte" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudTabPanel>
+
+            <!-- Brute Force Detection Tab -->
+            <MudTabPanel Text="Security" Icon="@Icons.Material.Filled.Security">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">Brute Force Detection</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@SaveRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Save
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_runtimeErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeErrorMessage = null)">
+                            @_runtimeErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_runtimeSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeSuccessMessage = null)">
+                            @_runtimeSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isRuntimeLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="2" Class="pa-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">Brute Force Detection Settings</MudText>
+                            <MudAlert Severity="Severity.Info" Class="mb-3">
+                                Changes are applied immediately without server restart.
+                            </MudAlert>
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.BruteForceDetectionSettings.RetriesPerMinute"
+                                                     Label="Retries Per Minute"
+                                                     Variant="Variant.Outlined"
+                                                     HelperText="Max login attempts per minute"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.BruteForceDetectionSettings.RetriesPerHour"
+                                                     Label="Retries Per Hour"
+                                                     Variant="Variant.Outlined"
+                                                     HelperText="Max login attempts per hour"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudTabPanel>
+
+            <!-- Motion Detection Settings Tab -->
+            <MudTabPanel Text="Motion Detection" Icon="@Icons.Material.Filled.VideoCameraFront">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">Motion Detection Configuration</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@SaveRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Save
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_runtimeErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeErrorMessage = null)">
+                            @_runtimeErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_runtimeSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeSuccessMessage = null)">
+                            @_runtimeSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isRuntimeLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="2" Class="pa-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">Storage Path</MudText>
+                            <MudAlert Severity="Severity.Info" Class="mb-3">
+                                Changes are applied immediately without server restart.
+                            </MudAlert>
+                            <MudTextField @bind-Value="_runtimeSettings.MotionDetectionSettings.StoragePath"
+                                          Label="Storage Path"
+                                          Variant="Variant.Outlined"
+                                          HelperText="Directory for motion detection recordings"
+                                          Disabled="@_isRuntimeLoading"
+                                          Class="mb-4" />
+
+                            <MudText Typo="Typo.h6" Class="mb-3 mt-6">Detection Parameters</MudText>
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.Width"
+                                                     Label="Detection Width (pixels)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.Height"
+                                                     Label="Detection Height (pixels)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.DetectorDelayMs"
+                                                     Label="Detector Delay (ms)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.NoiseThreshold"
+                                                     Label="Noise Threshold (0-255)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="0" Max="255"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="byte" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.ChangeLimit"
+                                                     Label="Change Limit (%)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="0" Max="100"
+                                                     Step="0.1"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="double" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.KeepImageBuffer"
+                                                     Label="Image Buffer Size"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.TextNotificationDelay"
+                                                     Label="Text Notification Delay (s)"
+                                                     Variant="Variant.Outlined"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.ImageNotificationDelay"
+                                                     Label="Image Notification Delay (s)"
+                                                     Variant="Variant.Outlined"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.VideoNotificationDelay"
+                                                     Label="Video Notification Delay (s)"
+                                                     Variant="Variant.Outlined"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudTabPanel>
+
+            <!-- Video Recording Settings Tab -->
+            <MudTabPanel Text="Video Recording" Icon="@Icons.Material.Filled.Videocam">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">Video Recording Configuration</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@SaveRuntimeSettings"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isRuntimeLoading">
+                                Save
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_runtimeErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeErrorMessage = null)">
+                            @_runtimeErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_runtimeSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _runtimeSuccessMessage = null)">
+                            @_runtimeSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isRuntimeLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="2" Class="pa-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">Recording Settings</MudText>
+                            <MudAlert Severity="Severity.Info" Class="mb-3">
+                                Changes are applied immediately without server restart.
+                            </MudAlert>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_runtimeSettings.VideoRecordingSettings.StoragePath"
+                                                  Label="Storage Path"
+                                                  Variant="Variant.Outlined"
+                                                  HelperText="Directory for video recordings"
+                                                  Disabled="@_isRuntimeLoading" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.VideoRecordingSettings.VideoFileLengthSeconds"
+                                                     Label="File Length (seconds)"
+                                                     Variant="Variant.Outlined"
+                                                     HelperText="Duration of each video file (10-86400)"
+                                                     Min="10" Max="86400"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="uint" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_runtimeSettings.VideoRecordingSettings.DefaultVideoQuality"
+                                                     Label="Default Quality (1-100)"
+                                                     Variant="Variant.Outlined"
+                                                     Min="1" Max="100"
+                                                     Disabled="@_isRuntimeLoading"
+                                                     T="byte" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
+            </MudTabPanel>
+
             <!-- System Settings Tab -->
             <MudTabPanel Text="System Settings" Icon="@Icons.Material.Filled.Settings">
                 <MudStack Spacing="3">
@@ -178,9 +575,13 @@
 
 @code {
     private SystemSettingsDto _systemSettings = new();
+    private RuntimeSettingsDto _runtimeSettings = new();
     private bool _isSystemLoading = false;
+    private bool _isRuntimeLoading = false;
     private string? _systemErrorMessage;
     private string? _systemSuccessMessage;
+    private string? _runtimeErrorMessage;
+    private string? _runtimeSuccessMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -190,6 +591,7 @@
         if (IsAdmin())
         {
             await RefreshSystemSettings();
+            await RefreshRuntimeSettings();
         }
     }
 
@@ -232,6 +634,95 @@
         finally
         {
             _isSystemLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshRuntimeSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetRuntimeSettings");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<RuntimeSettingsDto>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _runtimeSettings = apiResponse.Data ?? new RuntimeSettingsDto();
+                }
+                else
+                {
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load runtime settings";
+                }
+            }
+            else
+            {
+                _runtimeErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing runtime settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveRuntimeSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        _runtimeSuccessMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var updateDto = new RuntimeSettingsUpdateDto
+            {
+                ExternalHostUrl = _runtimeSettings.ExternalHostUrl,
+                CookieExpireTimeMinutes = _runtimeSettings.CookieExpireTimeMinutes,
+                AllowBasicAuthentication = _runtimeSettings.AllowBasicAuthentication,
+                TelegramSettings = _runtimeSettings.TelegramSettings,
+                BruteForceDetectionSettings = _runtimeSettings.BruteForceDetectionSettings,
+                MotionDetectionSettings = _runtimeSettings.MotionDetectionSettings,
+                VideoRecordingSettings = _runtimeSettings.VideoRecordingSettings
+            };
+
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateRuntimeSettings", updateDto);
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _runtimeSuccessMessage = "Runtime settings saved successfully!";
+                    await RefreshRuntimeSettings();
+                }
+                else
+                {
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to save settings";
+                }
+            }
+            else
+            {
+                _runtimeErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving runtime settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
             StateHasChanged();
         }
     }
@@ -287,6 +778,7 @@
             if (IsAdmin())
             {
                 await RefreshSystemSettings();
+                await RefreshRuntimeSettings();
                 StateHasChanged();
             }
         }
@@ -299,6 +791,7 @@
     private void OnLogout()
     {
         _systemSettings = new SystemSettingsDto();
+        _runtimeSettings = new RuntimeSettingsDto();
         StateHasChanged();
     }
 

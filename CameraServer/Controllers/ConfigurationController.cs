@@ -1,7 +1,13 @@
 using CameraLib;
+
 using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
+using CameraServer.Server.Services.AntiBruteForce;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.Configuration;
+using CameraServer.Server.Services.MotionDetection;
+using CameraServer.Server.Services.Telegram;
+using CameraServer.Server.Services.VideoRecording;
 using CameraServer.Shared.DTO;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -24,6 +30,7 @@ public class ConfigurationController : ControllerBase
 {
     private readonly IUserManager _userManager;
     private readonly CameraHubService _cameraHub;
+    private readonly IRuntimeConfigurationService _runtimeConfig;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ConfigurationController> _logger;
     private readonly Config<CameraSettings> _cameraConfig;
@@ -32,11 +39,13 @@ public class ConfigurationController : ControllerBase
     public ConfigurationController(
         IUserManager userManager,
         CameraHubService cameraHub,
+        IRuntimeConfigurationService runtimeConfig,
         IConfiguration configuration,
         ILogger<ConfigurationController> logger)
     {
         _userManager = userManager;
         _cameraHub = cameraHub;
+        _runtimeConfig = runtimeConfig;
         _configuration = configuration;
         _logger = logger;
 
@@ -133,7 +142,7 @@ public class ConfigurationController : ControllerBase
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
             var settings = _configuration.GetSection("CameraSettings").Get<CameraSettings>() ?? new CameraSettings();
-            
+
             // Check if camera already exists
             if (settings.CustomCameras.Any(c => c.Path == camera.Path))
                 return BadRequest(ApiResponse<bool>.ErrorResponse("Camera with this path already exists"));
@@ -389,6 +398,164 @@ public class ConfigurationController : ControllerBase
         {
             _logger.LogError(ex, "Error retrieving system settings");
             return StatusCode(500, ApiResponse<SystemSettingsDto>.ErrorResponse($"Failed to retrieve system settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Runtime Configuration
+
+    [HttpGet("GetRuntimeSettings")]
+    [SwaggerOperation(
+        Summary = "Get all runtime configuration settings",
+        Description = "Returns all settings that can be updated without server restart",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<RuntimeSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetRuntimeSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can access runtime settings");
+
+            var telegramSettings = _runtimeConfig.GetTelegramSettings();
+            var bruteForceSettings = _runtimeConfig.GetBruteForceDetectionSettings();
+            var motionDetectionSettings = _runtimeConfig.GetMotionDetectionSettings();
+            var videoRecordingSettings = _runtimeConfig.GetVideoRecordingSettings();
+
+            var settings = new RuntimeSettingsDto
+            {
+                ExternalHostUrl = _runtimeConfig.GetExternalHostUrl(),
+                CookieExpireTimeMinutes = _runtimeConfig.GetCookieExpireTimeMinutes(),
+                AllowBasicAuthentication = _runtimeConfig.GetAllowBasicAuthentication(),
+                TelegramSettings = new TelegramSettingsDto
+                {
+                    Token = telegramSettings.Token,
+                    ReconnectTimeout = telegramSettings.ReconnectTimeout,
+                    DefaultVideoTime = telegramSettings.DefaultVideoTime,
+                    DefaultVideoQuality = telegramSettings.DefaultVideoQuality,
+                    DefaultImageQuality = telegramSettings.DefaultImageQuality
+                },
+                BruteForceDetectionSettings = new BruteForceDetectionSettingsDto
+                {
+                    RetriesPerMinute = bruteForceSettings.RetriesPerMinute,
+                    RetriesPerHour = bruteForceSettings.RetriesPerHour
+                },
+                MotionDetectionSettings = new MotionDetectionRuntimeSettingsDto
+                {
+                    StoragePath = motionDetectionSettings.StoragePath,
+                    DefaultMotionDetectParameters = motionDetectionSettings.DefaultMotionDetectParameters
+                },
+                VideoRecordingSettings = new VideoRecordingRuntimeSettingsDto
+                {
+                    StoragePath = videoRecordingSettings.StoragePath,
+                    VideoFileLengthSeconds = videoRecordingSettings.VideoFileLengthSeconds,
+                    DefaultVideoQuality = videoRecordingSettings.DefaultVideoQuality
+                }
+            };
+
+            return Ok(ApiResponse<RuntimeSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving runtime settings");
+            return StatusCode(500, ApiResponse<RuntimeSettingsDto>.ErrorResponse($"Failed to retrieve runtime settings: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("UpdateRuntimeSettings")]
+    [SwaggerOperation(
+        Summary = "Update runtime configuration settings",
+        Description = "Updates settings that take effect immediately without server restart",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult UpdateRuntimeSettings([FromBody] RuntimeSettingsUpdateDto updateDto)
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can modify runtime settings");
+
+            ArgumentNullException.ThrowIfNull(updateDto);
+
+            // Validate and update each setting
+            try
+            {
+                if (!string.IsNullOrEmpty(updateDto.ExternalHostUrl))
+                    _runtimeConfig.UpdateExternalHostUrl(updateDto.ExternalHostUrl);
+
+                if (updateDto.CookieExpireTimeMinutes.HasValue)
+                    _runtimeConfig.UpdateCookieExpireTimeMinutes(updateDto.CookieExpireTimeMinutes.Value);
+
+                if (updateDto.AllowBasicAuthentication.HasValue)
+                    _runtimeConfig.UpdateAllowBasicAuthentication(updateDto.AllowBasicAuthentication.Value);
+
+                if (updateDto.TelegramSettings != null)
+                {
+                    var telegramSettings = new TelegeramSettings
+                    {
+                        Token = updateDto.TelegramSettings.Token,
+                        ReconnectTimeout = updateDto.TelegramSettings.ReconnectTimeout,
+                        DefaultVideoTime = updateDto.TelegramSettings.DefaultVideoTime,
+                        DefaultVideoQuality = updateDto.TelegramSettings.DefaultVideoQuality,
+                        DefaultImageQuality = updateDto.TelegramSettings.DefaultImageQuality
+                    };
+                    _runtimeConfig.UpdateTelegramSettings(telegramSettings);
+                }
+
+                if (updateDto.BruteForceDetectionSettings != null)
+                {
+                    var bruteForceSettings = new BruteForceDetectionSettings
+                    {
+                        RetriesPerMinute = updateDto.BruteForceDetectionSettings.RetriesPerMinute,
+                        RetriesPerHour = updateDto.BruteForceDetectionSettings.RetriesPerHour
+                    };
+                    _runtimeConfig.UpdateBruteForceDetectionSettings(bruteForceSettings);
+                }
+
+                if (updateDto.MotionDetectionSettings != null)
+                {
+                    var motionDetectionSettings = new MotionDetectionSettings
+                    {
+                        StoragePath = updateDto.MotionDetectionSettings.StoragePath,
+                        DefaultMotionDetectParameters = updateDto.MotionDetectionSettings.DefaultMotionDetectParameters,
+                        MotionDetectionCameras = new List<MotionDetectionCameraSettingDto>()
+                    };
+                    _runtimeConfig.UpdateMotionDetectionSettings(motionDetectionSettings);
+                }
+
+                if (updateDto.VideoRecordingSettings != null)
+                {
+                    var videoRecordingSettings = new RecorderSettings
+                    {
+                        StoragePath = updateDto.VideoRecordingSettings.StoragePath,
+                        VideoFileLengthSeconds = updateDto.VideoRecordingSettings.VideoFileLengthSeconds,
+                        DefaultVideoQuality = updateDto.VideoRecordingSettings.DefaultVideoQuality,
+                        RecordCameras = new List<RecordCameraSettingDto>()
+                    };
+                    _runtimeConfig.UpdateVideoRecordingSettings(videoRecordingSettings);
+                }
+
+                // Persist changes
+                _runtimeConfig.PersistConfiguration();
+
+                _logger.LogInformation("Runtime settings updated and persisted");
+                return Ok(ApiResponse<bool>.SuccessResponse(true));
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating runtime settings");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update runtime settings: {ex.Message}"));
         }
     }
 

@@ -45,7 +45,19 @@ public class CameraHubService : IDisposable
     private readonly MatPoolManager _matPoolManager;
     private bool _disposedValue;
 
+    // Semaphore for camera refresh locking (ensure only one refresh at a time)
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+
+    // Track active refresh operation
+    private bool _isRefreshing = false;
+
     public IEnumerable<ServerCamera> Cameras => _cameraRegistry.Values.Select(cs => cs.Camera);
+
+    /// <summary>
+    /// Returns true if camera refresh is currently in progress.
+    /// Clients should check this before making assumptions about camera list stability.
+    /// </summary>
+    public bool IsRefreshing => _isRefreshing;
 
     // Channel-only architecture: Single unified camera registry
     private readonly ConcurrentDictionary<int, CameraState> _cameraRegistry = new();
@@ -181,162 +193,185 @@ public class CameraHubService : IDisposable
 
     #endregion
 
+    /// <summary>
+    /// Refreshes the camera collection with exclusive locking to prevent concurrent refresh operations.
+    /// Only one refresh can be in progress at a time. Subsequent requests will wait or return early.
+    /// </summary>
     public async Task RefreshCameraCollection(CancellationToken cancellationToken)
     {
-        // discover IP cameras in the background
-        Task<List<CameraDescription>>? t = null;
-        if (_settings.AutoSearchIp)
+        // Try to acquire lock (non-blocking to prevent stalling UI)
+        if (!await _refreshLock.WaitAsync(0, cancellationToken))
         {
-            _logger.Log(LogLevel.Information, "Detect IP cameras started...");
-            t = IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
+            _logger.LogWarning("Camera refresh already in progress. Request ignored.");
+            return;
         }
 
-        // remove idle cameras from registry
-        var cameras = _cameraRegistry.Values.ToArray();
-        foreach (var cameraState in cameras)
+        try
         {
-            if (!cameraState.Camera.CameraStream.IsRunning && !cameraState.HasSubscribers)
-            {
-                _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
-            }
-        }
+            _isRefreshing = true;
+            _logger.LogInformation("🔒 Camera refresh started (exclusive lock acquired)");
 
-        // add custom cameras
-        _logger.Log(LogLevel.Information, "Adding predefined cameras...");
-        foreach (var c in _settings.CustomCameras)
-        {
-            _logger.Log(LogLevel.Information, $"{c.Name}");
+            // discover IP cameras in the background
+            Task<List<CameraDescription>>? t = null;
+            if (_settings.AutoSearchIp)
+            {
+                _logger.Log(LogLevel.Information, "Detect IP cameras started...");
+                t = IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
+            }
 
-            ServerCamera? serverCamera = null;
-            if (c.Type == CameraType.IP)
+            // remove idle cameras from registry
+            var cameras = _cameraRegistry.Values.ToArray();
+            foreach (var cameraState in cameras)
             {
-                serverCamera = new ServerCamera(
-                    new IpCamera(
-                        path: c.Path,
-                        name: c.Name,
-                        authenticationType: c.AuthenticationType,
-                        login: c.Login,
-                        password: c.Password,
-                        forceCameraConnect: _settings.ForceCameraConnect,
-                        logger: _logger),
-                    c.AllowedRoles,
-                    true);
+                if (!cameraState.Camera.CameraStream.IsRunning && !cameraState.HasSubscribers)
+                {
+                    _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
+                }
             }
-            else if (c.Type == CameraType.MJPEG)
+
+            // add custom cameras
+            _logger.Log(LogLevel.Information, "Adding predefined cameras...");
+            foreach (var c in _settings.CustomCameras)
             {
-                serverCamera = new ServerCamera(
-                    new MjpegCamera(
-                        path: c.Path,
-                        name: c.Name,
-                        authenticationType: c.AuthenticationType,
-                        login: c.Login,
-                        password: c.Password,
-                        discoveryTimeout: _settings.DiscoveryTimeOut,
-                        forceCameraConnect: _settings.ForceCameraConnect),
-                    c.AllowedRoles,
-                    true);
-            }
-            else if (c.Type == CameraType.USB_FC)
-            {
-                try
+                _logger.Log(LogLevel.Information, $"{c.Name}");
+
+                ServerCamera? serverCamera = null;
+                if (c.Type == CameraType.IP)
                 {
                     serverCamera = new ServerCamera(
-                        new UsbCameraFc(c.Path, c.Name),
+                        new IpCamera(
+                            path: c.Path,
+                            name: c.Name,
+                            authenticationType: c.AuthenticationType,
+                            login: c.Login,
+                            password: c.Password,
+                            forceCameraConnect: _settings.ForceCameraConnect,
+                            logger: _logger),
                         c.AllowedRoles,
                         true);
                 }
-                catch (Exception ex)
+                else if (c.Type == CameraType.MJPEG)
                 {
-                    _logger.Log(LogLevel.Error, ex.ToString());
+                    serverCamera = new ServerCamera(
+                        new MjpegCamera(
+                            path: c.Path,
+                            name: c.Name,
+                            authenticationType: c.AuthenticationType,
+                            login: c.Login,
+                            password: c.Password,
+                            discoveryTimeout: _settings.DiscoveryTimeOut,
+                            forceCameraConnect: _settings.ForceCameraConnect),
+                        c.AllowedRoles,
+                        true);
+                }
+                else if (c.Type == CameraType.USB_FC)
+                {
+                    try
+                    {
+                        serverCamera = new ServerCamera(
+                            new UsbCameraFc(c.Path, c.Name),
+                            c.AllowedRoles,
+                            true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Log(LogLevel.Error, ex.ToString());
+                        continue;
+                    }
+                }
+                else
                     continue;
+
+                if (serverCamera != null)
+                {
+                    serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
+                    // Use a temporary ID that will be reassigned later
+                    var tempId = _cameraRegistry.Count;
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
                 }
             }
-            else
-                continue;
 
-            if (serverCamera != null)
+            if (_settings.AutoSearchUsbFC)
             {
-                serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
-                // Use a temporary ID that will be reassigned later
-                var tempId = _cameraRegistry.Count;
-                _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
-            }
-        }
+                _logger.Log(LogLevel.Information, "Autodetecting USB_FC cameras...");
+                var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
+                foreach (var c in usbFcCameras)
+                    _logger.Log(LogLevel.Information, $"USB_FC-Camera: {c.Name} - [{c.Path}]");
 
-        if (_settings.AutoSearchUsbFC)
+                // add newly discovered cameras
+                foreach (var c in usbFcCameras
+                             .Where(c => !_cameraRegistry.Values
+                                 .Any(cs => cs.Camera.CameraStream.Description.Path == c.Path)))
+                {
+                    var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _settings.DefaultAllowedRoles);
+                    serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
+                    var tempId = _cameraRegistry.Count;
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
+                }
+
+                // remove cameras not found by search (to not lose connection if any clients are connected)
+                foreach (var cameraState in _cameraRegistry.Values
+                             .Where(cs => cs.Camera.CameraStream is UsbCameraFc && !cs.Camera.Custom)
+                             .Where(cs => !usbFcCameras
+                                 .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
+                {
+                    if (!cameraState.HasSubscribers)
+                        _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
+                }
+            }
+
+            if (_settings.AutoSearchIp && t != null)
+            {
+                var ipCameras = await t;
+                _logger.Log(LogLevel.Information, "Detect IP cameras stopped...");
+
+                _logger.Log(LogLevel.Information, "Autodetecting IP cameras...");
+                foreach (var c in ipCameras)
+                    _logger.Log(LogLevel.Information, $"IP-Camera: {c.Name} - [{c.Path}]");
+
+                // add newly discovered cameras
+                foreach (var c in ipCameras
+                             .Where(c => !_cameraRegistry.Values
+                                 .Any(cs => cs.Camera.CameraStream.Description.Path == c.Path)))
+                {
+                    _logger.Log(LogLevel.Information, $"Adding IP-Camera: {c.Name} - [{c.Path}]");
+                    var serverCamera = new ServerCamera(new IpCamera(c.Path, logger: _logger), _settings.DefaultAllowedRoles);
+                    serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
+                    var tempId = _cameraRegistry.Count;
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
+                }
+
+                // remove cameras not found by search (to not lose connection if any clients are connected)
+                foreach (var cameraState in _cameraRegistry.Values
+                             .Where(cs => cs.Camera.CameraStream is IpCamera && !cs.Camera.Custom)
+                             .Where(cs => !ipCameras
+                                 .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
+                {
+                    if (!cameraState.HasSubscribers)
+                        _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
+                }
+            }
+
+            // Reassign sequential IDs
+            var n = 0;
+            var orderedCameras = _cameraRegistry.OrderBy(kvp => kvp.Key).ToList();
+            _cameraRegistry.Clear();
+
+            foreach (var (_, cameraState) in orderedCameras)
+            {
+                cameraState.Camera.Id = n;
+                _cameraRegistry.TryAdd(n, cameraState);
+                n++;
+            }
+
+            _logger.Log(LogLevel.Information, $"✅ Camera refresh complete. Total cameras: {_cameraRegistry.Count}");
+        }
+        finally
         {
-            _logger.Log(LogLevel.Information, "Autodetecting USB_FC cameras...");
-            var usbFcCameras = UsbCameraFc.DiscoverUsbCameras();
-            foreach (var c in usbFcCameras)
-                _logger.Log(LogLevel.Information, $"USB_FC-Camera: {c.Name} - [{c.Path}]");
-
-            // add newly discovered cameras
-            foreach (var c in usbFcCameras
-                         .Where(c => !_cameraRegistry.Values
-                             .Any(cs => cs.Camera.CameraStream.Description.Path == c.Path)))
-            {
-                var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _settings.DefaultAllowedRoles);
-                serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
-                var tempId = _cameraRegistry.Count;
-                _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
-            }
-
-            // remove cameras not found by search (to not lose connection if any clients are connected)
-            foreach (var cameraState in _cameraRegistry.Values
-                         .Where(cs => cs.Camera.CameraStream is UsbCameraFc && !cs.Camera.Custom)
-                         .Where(cs => !usbFcCameras
-                             .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
-            {
-                if (!cameraState.HasSubscribers)
-                    _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
-            }
+            _isRefreshing = false;
+            _refreshLock.Release();
+            _logger.LogInformation("🔓 Camera refresh lock released");
         }
-
-        if (_settings.AutoSearchIp && t != null)
-        {
-            var ipCameras = await t;
-            _logger.Log(LogLevel.Information, "Detect IP cameras stopped...");
-
-            _logger.Log(LogLevel.Information, "Autodetecting IP cameras...");
-            foreach (var c in ipCameras)
-                _logger.Log(LogLevel.Information, $"IP-Camera: {c.Name} - [{c.Path}]");
-
-            // add newly discovered cameras
-            foreach (var c in ipCameras
-                         .Where(c => !_cameraRegistry.Values
-                             .Any(cs => cs.Camera.CameraStream.Description.Path == c.Path)))
-            {
-                _logger.Log(LogLevel.Information, $"Adding IP-Camera: {c.Name} - [{c.Path}]");
-                var serverCamera = new ServerCamera(new IpCamera(c.Path, logger: _logger), _settings.DefaultAllowedRoles);
-                serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
-                var tempId = _cameraRegistry.Count;
-                _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
-            }
-
-            // remove cameras not found by search (to not lose connection if any clients are connected)
-            foreach (var cameraState in _cameraRegistry.Values
-                         .Where(cs => cs.Camera.CameraStream is IpCamera && !cs.Camera.Custom)
-                         .Where(cs => !ipCameras
-                             .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
-            {
-                if (!cameraState.HasSubscribers)
-                    _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
-            }
-        }
-
-        // Reassign sequential IDs
-        var n = 0;
-        var orderedCameras = _cameraRegistry.OrderBy(kvp => kvp.Key).ToList();
-        _cameraRegistry.Clear();
-
-        foreach (var (_, cameraState) in orderedCameras)
-        {
-            cameraState.Camera.Id = n;
-            _cameraRegistry.TryAdd(n, cameraState);
-            n++;
-        }
-
-        _logger.Log(LogLevel.Information, $"Camera refresh complete. Total cameras: {_cameraRegistry.Count}");
     }
 
     public ServerCamera GetCamera(int cameraId, ICameraUser currentUser)
@@ -511,6 +546,9 @@ public class CameraHubService : IDisposable
                 _logger.LogInformation($"Completed {totalChannels} channels across {_cameraRegistry.Count} cameras");
 
                 _matPoolManager?.Dispose();
+
+                // Dispose semaphore
+                _refreshLock?.Dispose();
             }
 
             _disposedValue = true;

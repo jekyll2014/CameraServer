@@ -2,6 +2,7 @@ using CameraServer.Server.Auth;
 using CameraServer.Server.Auth.BasicAuth;
 using CameraServer.Server.Services.AntiBruteForce;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.Configuration;
 using CameraServer.Server.Services.MotionDetection;
 using CameraServer.Server.Services.Telegram;
 using CameraServer.Server.Services.VideoRecording;
@@ -92,7 +93,7 @@ public class Program
                 if (PortInUse(serverPort))
                 {
                     _logger?.Error($"Port in use. Trying to release...");
-                    
+
                     // Only attempt Windows-specific port cleanup on Windows
                     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
@@ -120,6 +121,7 @@ public class Program
         builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
         builder.Services.AddTransient<IUserManager, UserManager>();
         builder.Services.AddSingleton<CameraHubService, CameraHubService>();
+        builder.Services.AddSingleton<IRuntimeConfigurationService, RuntimeConfigurationService>();
         builder.Services.AddSingleton<VideoRecorderService>();
         builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
         builder.Services.AddSingleton<TelegramService>();

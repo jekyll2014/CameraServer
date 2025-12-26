@@ -314,16 +314,6 @@
             _currentUserState.Cameras = await GetCamerasAsync();
 
         await RefreshRecordings();
-
-        // Auto-refresh every 5 seconds
-        _refreshTimer = new System.Threading.Timer(async _ =>
-        {
-            await InvokeAsync(async () =>
-            {
-                await RefreshRecordings();
-                StateHasChanged();
-            });
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task RefreshRecordings()

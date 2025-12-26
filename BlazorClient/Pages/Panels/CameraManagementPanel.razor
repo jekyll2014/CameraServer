@@ -43,6 +43,13 @@
             @if (_isLoading)
             {
                 <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                <MudAlert Severity="Severity.Info" Class="mt-3">
+                    <MudText Typo="Typo.body2">
+                        <strong>⏳ Refreshing camera list...</strong> 
+                        This may take a few moments while cameras are being discovered.
+                        <strong>All interactions are temporarily disabled.</strong>
+                    </MudText>
+                </MudAlert>
             }
             else if (_errorMessage != null)
             {
@@ -60,10 +67,11 @@
                                      ReadOnly="true"
                                      Outlined="true"
                                      Dense="true"
-                                     Hover="true"
+                                     Hover="@(!_isLoading)"
                                      Striped="true"
                                      RowClick="@ClickedCameraRow"
-                                     RowStyleFunc="@CameraRowStyleFunc">
+                                     RowStyleFunc="@CameraRowStyleFunc"
+                                     Style="@(_isLoading ? "opacity: 0.6; pointer-events: none;" : "")">
                             <NoRecordsContent>
                                 <MudText Color="Color.Info">No cameras found.</MudText>
                             </NoRecordsContent>
@@ -101,11 +109,13 @@
                                                            Color="Color.Primary"
                                                            Size="Size.Small"
                                                            OnClick="@(() => ViewCamera(context.Item))"
+                                                           Disabled="@_isLoading"
                                                            Title="View Stream" />
                                             <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
                                                            Color="Color.Secondary"
                                                            Size="Size.Small"
                                                            Href="@context.Item.Url"
+                                                           Disabled="@_isLoading"
                                                            Target="_blank"
                                                            Title="Open in New Tab" />
                                         </MudStack>
@@ -159,7 +169,24 @@
         </MudPaper>
 
         <!-- Camera Details Section -->
-        @if (_currentUserState.SelectedCamera != null)
+        @if (_isLoading)
+        {
+            <MudPaper Elevation="2" Class="pa-3">
+                <MudAlert Severity="Severity.Warning">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.body2">
+                            <strong>Camera Refresh in Progress</strong>
+                        </MudText>
+                        <MudText Typo="Typo.caption">
+                            Camera information is being updated. Selected camera details are temporarily hidden.
+                            Please wait for the refresh to complete.
+                        </MudText>
+                        <MudProgressLinear Color="Color.Warning" Indeterminate="true" Class="mt-2" />
+                    </MudStack>
+                </MudAlert>
+            </MudPaper>
+        }
+        else if (_currentUserState.SelectedCamera != null)
         {
             <MudPaper Elevation="2" Class="pa-3">
                 <MudText Typo="Typo.h6" Class="mb-3">Camera Details</MudText>
@@ -204,7 +231,8 @@
                                            Variant="Variant.Filled"
                                            StartIcon="@Icons.Material.Filled.ArrowUpward"
                                            Size="Size.Small"
-                                           Color="Color.Primary">
+                                           Color="Color.Primary"
+                                           Disabled="@_isLoading">
                                     Up
                                 </MudButton>
 
@@ -213,7 +241,8 @@
                                                Variant="Variant.Filled"
                                                StartIcon="@Icons.Material.Filled.ArrowBack"
                                                Size="Size.Small"
-                                               Color="Color.Primary">
+                                               Color="Color.Primary"
+                                               Disabled="@_isLoading">
                                         Left
                                     </MudButton>
 
@@ -223,7 +252,8 @@
                                                Variant="Variant.Filled"
                                                StartIcon="@Icons.Material.Filled.ArrowForward"
                                                Size="Size.Small"
-                                               Color="Color.Primary">
+                                               Color="Color.Primary"
+                                               Disabled="@_isLoading">
                                         Right
                                     </MudButton>
                                 </MudStack>
@@ -232,7 +262,8 @@
                                            Variant="Variant.Filled"
                                            StartIcon="@Icons.Material.Filled.ArrowDownward"
                                            Size="Size.Small"
-                                           Color="Color.Primary">
+                                           Color="Color.Primary"
+                                           Disabled="@_isLoading">
                                     Down
                                 </MudButton>
                             </MudStack>
@@ -244,7 +275,8 @@
                                            Variant="Variant.Filled"
                                            StartIcon="@Icons.Material.Filled.ZoomIn"
                                            Size="Size.Small"
-                                           Color="Color.Secondary">
+                                           Color="Color.Secondary"
+                                           Disabled="@_isLoading">
                                     Zoom In
                                 </MudButton>
 
@@ -252,7 +284,8 @@
                                            Variant="Variant.Filled"
                                            StartIcon="@Icons.Material.Filled.ZoomOut"
                                            Size="Size.Small"
-                                           Color="Color.Secondary">
+                                           Color="Color.Secondary"
+                                           Disabled="@_isLoading">
                                     Zoom Out
                                 </MudButton>
                             </MudStack>
@@ -268,7 +301,8 @@
                         <MudButton OnClick="@ReCheckPtz"
                                    Variant="Variant.Filled"
                                    StartIcon="@Icons.Material.Filled.Refresh"
-                                   Size="Size.Small">
+                                   Size="Size.Small"
+                                   Disabled="@_isLoading">
                             Re-check PTZ
                         </MudButton>
                     </MudStack>
@@ -283,14 +317,54 @@
     private string? _errorMessage;
     private bool _showVideoStream = false;
     private FrameFormatDto? _selectedFormat = null;
+    private string? _selectedCameraPath = null; // Use Path instead of Id (stable identifier)
 
     protected override async Task OnInitializedAsync()
     {
         _authenticationService.OnLogIn += OnLogin;
         _authenticationService.OnLogOut += OnLogout;
 
+        // Check if server is currently refreshing (handles page refresh during refresh)
+        await CheckAndWaitForRefreshCompletion();
+
         if (_currentUserState.Cameras == null)
             await LoadCameras();
+    }
+
+    /// <summary>
+    /// Checks server refresh status on component initialization.
+    /// If refresh is in progress, waits for completion (handles page refresh scenario).
+    /// </summary>
+    private async Task CheckAndWaitForRefreshCompletion()
+    {
+        try
+        {
+            // Check current server status
+            var statusResponse = await _http.GetAsync("/Camera/GetCameraRefreshStatus");
+            if (statusResponse.IsSuccessStatusCode)
+            {
+                var statusJson = await statusResponse.Content.ReadAsStringAsync();
+                var statusData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(statusJson);
+                
+                bool isRefreshing = statusData.GetProperty("isRefreshing").GetBoolean();
+                
+                // If refresh is in progress, wait for it
+                if (isRefreshing)
+                {
+                    _isLoading = true;
+                    _errorMessage = null;
+                    StateHasChanged();
+                    
+                    Logger.LogInformation("Server refresh detected on page load, waiting for completion...");
+                    await PollRefreshStatus();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently handle - might not be able to reach status endpoint on init
+            Logger.LogDebug($"Error checking refresh status on init: {ex.Message}");
+        }
     }
 
     private async Task LoadCameras()
@@ -301,7 +375,20 @@
 
         try
         {
+            var previousSelectedPath = _currentUserState.SelectedCamera?.Path;
+
             _currentUserState.Cameras = await _http.GetFromJsonAsync<List<CameraDto>>("/Camera/GetCameraList");
+
+            // Restore selected camera by matching Path (stable identifier)
+            if (!string.IsNullOrEmpty(previousSelectedPath) && _currentUserState.Cameras != null)
+            {
+                _currentUserState.SelectedCamera = _currentUserState.Cameras
+                    .FirstOrDefault(c => c.Path == previousSelectedPath);
+            }
+            else
+            {
+                _currentUserState.SelectedCamera = null;
+            }
         }
         catch (Exception ex)
         {
@@ -317,14 +404,20 @@
 
     private void ClickedCameraRow(DataGridRowClickEventArgs<CameraDto> args)
     {
+        if (_isLoading) return; // Block interaction during refresh
+
         _currentUserState.SelectedCamera = args.Item;
+        _selectedCameraPath = args.Item.Path; // Store Path instead of Id
         _selectedFormat = null; // Reset format when changing camera
         StateHasChanged();
     }
 
     private void ViewCamera(CameraDto camera)
     {
+        if (_isLoading) return; // Block interaction during refresh
+
         _currentUserState.SelectedCamera = camera;
+        _selectedCameraPath = camera.Path;
         _showVideoStream = true;
         _selectedFormat = null;
         StateHasChanged();
@@ -339,12 +432,14 @@
         var height = _selectedFormat?.Height ?? 0;
         var format = _selectedFormat?.Format ?? "";
 
+        // Use camera path as identifier instead of volatile Id
         return $"/Camera/GetVideoContent?cameraId={_currentUserState.SelectedCamera.Id}&xResolution={width}&yResolution={height}&format={format}&quality=90";
     }
 
     private async Task ClickedRefresh()
     {
         _isLoading = true;
+        _errorMessage = null;
         StateHasChanged();
 
         try
@@ -352,22 +447,78 @@
             var response = await _http.PostAsync("/Camera/RefreshCameraList", null);
             if (response.IsSuccessStatusCode)
             {
-                _currentUserState.Cameras = null;
-                _currentUserState.SelectedCamera = null;
-                await LoadCameras();
+                // Refresh command accepted - now poll for completion
+                await PollRefreshStatus();
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                // Refresh already in progress
+                _errorMessage = "Camera refresh is already in progress. Please wait for it to complete.";
+                _isLoading = false;
+                StateHasChanged();
             }
             else
             {
                 _errorMessage = $"Failed to refresh: {response.StatusCode}";
+                _isLoading = false;
+                StateHasChanged();
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error refreshing camera list");
             _errorMessage = $"Error: {ex.Message}";
+            _isLoading = false;
+            StateHasChanged();
         }
-        finally
+    }
+
+    /// <summary>
+    /// Polls the server for refresh status until it completes.
+    /// Updates camera list when refresh finishes.
+    /// </summary>
+    private async Task PollRefreshStatus()
+    {
+        const int maxWaitTime = 300000; // 5 minutes max wait
+        const int pollInterval = 1000;  // Poll every 1 second
+        var elapsed = 0;
+
+        try
         {
+            while (elapsed < maxWaitTime)
+            {
+                // Check if refresh is still in progress
+                var statusResponse = await _http.GetAsync("/Camera/GetCameraRefreshStatus");
+                if (statusResponse.IsSuccessStatusCode)
+                {
+                    var statusJson = await statusResponse.Content.ReadAsStringAsync();
+                    var statusData = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(statusJson);
+                    
+                    bool isRefreshing = statusData.GetProperty("isRefreshing").GetBoolean();
+                    
+                    if (!isRefreshing)
+                    {
+                        // Refresh completed on server - load updated camera list
+                        Logger.LogInformation("Server refresh completed, loading cameras...");
+                        await LoadCameras();
+                        return;
+                    }
+                }
+
+                // Wait before next poll
+                await Task.Delay(pollInterval);
+                elapsed += pollInterval;
+            }
+
+            // Timeout - give up polling but still try to load cameras
+            Logger.LogWarning("Refresh polling timeout after 5 minutes");
+            _errorMessage = "Refresh took too long. Camera list may be partially updated.";
+            await LoadCameras();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error polling refresh status");
+            _errorMessage = $"Error during refresh: {ex.Message}";
             _isLoading = false;
             StateHasChanged();
         }
@@ -387,7 +538,7 @@
 
     private async Task MovePtz(int xSpeed = 0, int ySpeed = 0, int zoomSpeed = 0, int delay = 100)
     {
-        if (_currentUserState.SelectedCamera == null)
+        if (_currentUserState.SelectedCamera == null || _isLoading)
             return;
 
         try
@@ -399,18 +550,20 @@
             if (!response.IsSuccessStatusCode)
             {
                 _errorMessage = $"PTZ command failed: {response.StatusCode}";
+                StateHasChanged();
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error moving PTZ");
             _errorMessage = $"Error: {ex.Message}";
+            StateHasChanged();
         }
     }
 
     private async Task ReCheckPtz()
     {
-        if (_currentUserState.SelectedCamera == null)
+        if (_currentUserState.SelectedCamera == null || _isLoading)
             return;
 
         try
@@ -423,20 +576,26 @@
             else
             {
                 _errorMessage = $"Failed to re-check PTZ: {response.StatusCode}";
+                StateHasChanged();
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error re-checking PTZ");
             _errorMessage = $"Error: {ex.Message}";
+            StateHasChanged();
         }
     }
 
+    /// <summary>
+    /// Row styling - uses camera Path (stable) instead of Id (volatile)
+    /// </summary>
     private Func<CameraDto, int, string> CameraRowStyleFunc => (camera, _) =>
     {
-        return _currentUserState.SelectedCamera?.Id == camera.Id
-            ? "background-color: var(--mud-palette-primary-lighten); cursor: pointer;"
-            : "cursor: pointer;";
+        var isSelected = _currentUserState.SelectedCamera?.Path == camera.Path;
+        return isSelected
+            ? "background-color: var(--mud-palette-primary-lighten); cursor: pointer; opacity: 1;"
+            : "cursor: pointer; opacity: " + (_isLoading ? "0.5" : "1") + ";"; // Dim when loading
     };
 
     private async void OnLogin(UserInfoModel? userInfo)
@@ -455,6 +614,7 @@
     {
         _currentUserState.Cameras = null;
         _currentUserState.SelectedCamera = null;
+        _selectedCameraPath = null;
         _showVideoStream = false;
         StateHasChanged();
     }
