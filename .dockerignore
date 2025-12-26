@@ -12,13 +12,11 @@
 **/*.dbmdl
 **/*.jfm
 **/azds.yaml
-**/bin
 **/charts
 **/docker-compose*
 **/Dockerfile*
 **/node_modules
 **/npm-debug.log
-**/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
 LICENSE
@@ -28,3 +26,8 @@ README.md
 !.git/config
 !.git/packed-refs
 !.git/refs/heads/**
+
+# Note: bin/ and obj/ are commented out to allow Docker build to access source files
+# Docker needs the project source code to build and publish the application
+# **/bin
+# **/obj

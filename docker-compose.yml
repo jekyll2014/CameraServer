@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  cameraserver:
+    build:
+      context: .
+      dockerfile: CameraServer/Dockerfile
+      args:
+        BUILD_CONFIGURATION: Release
+    image: cameraserver:latest
+    container_name: cameraserver
+    
+    # Port mappings
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+      - "${HTTPS_PORT:-8443}:443"
+    
+    # Volume mappings
+    volumes:
+      # Configuration (stored in named volume for persistence)
+      - cameraserver_config:/app/config
+      
+      # Data directories
+      - cameraserver_videos:/app/Videos
+      - cameraserver_motion:/app/MotionRecords
+      - cameraserver_logs:/app/logs
+      
+      # Optional: Camera USB devices (uncomment if using USB cameras)
+      # - /dev/bus/usb:/dev/bus/usb:rw
+      
+      # Optional: Override appsettings if file exists locally
+      # Uncomment these lines only if appsettings.json/Production.json exist in project root
+      # - ./appsettings.json:/app/appsettings.json:ro
+      # - ./appsettings.Production.json:/app/appsettings.Production.json:ro
+    
+    # Environment variables
+    environment:
+      # ASP.NET Core settings
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      
+      # Application configuration
+      CookieExpireTimeMinutes: ${COOKIE_EXPIRE_TIME:-60}
+      AllowBasicAuthentication: ${ALLOW_BASIC_AUTH:-true}
+      ExternalHostUrl: ${EXTERNAL_HOST_URL:-http://localhost:8080}
+      
+      # Logging
+      SERILOG__LEVEL: Information
+      SERILOG__WRITETO__0__NAME: Console
+    
+    # Container lifecycle
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-2}'
+          memory: '${MEMORY_LIMIT:-2G}'
+        reservations:
+          cpus: '${CPU_RESERVE:-1}'
+          memory: '${MEMORY_RESERVE:-1G}'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "cameraserver"
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Cap drop for security
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    
+    # Network
+    networks:
+      - cameraserver_network
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: cameraserver_nginx
+    
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    
+    depends_on:
+      - cameraserver
+    
+    restart: unless-stopped
+    
+    networks:
+      - cameraserver_network
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Uncomment to enable
+    profiles:
+      - proxy
+
+# Named volumes
+volumes:
+  cameraserver_config:
+    driver: local
+  cameraserver_videos:
+    driver: local
+  cameraserver_motion:
+    driver: local
+  cameraserver_logs:
+    driver: local
+
+# Networks
+networks:
+  cameraserver_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
