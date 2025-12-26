@@ -22,6 +22,7 @@ using Serilog.Formatting.Compact;
 
 using System.Diagnostics;
 using System.Net.NetworkInformation;
+using System.Runtime.InteropServices;
 
 namespace CameraServer.Server;
 
@@ -91,9 +92,18 @@ public class Program
                 if (PortInUse(serverPort))
                 {
                     _logger?.Error($"Port in use. Trying to release...");
-                    ExecuteShellCommand("net", "stop winnat");
-                    Task.Delay(1000).RunSynchronously();
-                    ExecuteShellCommand("net", "start winnat");
+                    
+                    // Only attempt Windows-specific port cleanup on Windows
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    {
+                        ExecuteShellCommand("net", "stop winnat");
+                        Task.Delay(1000).RunSynchronously();
+                        ExecuteShellCommand("net", "start winnat");
+                    }
+                    else
+                    {
+                        _logger?.Error($"Port {serverPort} is in use on non-Windows platform. Please free it manually.");
+                    }
                 }
             }
         }

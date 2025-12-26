@@ -4,19 +4,19 @@
 @inject IAuthenticationService _authenticationService
 
 <MudStack Row="true">
-    <MudTextField Disabled="@_authenticationService.IsAuthenticated"
-                  id="login"
-                  Label="Login:"
-                  @bind-Value="_loginModel.UserName" />
+<MudTextField T="string" Disabled="@_authenticationService.IsAuthenticated"
+              id="login"
+              Label="Login:"
+              @bind-Value="_loginModel.UserName" />
 
-    <MudTextField disabled="@_authenticationService.IsAuthenticated"
-                  id="password"
-                  Label="Password:"
-                  @bind-value="_loginModel.Password" />
+<MudTextField T="string" Disabled="@_authenticationService.IsAuthenticated"
+              id="password"
+              Label="Password:"
+              @bind-Value="_loginModel.Password" />
 
-    <MudCheckBox Disabled="@_authenticationService.IsAuthenticated"
-                 Label="Stay logged in"
-                 @bind-value="_loginModel.RememberLogin" />
+<MudCheckBox T="bool" Disabled="@_authenticationService.IsAuthenticated"
+             Label="Stay logged in"
+             @bind-Checked="_loginModel.RememberLogin" />
     @if (!_authenticationService.IsAuthenticated)
     {
         <MudButton OnClick="@LoginClicked"

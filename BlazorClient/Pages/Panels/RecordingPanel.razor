@@ -1,12 +1,532 @@
-﻿@using CameraServer.Client.Services
+﻿@using System.Net
+@using System.Net.Http.Json
+@using CameraServer.Client.Services
+@using CameraServer.Shared
+@using CameraServer.Shared.DTO
 
+@inject HttpClient _http
 @inject IAuthenticationService _authenticationService
+@inject ICurrentUserState _currentUserState
+@inject ILogger<RecordingPanel> Logger
 
-<MudPaper>
-        <MudText Typo="Typo.h3">Username: @_authenticationService.UserInfo?.Login</MudText>
-    <MudText Typo="Typo.h3">User roles:</MudText>
-    @foreach (var role in _authenticationService.UserInfo?.Roles ?? [])
-    {
-        <MudText> - @role</MudText>
-    }
+<MudPaper Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Active Recordings Section -->
+        <MudPaper Elevation="2" Class="pa-3">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h5">Active Recordings</MudText>
+                <MudButton OnClick="@RefreshRecordings"
+                           Variant="Variant.Filled"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           Color="Color.Primary"
+                           Size="Size.Small">
+                    Refresh
+                </MudButton>
+            </MudStack>
+
+            <MudDivider Class="my-3" />
+
+            @if (_isLoading)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+            }
+            else if (_errorMessage != null)
+            {
+                <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+            else
+            {
+                <MudDataGrid T="RecordTaskDto"
+                             Items="@(_currentUserState.RecordingTasks ?? new List<RecordTaskDto>())"
+                             ReadOnly="true"
+                             Outlined="true"
+                             Dense="true"
+                             Hover="true"
+                             Striped="true"
+                             RowClick="@OnRecordingRowClick"
+                             RowStyleFunc="@RecordingRowStyleFunc">
+                    <NoRecordsContent>
+                        <MudText Color="Color.Info">No active recordings. Start a new recording below.</MudText>
+                    </NoRecordsContent>
+
+                    <Columns>
+                        <PropertyColumn Property="r => r.CameraName"
+                                        Title="Camera"
+                                        Sortable="true" />
+
+                        <PropertyColumn Property="r => r.StartTime"
+                                        Title="Started"
+                                        Format="yyyy-MM-dd HH:mm:ss"
+                                        Sortable="true" />
+
+                        <PropertyColumn Property="r => r.User"
+                                        Title="User"
+                                        Sortable="true" />
+
+                        <TemplateColumn Title="Resolution">
+                            <CellTemplate>
+                                @if (context.Item.FrameFormat.Width > 0 && context.Item.FrameFormat.Height > 0)
+                                {
+                                    <MudText>@context.Item.FrameFormat.Width x @context.Item.FrameFormat.Height</MudText>
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Secondary">Original</MudText>
+                                }
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <PropertyColumn Property="r => r.Quality"
+                                        Title="Quality"
+                                        Sortable="true">
+                            <CellTemplate>
+                                <MudText>@context.Item.Quality%</MudText>
+                            </CellTemplate>
+                        </PropertyColumn>
+
+                        <PropertyColumn Property="r => r.Codec"
+                                        Title="Codec"
+                                        Sortable="true" />
+
+                        <PropertyColumn Property="r => r.Status"
+                                        Title="Status"
+                                        Sortable="true">
+                            <CellTemplate>
+                                <MudChip Size="Size.Small"
+                                         Color="Color.Success"
+                                         Icon="@Icons.Material.Filled.FiberManualRecord">
+                                    @context.Item.Status
+                                </MudChip>
+                            </CellTemplate>
+                        </PropertyColumn>
+
+                        <TemplateColumn Title="Actions" Sortable="false">
+                            <CellTemplate>
+                                <MudButton OnClick="@(() => StopRecording(context.Item))"
+                                           StartIcon="@Icons.Material.Filled.Stop"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Error"
+                                           Size="Size.Small">
+                                    Stop
+                                </MudButton>
+                            </CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+            }
+        </MudPaper>
+
+        <!-- Recording Details Section -->
+        @if (_currentUserState.SelectedRecordingTask != null)
+        {
+            <MudPaper Elevation="2" Class="pa-3">
+                <MudText Typo="Typo.h6" Class="mb-3">Recording Details</MudText>
+
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Camera Name" Variant="Variant.Outlined">
+                            @_currentUserState.SelectedRecordingTask.CameraName
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Task ID" Variant="Variant.Outlined">
+                            @_currentUserState.SelectedRecordingTask.TaskId
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Started" Variant="Variant.Outlined">
+                            @_currentUserState.SelectedRecordingTask.StartTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Duration" Variant="Variant.Outlined">
+                            @GetRecordingDuration(_currentUserState.SelectedRecordingTask.StartTime)
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Resolution" Variant="Variant.Outlined">
+                            @if (_currentUserState.SelectedRecordingTask.FrameFormat.Width > 0)
+                            {
+                                @($"{_currentUserState.SelectedRecordingTask.FrameFormat.Width}x{_currentUserState.SelectedRecordingTask.FrameFormat.Height}")
+                            }
+                            else
+                            {
+                                <text>Original</text>
+                            }
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Codec / Quality" Variant="Variant.Outlined">
+                            @_currentUserState.SelectedRecordingTask.Codec / @_currentUserState.SelectedRecordingTask.Quality%
+                        </MudField>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <!-- Start New Recording Section -->
+        <MudPaper Elevation="2" Class="pa-3">
+            <MudText Typo="Typo.h6" Class="mb-3">Start New Recording</MudText>
+
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="int"
+                               @bind-Value="_newRecording.CameraId"
+                               Label="Select Camera"
+                               Variant="Variant.Outlined"
+                               Required="true"
+                               RequiredError="Camera is required"
+                               Dense="true">
+                        <MudSelectItem T="int" Value="-1">Select a camera...</MudSelectItem>
+                        @foreach (var camera in _currentUserState.Cameras ?? new List<CameraDto>())
+                        {
+                            <MudSelectItem Value="@camera.Id">
+                                @camera.Name (@camera.Type)
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSelect T="FrameFormatDto"
+                               @bind-Value="_newRecording.SelectedFormat"
+                               Label="Resolution"
+                               Variant="Variant.Outlined"
+                               Dense="true"
+                               Disabled="@(_newRecording.CameraId == -1)">
+                        <MudSelectItem T="FrameFormatDto" Value="null">
+                            Original Resolution
+                        </MudSelectItem>
+                        @foreach (var format in GetSelectedCameraFormats())
+                        {
+                            <MudSelectItem Value="@format">
+                                @format.Width x @format.Height (@format.Format) - @format.Fps FPS
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSlider T="byte"
+                               @bind-Value="_newRecording.Quality"
+                               Min="1"
+                               Max="100"
+                               Step="5"
+                               Color="Color.Primary"
+                               Variant="Variant.Filled">
+                        Quality: @_newRecording.Quality%
+                    </MudSlider>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string"
+                               @bind-Value="_newRecording.Codec"
+                               Label="Codec"
+                               Variant="Variant.Outlined"
+                               Dense="true">
+                        <MudSelectItem Value="@("AVC")">AVC (H.264) - Better Compatibility</MudSelectItem>
+                        <MudSelectItem Value="@("MP4V")">MP4V - Better Compression</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton OnClick="@StartNewRecording"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.FiberManualRecord"
+                                   Disabled="@(_newRecording.CameraId == -1 || _isStarting)">
+                            @if (_isStarting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <MudText Class="ml-2">Starting...</MudText>
+                            }
+                            else
+                            {
+                                <text>Start Recording</text>
+                            }
+                        </MudButton>
+
+                        <MudButton OnClick="@ResetRecordingForm"
+                                   Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.Clear">
+                            Clear
+                        </MudButton>
+                    </MudStack>
+                </MudItem>
+
+                @if (_validationErrors.Count > 0)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Warning" ShowCloseIcon="true" CloseIconClicked="@(() => _validationErrors.Clear())">
+                            <MudText Typo="Typo.body2"><b>Validation Errors:</b></MudText>
+                            @foreach (var error in _validationErrors)
+                            {
+                                <MudText Typo="Typo.body2">• @error</MudText>
+                            }
+                        </MudAlert>
+                    </MudItem>
+                }
+
+                @if (_successMessage != null)
+                {
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _successMessage = null)">
+                            @_successMessage
+                        </MudAlert>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+    </MudStack>
 </MudPaper>
+
+@code {
+    private class NewRecordingModel
+    {
+        public int CameraId { get; set; } = -1;
+        public FrameFormatDto? SelectedFormat { get; set; }
+        public byte Quality { get; set; } = 90;
+        public string Codec { get; set; } = "AVC";
+    }
+
+    private NewRecordingModel _newRecording = new();
+    private bool _isLoading = false;
+    private bool _isStarting = false;
+    private string? _errorMessage;
+    private string? _successMessage;
+    private List<string> _validationErrors = new();
+    private System.Threading.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _authenticationService.OnLogIn += OnLogin;
+        _authenticationService.OnLogOut += OnLogout;
+
+        if (_currentUserState.Cameras == null)
+            _currentUserState.Cameras = await GetCamerasAsync();
+
+        await RefreshRecordings();
+
+        // Auto-refresh every 5 seconds
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshRecordings();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task RefreshRecordings()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Recorder/GetRecordTasksList");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<List<RecordTaskDto>>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _currentUserState.RecordingTasks = apiResponse.Data ?? new List<RecordTaskDto>();
+                }
+                else
+                {
+                    _errorMessage = apiResponse?.ErrorMessage ?? "Failed to retrieve recordings";
+                }
+            }
+            else
+            {
+                _errorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing recordings");
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartNewRecording()
+    {
+        _validationErrors.Clear();
+        _successMessage = null;
+        _errorMessage = null;
+
+        // Validation
+        if (_newRecording.CameraId == -1)
+        {
+            _validationErrors.Add("Please select a camera");
+            return;
+        }
+
+        _isStarting = true;
+        StateHasChanged();
+
+        try
+        {
+            var width = _newRecording.SelectedFormat?.Width ?? 0;
+            var height = _newRecording.SelectedFormat?.Height ?? 0;
+            var fps = _newRecording.SelectedFormat?.Fps ?? 0;
+            var format = _newRecording.SelectedFormat?.Format ?? "";
+
+            var response = await _http.GetAsync(
+                $"/Recorder/StartRecord?cameraId={_newRecording.CameraId}" +
+                $"&xResolution={width}&yResolution={height}&fps={fps}" +
+                $"&format={format}&quality={_newRecording.Quality}" +
+                $"&codec={Uri.EscapeDataString(_newRecording.Codec)}");
+
+            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<string>>();
+
+            if (apiResponse?.Success ?? false)
+            {
+                _successMessage = $"Recording started successfully! Task ID: {apiResponse.Data}";
+                ResetRecordingForm();
+                await RefreshRecordings();
+            }
+            else
+            {
+                if (apiResponse?.ValidationErrors?.Count > 0)
+                    _validationErrors = apiResponse.ValidationErrors;
+                else
+                    _errorMessage = apiResponse?.ErrorMessage ?? "Failed to start recording";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error starting recording");
+            _errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isStarting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StopRecording(RecordTaskDto task)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"/Recorder/StopRecord?taskId={task.TaskId}");
+            var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+
+            if (apiResponse?.Success ?? false)
+            {
+                _successMessage = $"Recording stopped for camera '{task.CameraName}'";
+                if (_currentUserState.SelectedRecordingTask?.TaskId == task.TaskId)
+                    _currentUserState.SelectedRecordingTask = null;
+
+                await RefreshRecordings();
+            }
+            else
+            {
+                _errorMessage = apiResponse?.ErrorMessage ?? "Failed to stop recording";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error stopping recording");
+            _errorMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private void OnRecordingRowClick(DataGridRowClickEventArgs<RecordTaskDto> args)
+    {
+        _currentUserState.SelectedRecordingTask = args.Item;
+        StateHasChanged();
+    }
+
+    private Func<RecordTaskDto, int, string> RecordingRowStyleFunc => (task, _) =>
+    {
+        return _currentUserState.SelectedRecordingTask?.TaskId == task.TaskId
+            ? "background-color: var(--mud-palette-primary-lighten); cursor: pointer;"
+            : "cursor: pointer;";
+    };
+
+    private void ResetRecordingForm()
+    {
+        _newRecording = new NewRecordingModel();
+        _validationErrors.Clear();
+    }
+
+    private IEnumerable<FrameFormatDto> GetSelectedCameraFormats()
+    {
+        if (_newRecording.CameraId == -1)
+            return Array.Empty<FrameFormatDto>();
+
+        var camera = _currentUserState.Cameras?.FirstOrDefault(c => c.Id == _newRecording.CameraId);
+        return camera?.FrameFormats ?? Array.Empty<FrameFormatDto>();
+    }
+
+    private string GetRecordingDuration(DateTime startTime)
+    {
+        var duration = DateTime.Now - startTime;
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m {duration.Seconds}s";
+        else if (duration.TotalMinutes >= 1)
+            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        else
+            return $"{duration.Seconds}s";
+    }
+
+    private async Task<List<CameraDto>?> GetCamerasAsync()
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<List<CameraDto>>("/Camera/GetCameraList");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error fetching cameras");
+            return null;
+        }
+    }
+
+    private async void OnLogin(UserInfoModel? userInfo)
+    {
+        try
+        {
+            _currentUserState.Cameras = await GetCamerasAsync();
+            await RefreshRecordings();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during login refresh");
+        }
+    }
+
+    private void OnLogout()
+    {
+        _currentUserState.RecordingTasks = null;
+        _currentUserState.SelectedRecordingTask = null;
+        _currentUserState.Cameras = null;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        _authenticationService.OnLogIn -= OnLogin;
+        _authenticationService.OnLogOut -= OnLogout;
+    }
+}
+

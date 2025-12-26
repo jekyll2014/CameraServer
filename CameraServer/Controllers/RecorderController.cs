@@ -39,48 +39,121 @@ public class RecorderController : ControllerBase
     }
 
     [HttpGet("GetRecordTasksList")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string[]))]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<List<RecordTaskDto>>))]
     public IActionResult GetRecordTasksList()
     {
-        return Ok(_recorder.TaskList.ToArray());
+        try
+        {
+            var tasks = _recorder.GetRecordTasks()
+                .Select(task => new RecordTaskDto
+                {
+                    Id = task.Id,
+                    TaskId = task.TaskId,
+                    CameraId = task.CameraId,
+                    CameraName = _collection.Cameras.FirstOrDefault(c => c.CameraStream.Description.Path == task.CameraId)?.CameraStream.Description.Name ?? string.Empty,
+                    User = task.User,
+                    StartTime = task.CreationDateTime,
+                    FrameFormat = task.FrameFormat,
+                    Quality = task.Quality,
+                    Codec = task.Codec,
+                    Status = "Recording"
+                })
+                .ToList();
+
+            return Ok(ApiResponse<List<RecordTaskDto>>.SuccessResponse(tasks));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving record tasks list");
+            return StatusCode(500, ApiResponse<List<RecordTaskDto>>.ErrorResponse($"Failed to retrieve recording tasks: {ex.Message}"));
+        }
     }
 
     [HttpGet("StartRecordByName")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
+    [SwaggerOperation(
+        Summary = "Start recording by camera name",
+        Description = "Starts a new recording task for a camera identified by its name",
+        Tags = new[] { "Recording" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<string>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid camera name or parameters")]
     public IActionResult StartRecordByName(string cameraName,
         int? xResolution = 0,
         int? yResolution = 0,
         int? fps = 0,
         string? format = "",
-        byte? quality = 95)
+        byte? quality = 90,
+        string? codec = "AVC")
     {
-        if (string.IsNullOrEmpty(cameraName))
-            return BadRequest("Empty camera name");
+        try
+        {
+            if (string.IsNullOrWhiteSpace(cameraName))
+                return BadRequest(ApiResponse<string>.ErrorResponse("Camera name is required"));
 
-        var cameraId = _collection.Cameras.FirstOrDefault(n => n.CameraStream.Description.Name == cameraName)?.Id ?? -1;
+            var cameraId = _collection.Cameras.FirstOrDefault(n => n.CameraStream.Description.Name == cameraName)?.Id ?? -1;
 
-        return StartRecordInternal(cameraId, xResolution, yResolution, fps, format, quality);
+            if (cameraId == -1)
+                return BadRequest(ApiResponse<string>.ErrorResponse($"Camera '{cameraName}' not found"));
+
+            return StartRecordInternal(cameraId, xResolution, yResolution, fps, format, quality, codec);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting recording by name");
+            return StatusCode(500, ApiResponse<string>.ErrorResponse($"Failed to start recording: {ex.Message}"));
+        }
     }
 
     [HttpGet("StartRecord")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
+    [SwaggerOperation(
+        Summary = "Start recording by camera ID",
+        Description = "Starts a new recording task for a camera identified by its ID",
+        Tags = new[] { "Recording" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<string>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid camera ID or parameters")]
     public IActionResult StartRecord(int cameraId,
         int? xResolution = 0,
         int? yResolution = 0,
         int? fps = 0,
         string? format = "",
-        byte? quality = 90)
+        byte? quality = 90,
+        string? codec = "AVC")
     {
-        return StartRecordInternal(cameraId, xResolution, yResolution, fps, format, quality);
+        try
+        {
+            return StartRecordInternal(cameraId, xResolution, yResolution, fps, format, quality, codec);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting recording");
+            return StatusCode(500, ApiResponse<string>.ErrorResponse($"Failed to start recording: {ex.Message}"));
+        }
     }
 
     [HttpGet("StopRecord")]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(string))]
+    [SwaggerOperation(
+        Summary = "Stop recording",
+        Description = "Stops an active recording task by its task ID",
+        Tags = new[] { "Recording" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid task ID")]
     public IActionResult StopRecord(string taskId)
     {
-        _recorder.Stop(taskId);
+        try
+        {
+            if (string.IsNullOrWhiteSpace(taskId))
+                return BadRequest(ApiResponse<bool>.ErrorResponse("Task ID is required"));
 
-        return Ok();
+            _recorder.Stop(taskId);
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping recording");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to stop recording: {ex.Message}"));
+        }
     }
 
     private IActionResult StartRecordInternal(int cameraId,
@@ -88,30 +161,20 @@ public class RecorderController : ControllerBase
         int? height = 0,
         int? fps = 0,
         string? format = "",
-        byte? quality = 90)
+        byte? quality = 90,
+        string? codec = "AVC")
     {
         if (_collection.Cameras.All(n => n.Id != cameraId))
-            return BadRequest("No such camera");
+            return BadRequest(ApiResponse<string>.ErrorResponse($"Camera with ID {cameraId} not found"));
 
         var userInfo = _manager.GetUserInfo(HttpContext.User.Identity?.Name ?? string.Empty);
         var userRoles = userInfo?.Roles;
         if (userRoles == null || userRoles.Count == 0)
-            return BadRequest("No such camera");
+            return BadRequest(ApiResponse<string>.ErrorResponse("User not authorized"));
 
-        var camera = _collection.Cameras.First(n => n.Id == cameraId);
-        if (!camera.AllowedRoles.Intersect(userRoles).Any())
-            return BadRequest("No such camera");
-
-        try
-        {
-            camera = _collection.Cameras.ToArray()[cameraId];
-        }
-        catch (Exception e)
-        {
-            _logger.Log(LogLevel.Error, $"Exception finding the camera[{cameraId}]: {e}");
-
-            return Problem("Can not find camera#", cameraId.ToString(), StatusCodes.Status204NoContent);
-        }
+        var camera = _collection.Cameras.FirstOrDefault(n => n.Id == cameraId);
+        if (camera == null || !camera.AllowedRoles.Intersect(userRoles).Any())
+            return BadRequest(ApiResponse<string>.ErrorResponse("User not authorized to access this camera"));
 
         try
         {
@@ -126,19 +189,31 @@ public class RecorderController : ControllerBase
                     Format = format ?? string.Empty,
                     Fps = fps ?? 0
                 },
-                Quality = quality ?? 0,
-                Codec = userInfo?.DefaultCodec ?? "AVC"
+                Quality = quality ?? 90,
+                Codec = codec ?? "AVC"
             };
 
             var taskId = _recorder.Start(recordTask);
 
-            return Ok(taskId);
+            if (string.IsNullOrEmpty(taskId))
+                return StatusCode(500, ApiResponse<string>.ErrorResponse("Failed to start recording - task already exists or internal error"));
+
+            return Ok(ApiResponse<string>.SuccessResponse(taskId));
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid recording parameters");
+            return BadRequest(ApiResponse<string>.ErrorResponse(ex.Message));
+        }
+        catch (ApplicationException ex)
+        {
+            _logger.LogWarning(ex, "Recording authorization failed");
+            return BadRequest(ApiResponse<string>.ErrorResponse(ex.Message));
         }
         catch (Exception ex)
         {
-            _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
-
-            return BadRequest(ex);
+            _logger.LogError(ex, "Error starting recording");
+            return StatusCode(500, ApiResponse<string>.ErrorResponse($"Internal server error: {ex.Message}"));
         }
     }
 }

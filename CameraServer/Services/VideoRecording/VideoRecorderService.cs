@@ -32,6 +32,7 @@ public class VideoRecorderService : IHostedService, IDisposable
     public readonly Config<List<RecordCameraSettingDto>> TaskConfig = new Config<List<RecordCameraSettingDto>>(VideoRecorderTempConfig);
 
     public IEnumerable<string> TaskList => _recorderTasks.Select(n => n.Key.TaskId);
+    public IEnumerable<RecordCameraTask> GetRecordTasks() => _recorderTasks.Keys.ToList();
     private readonly ConcurrentDictionary<RecordCameraTask, Task> _recorderTasks = new();
 
     private bool _disposedValue;

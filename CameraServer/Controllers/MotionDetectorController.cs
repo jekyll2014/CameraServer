@@ -67,7 +67,9 @@ public class MotionDetectorController : ControllerBase
         NotificationTransport transport,
         string destination,
         MessageType messageType,
-        string? message)
+        string? message,
+        bool saveNotificationContent = false,
+        uint? videoLengthSec = 15)
     {
         if (string.IsNullOrEmpty(cameraName))
             return BadRequest("Empty camera name");
@@ -83,7 +85,9 @@ public class MotionDetectorController : ControllerBase
             transport,
             destination,
             messageType,
-            message);
+            message,
+            saveNotificationContent,
+            videoLengthSec);
     }
 
     [HttpGet("StartDetector")]
@@ -98,7 +102,9 @@ public class MotionDetectorController : ControllerBase
         NotificationTransport transport,
         string destination,
         MessageType messageType,
-        string? message)
+        string? message,
+        bool saveNotificationContent = false,
+        uint? videoLengthSec = 15)
     {
         return StartDetectorInternal(cameraId,
             xResolution,
@@ -109,7 +115,9 @@ public class MotionDetectorController : ControllerBase
             transport,
             destination,
             messageType,
-            message);
+            message,
+            saveNotificationContent,
+            videoLengthSec);
     }
 
     [HttpGet("StopDetector")]
@@ -143,7 +151,9 @@ public class MotionDetectorController : ControllerBase
         NotificationTransport transport,
         string destination,
         MessageType messageType,
-        string? message)
+        string? message,
+        bool saveNotificationContent = false,
+        uint? videoLengthSec = 15)
     {
         if (_collection.Cameras.All(n => n.Id != cameraId))
             return BadRequest("No such camera");
@@ -170,6 +180,13 @@ public class MotionDetectorController : ControllerBase
 
         try
         {
+            // Validate notification parameters
+            if (string.IsNullOrWhiteSpace(destination))
+                return BadRequest("Notification destination cannot be empty");
+
+            // Log incoming parameters from UI for debugging
+            LogIncomingParameters(width, height, format, changeLimit, noiseThreshold, detectorDelayMs, destination, message);
+
             var motionTask = new MotionDetectionCameraSettingDto()
             {
                 CameraId = camera.CameraStream.Description.Path,
@@ -186,24 +203,65 @@ public class MotionDetectorController : ControllerBase
                 Notifications =
                 [
                     new()
-                        {
-                            Transport = transport,
-                            Destination = destination,
-                            MessageType = messageType,
-                            Message = message ?? string.Empty
-                        }
+                    {
+                        Transport = transport,
+                        Destination = destination,
+                        MessageType = messageType,
+                        Message = message ?? string.Empty,
+                        VideoLengthSec = videoLengthSec ?? 15,
+                        SaveNotificationContent = saveNotificationContent
+                    }
                 ]
             };
 
+            _logger.LogInformation(
+                "Starting motion detector - Camera: {CameraPath}, User: {User}, " +
+                "FrameFormat: {Width}x{Height} {Format}, " +
+                "DetectorParams: DelayMs={DelayMs}, NoiseThreshold={NoiseThreshold}, ChangeLimit={ChangeLimit}%",
+                motionTask.CameraId,
+                motionTask.User,
+                motionTask.FrameFormat.Width,
+                motionTask.FrameFormat.Height,
+                motionTask.FrameFormat.Format,
+                motionTask.MotionDetectParameters.DetectorDelayMs,
+                motionTask.MotionDetectParameters.NoiseThreshold,
+                motionTask.MotionDetectParameters.ChangeLimit);
+
             var taskId = _motionDetector.Start(motionTask);
+
+            if (taskId == Guid.Empty)
+            {
+                _logger.LogWarning("Motion detector failed to start - returned empty GUID");
+                return BadRequest("Failed to start motion detector");
+            }
+
+            _logger.LogInformation("Motion detector started successfully with ID: {TaskId}", taskId);
 
             return Ok(taskId);
         }
         catch (Exception ex)
         {
             _logger.Log(LogLevel.Error, $"Can't start recording: {ex}");
-            return BadRequest(ex);
+            return BadRequest($"Error: {ex.Message}");
         }
+    }
+
+    private void LogIncomingParameters(int? width, int? height, string? format, uint? changeLimit,
+        byte? noiseThreshold, uint? detectorDelayMs, string? destination, string? message)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("=== Incoming Motion Detector Parameters from UI ===");
+        sb.AppendLine($"  Width: {(width.HasValue ? width.Value : "null (will use default)")}");
+        sb.AppendLine($"  Height: {(height.HasValue ? height.Value : "null (will use default)")}");
+        sb.AppendLine($"  Format: {(string.IsNullOrEmpty(format) ? "null/empty (will use default)" : format)}");
+        sb.AppendLine($"  ChangeLimit: {(changeLimit.HasValue ? changeLimit.Value + "%" : "null (will use default)")}");
+        sb.AppendLine($"  NoiseThreshold: {(noiseThreshold.HasValue ? noiseThreshold.Value : "null (will use default)")}");
+        sb.AppendLine($"  DetectorDelayMs: {(detectorDelayMs.HasValue ? detectorDelayMs.Value + "ms" : "null (will use default)")}");
+        sb.AppendLine($"  Destination: {(string.IsNullOrEmpty(destination) ? "EMPTY" : destination)}");
+        sb.AppendLine($"  Message: {(string.IsNullOrEmpty(message) ? "null/empty" : message)}");
+        sb.AppendLine("==================================================");
+
+        _logger.LogInformation(sb.ToString());
     }
 
     private async Task<IActionResult> GetMotionDetectorStreamInternal(Guid detectorTaskId)

@@ -4,6 +4,8 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<!-- Explicitly disable fallback folders in the project itself -->
+		<DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -14,3 +16,4 @@
 		<SupportedPlatform Include="browser" />
 	</ItemGroup>
 </Project>
+

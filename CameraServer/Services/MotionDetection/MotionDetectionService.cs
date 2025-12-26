@@ -125,7 +125,41 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (!detectTask.Notifications.Any())
             return Guid.Empty;
 
-        detectTask.MotionDetectParameters ??= Settings.DefaultMotionDetectParameters;
+        // Log incoming parameters for debugging
+        _logger.LogInformation("Motion detector Start() called with parameters: " +
+            "CameraId={CameraId}, User={User}, " +
+            "FrameFormat={FrameFormatWidth}x{FrameFormatHeight} {FrameFormatFormat}, " +
+            "MotionDetectParams: Width={ParamWidth}, Height={ParamHeight}, " +
+            "DelayMs={DelayMs}, NoiseThreshold={NoiseThreshold}, ChangeLimit={ChangeLimit}%",
+            detectTask.CameraId,
+            detectTask.User,
+            detectTask.FrameFormat?.Width ?? 0,
+            detectTask.FrameFormat?.Height ?? 0,
+            detectTask.FrameFormat?.Format ?? "null",
+            detectTask.MotionDetectParameters?.Width ?? 0,
+            detectTask.MotionDetectParameters?.Height ?? 0,
+            detectTask.MotionDetectParameters?.DetectorDelayMs ?? 0,
+            detectTask.MotionDetectParameters?.NoiseThreshold ?? 0,
+            detectTask.MotionDetectParameters?.ChangeLimit ?? 0);
+
+        // Ensure we don't share the default parameters instance between tasks.
+        // Clone defaults into a new instance if parameters are null.
+        if (detectTask.MotionDetectParameters == null)
+        {
+            var def = Settings.DefaultMotionDetectParameters;
+            detectTask.MotionDetectParameters = new MotionDetectorParametersDto
+            {
+                Width = def.Width,
+                Height = def.Height,
+                DetectorDelayMs = def.DetectorDelayMs,
+                NoiseThreshold = def.NoiseThreshold,
+                ChangeLimit = def.ChangeLimit,
+                TextNotificationDelay = def.TextNotificationDelay,
+                ImageNotificationDelay = def.ImageNotificationDelay,
+                VideoNotificationDelay = def.VideoNotificationDelay,
+                KeepImageBuffer = def.KeepImageBuffer
+            };
+        }
 
         var userDto = _manager.GetUserInfo(detectTask.User);
         if (userDto == null)
@@ -137,14 +171,24 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (detectTask.MotionDetectParameters.Height <= 0)
             detectTask.MotionDetectParameters.Height = Settings.DefaultMotionDetectParameters.Height;
 
+        // FIXED: set DetectorDelayMs (previous code erroneously set Width here)
         if (detectTask.MotionDetectParameters.DetectorDelayMs <= 0)
-            detectTask.MotionDetectParameters.Width = Settings.DefaultMotionDetectParameters.Width;
+            detectTask.MotionDetectParameters.DetectorDelayMs = Settings.DefaultMotionDetectParameters.DetectorDelayMs;
 
         if (detectTask.MotionDetectParameters.NoiseThreshold <= 0)
             detectTask.MotionDetectParameters.NoiseThreshold = Settings.DefaultMotionDetectParameters.NoiseThreshold;
 
         if (detectTask.MotionDetectParameters.ChangeLimit <= 0)
             detectTask.MotionDetectParameters.ChangeLimit = Settings.DefaultMotionDetectParameters.ChangeLimit;
+
+        _logger.LogInformation("Motion detector parameters after normalization: " +
+            "Width={FinalWidth}, Height={FinalHeight}, " +
+            "DelayMs={FinalDelayMs}, NoiseThreshold={FinalNoiseThreshold}, ChangeLimit={FinalChangeLimit}%",
+            detectTask.MotionDetectParameters.Width,
+            detectTask.MotionDetectParameters.Height,
+            detectTask.MotionDetectParameters.DetectorDelayMs,
+            detectTask.MotionDetectParameters.NoiseThreshold,
+            detectTask.MotionDetectParameters.ChangeLimit);
 
         ServerCamera camera;
         try
@@ -593,6 +637,13 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
             return;
 
+        // Clone buffered images to avoid using disposed frames in the async task.
+        // The original bufferedImages list will be disposed by the motion detector,
+        // but we need the frames to remain valid during async video recording.
+        var clonedImages = bufferedImages != null && bufferedImages.Count > 0
+            ? new List<Mat?>(bufferedImages.Select(img => img?.Clone()))
+            : new List<Mat?>();
+
         var t = new Task(async () =>
         {
             var currentTime = DateTime.Now;
@@ -607,7 +658,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                     null,
                     quality,
                     codec,
-                    bufferedImages);
+                    clonedImages);
 
                 foreach (var notificationParam in notificationParams)
                 {
@@ -649,6 +700,12 @@ public class MotionDetectionService : IHostedService, IDisposable
             {
                 await _telegramService.SendText(destinationTotal, $"Can't record video: {ex}",
                     CancellationToken.None);
+            }
+            finally
+            {
+                // Clean up cloned images
+                foreach (var img in clonedImages)
+                    img?.Dispose();
             }
 
             _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);

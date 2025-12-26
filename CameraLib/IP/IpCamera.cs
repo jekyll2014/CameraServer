@@ -120,23 +120,45 @@ namespace CameraLib.IP
 
         private static async Task<bool> PingAddress(string host, int pingTimeout = 5000)
         {
-            if (!IPAddress.TryParse(host, out var destIp))
+            try
             {
-                var h = await Dns.GetHostEntryAsync(host).ConfigureAwait(false);
-                if (h.AddressList.Length > 0)
-                    host = h.AddressList[0].ToString();
+                if (!IPAddress.TryParse(host, out var destIp))
+                {
+                    var h = await Dns.GetHostEntryAsync(host).ConfigureAwait(false);
+                    if (h.AddressList.Length > 0)
+                        host = h.AddressList[0].ToString();
 
-                if (!IPAddress.TryParse(host, out destIp))
+                    if (!IPAddress.TryParse(host, out destIp))
+                        return false;
+                }
+
+                PingReply pingResultTask;
+                using (var ping = new Ping())
+                {
+                    pingResultTask = await ping.SendPingAsync(destIp, pingTimeout).ConfigureAwait(true);
+                }
+
+                return pingResultTask.Status == IPStatus.Success;
+            }
+            catch (PlatformNotSupportedException)
+            {
+                // Ping is not supported on this platform (e.g., Linux in Docker)
+                // Try to connect via DNS resolution as a fallback
+                try
+                {
+                    await Dns.GetHostEntryAsync(host).ConfigureAwait(false);
+                    return true;
+                }
+                catch
+                {
                     return false;
+                }
             }
-
-            PingReply pingResultTask;
-            using (var ping = new Ping())
+            catch (Exception)
             {
-                pingResultTask = await ping.SendPingAsync(destIp, pingTimeout).ConfigureAwait(true);
+                // Any other exception, assume host is unreachable
+                return false;
             }
-
-            return pingResultTask.Status == IPStatus.Success;
         }
 
         public IpCamera(string path,
