@@ -168,7 +168,7 @@ public class CameraController : ControllerBase
         if (camera.CameraStream is not IpCamera ipCam)
             return BadRequest($"Camera is not {nameof(IpCamera)}");
 
-        await ipCam.GetPtzControllerAsync(5000);
+        await ipCam.GetPtzControllerAsync(camera.CameraStream.Description.Path, 5000);
 
         return ipCam.IsPtz ? Ok() : BadRequest($"Camera is not PTZ-capable or PTZ controller is not available");
     }

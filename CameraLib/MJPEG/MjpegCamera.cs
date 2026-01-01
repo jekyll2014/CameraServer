@@ -95,7 +95,7 @@ namespace CameraLib.MJPEG
                 }
             }
 
-            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+            Description.FrameFormats = frameFormats;
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
 
             _keepAliveTimer.Elapsed += CheckCameraDisconnected;

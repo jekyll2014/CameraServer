@@ -9,6 +9,7 @@ services:
         BUILD_CONFIGURATION: Release
     image: cameraserver:latest
     container_name: cameraserver
+    # user: root
     
     # Port mappings
     ports:
@@ -26,7 +27,7 @@ services:
       - cameraserver_logs:/app/logs
       
       # Optional: Camera USB devices (uncomment if using USB cameras)
-      # - /dev/bus/usb:/dev/bus/usb:rw
+      - /dev/bus/usb:/dev/bus/usb:rw
       
       # Optional: Override appsettings if file exists locally
       # Uncomment these lines only if appsettings.json/Production.json exist in project root

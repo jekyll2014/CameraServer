@@ -212,11 +212,11 @@ public class CameraHubService : IDisposable
             _logger.LogInformation("🔒 Camera refresh started (exclusive lock acquired)");
 
             // discover IP cameras in the background
-            Task<List<CameraDescription>>? t = null;
+            Task<List<CameraDescription>>? ipCameraDetectTask = null;
             if (_settings.AutoSearchIp)
             {
                 _logger.Log(LogLevel.Information, "Detect IP cameras started...");
-                t = IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
+                ipCameraDetectTask = IpCamera.DiscoverOnvifCamerasAsync(_settings.DiscoveryTimeOut);
             }
 
             // remove idle cameras from registry
@@ -320,9 +320,9 @@ public class CameraHubService : IDisposable
                 }
             }
 
-            if (_settings.AutoSearchIp && t != null)
+            if (_settings.AutoSearchIp && ipCameraDetectTask != null)
             {
-                var ipCameras = await t;
+                var ipCameras = await ipCameraDetectTask;
                 _logger.Log(LogLevel.Information, "Detect IP cameras stopped...");
 
                 _logger.Log(LogLevel.Information, "Autodetecting IP cameras...");

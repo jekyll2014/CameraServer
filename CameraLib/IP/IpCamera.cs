@@ -118,7 +118,7 @@ namespace CameraLib.IP
             return result;
         }
 
-        private static async Task<bool> PingAddress(string host, int pingTimeout = 5000)
+        private static async Task<bool> PingAddress(string host, int pingTimeout = 5000, int port = -1)
         {
             try
             {
@@ -143,11 +143,18 @@ namespace CameraLib.IP
             catch (PlatformNotSupportedException)
             {
                 // Ping is not supported on this platform (e.g., Linux in Docker)
-                // Try to connect via DNS resolution as a fallback
+                // Try to establish tcp connection if port is specified
+                if (port == -1)
+                    return false;
+
                 try
                 {
-                    await Dns.GetHostEntryAsync(host).ConfigureAwait(false);
-                    return true;
+                    using var tcpClient = new System.Net.Sockets.TcpClient();
+                    using var connectTask = tcpClient.ConnectAsync(host, port);
+                    using var timeoutTask = Task.Delay(pingTimeout);
+                    using var completedTask = await Task.WhenAny(connectTask, timeoutTask).ConfigureAwait(false);
+                    if (completedTask == timeoutTask)
+                        return false; // Timeout
                 }
                 catch
                 {
@@ -159,6 +166,8 @@ namespace CameraLib.IP
                 // Any other exception, assume host is unreachable
                 return false;
             }
+
+            return true;
         }
 
         public IpCamera(string path,
@@ -198,11 +207,11 @@ namespace CameraLib.IP
                 }
             }
 
-            Description = new CameraDescription(CameraType.IP, path, name, frameFormats);
+            Description.FrameFormats = frameFormats;
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
             try
             {
-                GetPtzControllerAsync(discoveryTimeout);
+                GetPtzControllerAsync(path, discoveryTimeout);
             }
             catch (Exception ex)
             {
@@ -212,9 +221,9 @@ namespace CameraLib.IP
             _keepAliveTimer.Elapsed += CheckCameraDisconnected;
         }
 
-        public async Task GetPtzControllerAsync(int discoveryTimeout)
+        public async Task GetPtzControllerAsync(string path, int discoveryTimeout)
         {
-            var cameraUri = new Uri(Description.Path);
+            var cameraUri = new Uri(path);
             if (!IPAddress.TryParse(cameraUri.Host, out var cameraIp))
             {
                 var h = await Dns.GetHostEntryAsync(cameraUri.Host);

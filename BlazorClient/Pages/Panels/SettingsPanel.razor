@@ -21,29 +21,321 @@
     {
         <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
             <!-- Camera Management Tab -->
-            <MudTabPanel Text="Camera Management" Icon="@Icons.Material.Filled.Videocam">
-                <MudText Typo="Typo.h5" Class="mb-4">Camera Configuration</MudText>
-                <MudAlert Severity="Severity.Info" Class="mb-4">
-                    <b>Note:</b> Camera configuration changes require server restart to take effect.
-                    Use the System Settings tab to restart the server after making changes.
-                </MudAlert>
-                <MudText Typo="Typo.body1">
-                    Camera configuration is currently managed through appsettings.json file.
-                    Please edit the file manually and restart the server to apply changes.
-                </MudText>
+            <MudTabPanel Text="Custom Cameras" Icon="@Icons.Material.Filled.Videocam">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">Custom Camera Management</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshCameras"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isCamerasLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@OpenAddCameraDialog"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isCamerasLoading">
+                                Add Camera
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_camerasErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _camerasErrorMessage = null)">
+                            @_camerasErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_camerasSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _camerasSuccessMessage = null)">
+                            @_camerasSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isCamerasLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else if (_cameraSettings?.CustomCameras?.Count > 0)
+                    {
+                        <MudTable Items="@_cameraSettings.CustomCameras" Hover="true" Breakpoint="Breakpoint.Sm">
+                            <HeaderContent>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Type</MudTh>
+                                <MudTh>Path</MudTh>
+                                <MudTh>Auth Type</MudTh>
+                                <MudTh>Roles</MudTh>
+                                <MudTh>Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Name">@context.Name</MudTd>
+                                <MudTd DataLabel="Type">@context.Type</MudTd>
+                                <MudTd DataLabel="Path" Class="mud-table-cell-small">@context.Path</MudTd>
+                                <MudTd DataLabel="Auth Type">@context.AuthenticationType</MudTd>
+                                <MudTd DataLabel="Roles">@string.Join(", ", context.AllowedRoles ?? new List<string>())</MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@((e) => OpenEditCameraDialog(context))" Size="Size.Small" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@((e) => DeleteCamera(context))" Size="Size.Small" Color="Color.Error" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info">
+                            No custom cameras configured. Click "Add Camera" to add one.
+                        </MudAlert>
+                    }
+
+                    <MudAlert Severity="Severity.Warning" Class="mt-4">
+                        <MudText Typo="Typo.body2">
+                            <b>Note:</b> Camera configuration changes require a server restart to take effect.
+                            Use the System Settings tab to restart the server after making changes.
+                        </MudText>
+                    </MudAlert>
+
+                    <!-- Add/Edit Camera Dialog -->
+                    @if (_editingCamera != null)
+                    {
+                        <MudPaper Elevation="2" Class="pa-4 mt-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">@(_editingCamera == null || string.IsNullOrEmpty(_editingCamera.Path) ? "Add New Camera" : "Edit Camera")</MudText>
+                            <MudGrid>
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_editingCamera.Name"
+                                                  Label="Camera Name"
+                                                  Variant="Variant.Outlined"
+                                                  Placeholder="e.g., Front Door Camera" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudSelect @bind-Value="_editingCamera.Type"
+                                              Label="Camera Type"
+                                              Variant="Variant.Outlined">
+                                        <MudSelectItem Value="string.Empty">-- Select Type --</MudSelectItem>
+                                        <MudSelectItem Value="@("IP")">IP (RTSP)</MudSelectItem>
+                                        <MudSelectItem Value="@("MJPEG")">MJPEG</MudSelectItem>
+                                        <MudSelectItem Value="@("USB")">USB</MudSelectItem>
+                                        <MudSelectItem Value="@("USB_FC")">USB Flasncap</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudSelect @bind-Value="_editingCamera.AuthenticationType"
+                                              Label="Authentication Type"
+                                              Variant="Variant.Outlined">
+                                        <MudSelectItem Value="@("None")">None</MudSelectItem>
+                                        <MudSelectItem Value="@("Plain")">Plain</MudSelectItem>
+                                        <MudSelectItem Value="@("Basic")">Basic</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_editingCamera.Path"
+                                                  Label="Camera Path/URL"
+                                                  Variant="Variant.Outlined"
+                                                  Lines="3"
+                                                  Placeholder="e.g., rtsp://admin:password@192.168.1.100:554/stream" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_editingCamera.Login"
+                                                  Label="Login (if needed)"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_editingCamera.Password"
+                                                  Label="Password (if needed)"
+                                                  Variant="Variant.Outlined"
+                                                  InputType="InputType.Password" />
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.subtitle2">Allowed Roles</MudText>
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudCheckBox T="bool" @bind-Checked="_cameraRoleAdmin" Label="Admin" />
+                                        <MudCheckBox T="bool" @bind-Checked="_cameraRoleUser" Label="User" />
+                                        <MudCheckBox T="bool" @bind-Checked="_cameraRoleGuest" Label="Guest" />
+                                    </MudStack>
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Default"
+                                                   OnClick="@CancelEditCamera">
+                                            Cancel
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Success"
+                                                   OnClick="@(() => SaveCamera(_editingCamera))">
+                                            Save Camera
+                                        </MudButton>
+                                    </MudStack>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
             </MudTabPanel>
 
             <!-- User Management Tab -->
             <MudTabPanel Text="User Management" Icon="@Icons.Material.Filled.People">
-                <MudText Typo="Typo.h5" Class="mb-4">User Management</MudText>
-                <MudAlert Severity="Severity.Info" Class="mb-4">
-                    <b>Note:</b> User management changes require server restart to take effect.
-                    Use the System Settings tab to restart the server after making changes.
-                </MudAlert>
-                <MudText Typo="Typo.body1">
-                    User configuration is currently managed through appsettings.json file.
-                    Please edit the file manually and restart the server to apply changes.
-                </MudText>
+                <MudStack Spacing="3">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h5">User Management</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudButton OnClick="@RefreshUsers"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       Disabled="@_isUsersLoading">
+                                Refresh
+                            </MudButton>
+                            <MudButton OnClick="@OpenAddUserDialog"
+                                       Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@_isUsersLoading">
+                                Add User
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+
+                    @if (_usersErrorMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Error" ShowCloseIcon="true" CloseIconClicked="@(() => _usersErrorMessage = null)">
+                            @_usersErrorMessage
+                        </MudAlert>
+                    }
+
+                    @if (_usersSuccessMessage != null)
+                    {
+                        <MudAlert Severity="Severity.Success" ShowCloseIcon="true" CloseIconClicked="@(() => _usersSuccessMessage = null)">
+                            @_usersSuccessMessage
+                        </MudAlert>
+                    }
+
+                    @if (_isUsersLoading)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                    }
+                    else if (_users?.Count > 0)
+                    {
+                        <MudTable Items="@_users" Hover="true" Breakpoint="Breakpoint.Sm">
+                            <HeaderContent>
+                                <MudTh>Login</MudTh>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Roles</MudTh>
+                                <MudTh>Telegram ID</MudTh>
+                                <MudTh>Codec</MudTh>
+                                <MudTh>Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Login">@context.Login</MudTd>
+                                <MudTd DataLabel="Name">@context.Name</MudTd>
+                                <MudTd DataLabel="Roles">@string.Join(", ", context.Roles ?? new List<string>())</MudTd>
+                                <MudTd DataLabel="Telegram ID">@context.TelegramId</MudTd>
+                                <MudTd DataLabel="Codec">@context.DefaultCodec</MudTd>
+                                <MudTd DataLabel="Actions">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@((e) => OpenEditUserDialog(context))" Size="Size.Small" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@((e) => DeleteUser(context))" Size="Size.Small" Color="Color.Error" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info">
+                            No users configured. Click "Add User" to add one.
+                        </MudAlert>
+                    }
+
+                    <MudAlert Severity="Severity.Warning" Class="mt-4">
+                        <MudText Typo="Typo.body2">
+                            <b>Note:</b> User configuration changes require a server restart to take effect.
+                            Use the System Settings tab to restart the server after making changes.
+                        </MudText>
+                    </MudAlert>
+
+                    <!-- Add/Edit User Dialog -->
+                    @if (_editingUser != null)
+                    {
+                        <MudPaper Elevation="2" Class="pa-4 mt-4">
+                            <MudText Typo="Typo.h6" Class="mb-3">@(string.IsNullOrEmpty(_editingUser.Login) ? "Add New User" : "Edit User")</MudText>
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_editingUser.Login"
+                                                  Label="Login"
+                                                  Variant="Variant.Outlined"
+                                                  Disabled="@(!string.IsNullOrEmpty(_editingUser.Login))"
+                                                  Placeholder="Username" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_editingUser.Name"
+                                                  Label="Display Name"
+                                                  Variant="Variant.Outlined"
+                                                  Placeholder="Full name" />
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_editingUserPassword"
+                                                  Label="Password"
+                                                  Variant="Variant.Outlined"
+                                                  InputType="InputType.Password"
+                                                  Placeholder="Leave empty to keep unchanged" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudNumericField @bind-Value="_editingUser.TelegramId"
+                                                     Label="Telegram ID"
+                                                     Variant="Variant.Outlined" />
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudTextField @bind-Value="_editingUser.DefaultCodec"
+                                                  Label="Default Codec"
+                                                  Variant="Variant.Outlined"
+                                                  Placeholder="e.g., MP4V, AVC" />
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.subtitle2">Roles</MudText>
+                                    <MudStack Row="true" Spacing="2">
+                                        <MudCheckBox T="bool" @bind-Checked="_userRoleAdmin" Label="Admin" />
+                                        <MudCheckBox T="bool" @bind-Checked="_userRoleUser" Label="User" />
+                                        <MudCheckBox T="bool" @bind-Checked="_userRoleGuest" Label="Guest" />
+                                    </MudStack>
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Default"
+                                                   OnClick="@CancelEditUser">
+                                            Cancel
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Success"
+                                                   OnClick="@SaveCurrentUser">
+                                            Save User
+                                        </MudButton>
+                                    </MudStack>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    }
+                </MudStack>
             </MudTabPanel>
 
             <!-- Telegram Settings Tab -->
@@ -439,6 +731,11 @@
                                 </MudItem>
                             </MudGrid>
                         </MudPaper>
+
+                        <MudText Typo="Typo.h6" Class="mb-3 mt-6">Recording Cameras</MudText>
+                        <MudAlert Severity="Severity.Info" Class="mb-3">
+                            Recording cameras are configured in the Runtime Settings above under the RecordCameras section.
+                        </MudAlert>
                     }
                 </MudStack>
             </MudTabPanel>
@@ -574,14 +871,46 @@
 </MudPaper>
 
 @code {
+    // System & Runtime Settings
     private SystemSettingsDto _systemSettings = new();
     private RuntimeSettingsDto _runtimeSettings = new();
+    
+    // Camera Management
+    private CameraSettingsDto _cameraSettings = new();
+    private List<UserManagementDto> _users = new();
+    private List<dynamic> _recordingCameras = new();
+    
+    // Loading States
     private bool _isSystemLoading = false;
     private bool _isRuntimeLoading = false;
+    private bool _isCamerasLoading = false;
+    private bool _isUsersLoading = false;
+    
+    // Error/Success Messages
     private string? _systemErrorMessage;
     private string? _systemSuccessMessage;
     private string? _runtimeErrorMessage;
     private string? _runtimeSuccessMessage;
+    private string? _camerasErrorMessage;
+    private string? _camerasSuccessMessage;
+    private string? _usersErrorMessage;
+    private string? _usersSuccessMessage;
+
+    // Dialog Edit Models
+    private CameraConfigDto? _editingCamera;
+    private UserManagementDto? _editingUser;
+    private string _editingUserPassword = string.Empty;
+    private dynamic? _editingRecordingCamera;
+
+    // Role checkboxes for cameras
+    private bool _cameraRoleAdmin = false;
+    private bool _cameraRoleUser = false;
+    private bool _cameraRoleGuest = false;
+
+    // Role checkboxes for users
+    private bool _userRoleAdmin = false;
+    private bool _userRoleUser = false;
+    private bool _userRoleGuest = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -592,6 +921,9 @@
         {
             await RefreshSystemSettings();
             await RefreshRuntimeSettings();
+            await RefreshCameras();
+            await RefreshUsers();
+            await RefreshRecordingCameras();
         }
     }
 
@@ -599,6 +931,8 @@
     {
         return _authenticationService.UserInfo?.Roles?.Contains("Admin") ?? false;
     }
+
+    #region System Settings
 
     private async Task RefreshSystemSettings()
     {
@@ -637,6 +971,10 @@
             StateHasChanged();
         }
     }
+
+    #endregion
+
+    #region Runtime Settings
 
     private async Task RefreshRuntimeSettings()
     {
@@ -704,6 +1042,7 @@
                 {
                     _runtimeSuccessMessage = "Runtime settings saved successfully!";
                     await RefreshRuntimeSettings();
+                    await RefreshRecordingCameras();
                 }
                 else
                 {
@@ -726,6 +1065,385 @@
             StateHasChanged();
         }
     }
+
+    #endregion
+
+    #region Camera Management
+
+    private async Task RefreshCameras()
+    {
+        _isCamerasLoading = true;
+        _camerasErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetCameraSettings");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<CameraSettingsDto>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _cameraSettings = apiResponse.Data ?? new CameraSettingsDto();
+                }
+                else
+                {
+                    _camerasErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load camera settings";
+                }
+            }
+            else
+            {
+                _camerasErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing cameras");
+            _camerasErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isCamerasLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddCameraDialog()
+    {
+        _editingCamera = new CameraConfigDto 
+        { 
+            AllowedRoles = new List<string>(),
+            Type = "IP",
+            AuthenticationType = "Plain"
+        };
+        _cameraRoleAdmin = false;
+        _cameraRoleUser = false;
+        _cameraRoleGuest = false;
+        StateHasChanged();
+    }
+
+    private void OpenEditCameraDialog(CameraConfigDto camera)
+    {
+        _editingCamera = new CameraConfigDto
+        {
+            Type = camera.Type,
+            Name = camera.Name,
+            Path = camera.Path,
+            AllowedRoles = new List<string>(camera.AllowedRoles ?? new List<string>()),
+            AuthenticationType = camera.AuthenticationType,
+            Login = camera.Login,
+            Password = camera.Password
+        };
+        _cameraRoleAdmin = _editingCamera.AllowedRoles.Contains("Admin");
+        _cameraRoleUser = _editingCamera.AllowedRoles.Contains("User");
+        _cameraRoleGuest = _editingCamera.AllowedRoles.Contains("Guest");
+        StateHasChanged();
+    }
+
+    private void CancelEditCamera()
+    {
+        _editingCamera = null;
+        StateHasChanged();
+    }
+
+    private async Task SaveCamera(CameraConfigDto camera)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(camera.Name))
+            {
+                _camerasErrorMessage = "Camera name is required";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(camera.Path))
+            {
+                _camerasErrorMessage = "Camera path is required";
+                return;
+            }
+
+            // Update roles from checkboxes
+            camera.AllowedRoles = new List<string>();
+            if (_cameraRoleAdmin) camera.AllowedRoles.Add("Admin");
+            if (_cameraRoleUser) camera.AllowedRoles.Add("User");
+            if (_cameraRoleGuest) camera.AllowedRoles.Add("Guest");
+
+            if (camera.AllowedRoles.Count == 0)
+            {
+                _camerasErrorMessage = "At least one role must be selected";
+                return;
+            }
+
+            // Check if this is a new camera or existing
+            var existingCamera = _cameraSettings.CustomCameras.FirstOrDefault(c => c.Path == camera.Path);
+            if (existingCamera != null && existingCamera.Name != camera.Name)
+            {
+                _cameraSettings.CustomCameras.Remove(existingCamera);
+            }
+            else if (!_cameraSettings.CustomCameras.Contains(camera) && existingCamera == null)
+            {
+                _cameraSettings.CustomCameras.Add(camera);
+            }
+
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateCameraSettings", _cameraSettings);
+            if (response.IsSuccessStatusCode)
+            {
+                _camerasSuccessMessage = "Camera saved successfully!";
+                _editingCamera = null;
+                _camerasErrorMessage = null;
+                await RefreshCameras();
+            }
+            else
+            {
+                _camerasErrorMessage = $"Failed to save camera: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving camera");
+            _camerasErrorMessage = $"Error: {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private async Task DeleteCamera(CameraConfigDto camera)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete camera '{camera.Name}'?",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                _cameraSettings.CustomCameras.Remove(camera);
+                var response = await _http.PostAsJsonAsync("/Configuration/UpdateCameraSettings", _cameraSettings);
+                if (response.IsSuccessStatusCode)
+                {
+                    _camerasSuccessMessage = "Camera deleted successfully!";
+                    _camerasErrorMessage = null;
+                    await RefreshCameras();
+                }
+                else
+                {
+                    _camerasErrorMessage = $"Failed to delete camera: {response.StatusCode}";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deleting camera");
+                _camerasErrorMessage = $"Error: {ex.Message}";
+            }
+        }
+    }
+
+    #endregion
+
+    #region User Management
+
+    private async Task RefreshUsers()
+    {
+        _isUsersLoading = true;
+        _usersErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetUsers");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<List<UserManagementDto>>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _users = apiResponse.Data ?? new List<UserManagementDto>();
+                }
+                else
+                {
+                    _usersErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load users";
+                }
+            }
+            else
+            {
+                _usersErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing users");
+            _usersErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isUsersLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddUserDialog()
+    {
+        _editingUser = new UserManagementDto 
+        { 
+            Login = string.Empty,
+            Roles = new List<string>(),
+            TelegramId = 0
+        };
+        _editingUserPassword = string.Empty;
+        _userRoleAdmin = false;
+        _userRoleUser = false;
+        _userRoleGuest = false;
+        StateHasChanged();
+    }
+
+    private void OpenEditUserDialog(UserManagementDto user)
+    {
+        _editingUser = new UserManagementDto
+        {
+            Login = user.Login,
+            Name = user.Name,
+            Roles = new List<string>(user.Roles ?? new List<string>()),
+            TelegramId = user.TelegramId,
+            TelegramName = user.TelegramName,
+            DefaultCodec = user.DefaultCodec
+        };
+        _editingUserPassword = string.Empty;
+        _userRoleAdmin = _editingUser.Roles.Contains("Admin");
+        _userRoleUser = _editingUser.Roles.Contains("User");
+        _userRoleGuest = _editingUser.Roles.Contains("Guest");
+        StateHasChanged();
+    }
+
+    private void CancelEditUser()
+    {
+        _editingUser = null;
+        _editingUserPassword = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task SaveCurrentUser()
+    {
+        if (_editingUser == null)
+            return;
+
+        // Update roles from checkboxes
+        _editingUser.Roles = new List<string>();
+        if (_userRoleAdmin) _editingUser.Roles.Add("Admin");
+        if (_userRoleUser) _editingUser.Roles.Add("User");
+        if (_userRoleGuest) _editingUser.Roles.Add("Guest");
+
+        // Create a DTO for saving
+        var userDto = new UserCreateUpdateDto
+        {
+            Login = _editingUser.Login,
+            Name = _editingUser.Name,
+            Password = _editingUserPassword,
+            Roles = _editingUser.Roles,
+            TelegramId = _editingUser.TelegramId,
+            TelegramName = _editingUser.TelegramName,
+            DefaultCodec = _editingUser.DefaultCodec
+        };
+
+        await SaveUser(userDto);
+    }
+
+    private async Task SaveUser(UserCreateUpdateDto user)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(user.Login))
+            {
+                _usersErrorMessage = "Login is required";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(user.Password) && string.IsNullOrEmpty(_editingUser?.Login))
+            {
+                _usersErrorMessage = "Password is required for new users";
+                return;
+            }
+
+            if (user.Roles == null || user.Roles.Count == 0)
+            {
+                _usersErrorMessage = "At least one role must be selected";
+                return;
+            }
+
+            var response = await _http.PostAsJsonAsync("/Configuration/SaveUser", user);
+            if (response.IsSuccessStatusCode)
+            {
+                _usersSuccessMessage = "User saved successfully!";
+                _editingUser = null;
+                _editingUserPassword = string.Empty;
+                _usersErrorMessage = null;
+                await RefreshUsers();
+            }
+            else
+            {
+                _usersErrorMessage = $"Failed to save user: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving user");
+            _usersErrorMessage = $"Error: {ex.Message}";
+        }
+        StateHasChanged();
+    }
+
+    private async Task DeleteUser(UserManagementDto user)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            $"Are you sure you want to delete user '{user.Login}'?",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            try
+            {
+                var response = await _http.DeleteAsync($"/Configuration/DeleteUser?login={user.Login}");
+                if (response.IsSuccessStatusCode)
+                {
+                    _usersSuccessMessage = "User deleted successfully!";
+                    _usersErrorMessage = null;
+                    await RefreshUsers();
+                }
+                else
+                {
+                    _usersErrorMessage = $"Failed to delete user: {response.StatusCode}";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deleting user");
+                _usersErrorMessage = $"Error: {ex.Message}";
+            }
+        }
+    }
+
+    #endregion
+
+    #region Recording Cameras
+
+    private async Task RefreshRecordingCameras()
+    {
+        try
+        {
+            // Recording cameras are managed through the Video Recording tab's runtime settings
+            // The RecordCameras list is part of VideoRecordingRuntimeSettingsDto
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing recording cameras");
+        }
+    }
+
+    #endregion
+
+    #region UI Actions
 
     private async Task RefreshCameraList()
     {
@@ -779,6 +1497,9 @@
             {
                 await RefreshSystemSettings();
                 await RefreshRuntimeSettings();
+                await RefreshCameras();
+                await RefreshUsers();
+                await RefreshRecordingCameras();
                 StateHasChanged();
             }
         }
@@ -788,12 +1509,19 @@
         }
     }
 
-    private void OnLogout()
+    private async void OnLogout()
     {
         _systemSettings = new SystemSettingsDto();
         _runtimeSettings = new RuntimeSettingsDto();
+        _cameraSettings = new CameraSettingsDto();
+        _users = new List<UserManagementDto>();
+        _recordingCameras = new List<dynamic>();
+        _editingCamera = null;
+        _editingUser = null;
         StateHasChanged();
     }
+
+    #endregion
 
     public void Dispose()
     {

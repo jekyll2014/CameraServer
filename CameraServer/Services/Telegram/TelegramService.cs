@@ -634,7 +634,7 @@ public class TelegramService : IHostedService, IDisposable
             {
                 try
                 {
-                    var recordTask = new RecordCameraSettingDto()
+                    var recordTask = new CameraServer.Server.Services.VideoRecording.RecordCameraSettingDto()
                     {
                         CameraId = camera.CameraStream.Description.Path,
                         User = user.Login,

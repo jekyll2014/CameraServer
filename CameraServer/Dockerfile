@@ -89,10 +89,12 @@ COPY --from=app-builder /app/publish/ .
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:80/healthcheck || exit 1
+    CMD curl -f http://localhost:8080/healthcheck || exit 1
 
 # Expose ports
 EXPOSE 80 443
+
+# USER root
 
 # Run application
 ENTRYPOINT ["dotnet", "CameraServer.Server.dll"]

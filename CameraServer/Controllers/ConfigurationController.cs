@@ -2,10 +2,8 @@ using CameraLib;
 
 using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
-using CameraServer.Server.Services.AntiBruteForce;
 using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.Configuration;
-using CameraServer.Server.Services.MotionDetection;
 using CameraServer.Server.Services.Telegram;
 using CameraServer.Server.Services.VideoRecording;
 using CameraServer.Shared.DTO;
@@ -13,7 +11,6 @@ using CameraServer.Shared.DTO;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -31,27 +28,21 @@ public class ConfigurationController : ControllerBase
     private readonly IUserManager _userManager;
     private readonly CameraHubService _cameraHub;
     private readonly IRuntimeConfigurationService _runtimeConfig;
-    private readonly IConfiguration _configuration;
+    private readonly IServerConfigurationManager _configManager;
     private readonly ILogger<ConfigurationController> _logger;
-    private readonly Config<CameraSettings> _cameraConfig;
-    private readonly Config<List<User>> _userConfig;
 
     public ConfigurationController(
         IUserManager userManager,
         CameraHubService cameraHub,
         IRuntimeConfigurationService runtimeConfig,
-        IConfiguration configuration,
+        IServerConfigurationManager configManager,
         ILogger<ConfigurationController> logger)
     {
         _userManager = userManager;
         _cameraHub = cameraHub;
         _runtimeConfig = runtimeConfig;
-        _configuration = configuration;
+        _configManager = configManager;
         _logger = logger;
-
-        // Initialize configuration managers
-        _cameraConfig = new Config<CameraSettings>("appsettings.json");
-        _userConfig = new Config<List<User>>("appsettings.json");
     }
 
     #region Camera Configuration
@@ -62,7 +53,7 @@ public class ConfigurationController : ControllerBase
         Description = "Returns all camera-related configuration including auto-search settings and custom cameras",
         Tags = new[] { "Configuration" }
     )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<CameraSettings>))]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<CameraSettingsDto>))]
     [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
     public IActionResult GetCameraSettings()
     {
@@ -71,13 +62,36 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can access camera settings");
 
-            var settings = _configuration.GetSection("CameraSettings").Get<CameraSettings>();
-            return Ok(ApiResponse<CameraSettings>.SuccessResponse(settings ?? new CameraSettings()));
+            var settings = _configManager.GetSection(s => s.CameraSettings);
+
+            var dto = new CameraSettingsDto
+            {
+                AutoSearchIp = settings.AutoSearchIp,
+                AutoSearchUsb = settings.AutoSearchUsb,
+                AutoSearchUsbFC = settings.AutoSearchUsbFC,
+                DefaultAllowedRoles = settings.DefaultAllowedRoles?.Select(r => r.ToString()).ToList() ?? new List<string>(),
+                DiscoveryTimeOut = settings.DiscoveryTimeOut,
+                ForceCameraConnect = settings.ForceCameraConnect,
+                MaxFrameBuffer = settings.MaxFrameBuffer,
+                CustomCameras = settings.CustomCameras?.Select(c => new CameraConfigDto
+                {
+                    Type = c.Type.ToString(),
+                    Name = c.Name,
+                    Path = c.Path,
+                    AllowedRoles = c.AllowedRoles.Select(r => r.ToString()).ToList(),
+                    AuthenticationType = c.AuthenticationType.ToString(),
+                    Login = c.Login,
+                    Password = c.Password
+                }).ToList() ?? new List<CameraConfigDto>(),
+                FrameTimeout = settings.FrameTimeout
+            };
+
+            return Ok(ApiResponse<CameraSettingsDto>.SuccessResponse(dto));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving camera settings");
-            return StatusCode(500, ApiResponse<CameraSettings>.ErrorResponse($"Failed to retrieve camera settings: {ex.Message}"));
+            return StatusCode(500, ApiResponse<CameraSettingsDto>.ErrorResponse($"Failed to retrieve camera settings: {ex.Message}"));
         }
     }
 
@@ -90,22 +104,54 @@ public class ConfigurationController : ControllerBase
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
     [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
     [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult UpdateCameraSettings([FromBody] CameraSettings settings)
+    public IActionResult UpdateCameraSettings([FromBody] CameraSettingsDto settingsDto)
     {
         try
         {
             if (!IsAdmin())
                 return Forbid("Only administrators can modify camera settings");
 
-            ArgumentNullException.ThrowIfNull(settings);
+            ArgumentNullException.ThrowIfNull(settingsDto);
 
             // Validate settings
-            var validationErrors = ValidateCameraSettings(settings);
+            var validationErrors = ValidateCameraSettingsDto(settingsDto);
             if (validationErrors.Count > 0)
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
-            _cameraConfig.ConfigStorage = settings;
-            var success = _cameraConfig.SaveConfig();
+            // Convert DTO to server model
+            var settings = new CameraSettings
+            {
+                AutoSearchIp = settingsDto.AutoSearchIp,
+                AutoSearchUsb = settingsDto.AutoSearchUsb,
+                AutoSearchUsbFC = settingsDto.AutoSearchUsbFC,
+                DefaultAllowedRoles = settingsDto.DefaultAllowedRoles
+                    .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
+                    .ToList(),
+                DiscoveryTimeOut = settingsDto.DiscoveryTimeOut,
+                ForceCameraConnect = settingsDto.ForceCameraConnect,
+                MaxFrameBuffer = settingsDto.MaxFrameBuffer,
+                CustomCameras = settingsDto.CustomCameras
+                    .Select(c => new CustomCameraDto
+                    {
+                        Type = Enum.TryParse<CameraType>(c.Type, out var cameraType) ? cameraType : CameraType.Unknown,
+                        Name = c.Name,
+                        Path = c.Path,
+                        AllowedRoles = c.AllowedRoles
+                            .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
+                            .ToList(),
+                        AuthenticationType = Enum.TryParse<AuthType>(c.AuthenticationType, out var authType) ? authType : AuthType.None,
+                        Login = c.Login,
+                        Password = c.Password
+                    })
+                    .ToList(),
+                FrameTimeout = settingsDto.FrameTimeout
+            };
+
+            // Update the configuration using the unified manager
+            var success = _configManager.UpdateSection(
+                s => s.CameraSettings,
+                (appSettings, _) => appSettings.CameraSettings = settings
+            );
 
             if (success)
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
@@ -141,12 +187,6 @@ public class ConfigurationController : ControllerBase
             if (validationErrors.Count > 0)
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
-            var settings = _configuration.GetSection("CameraSettings").Get<CameraSettings>() ?? new CameraSettings();
-
-            // Check if camera already exists
-            if (settings.CustomCameras.Any(c => c.Path == camera.Path))
-                return BadRequest(ApiResponse<bool>.ErrorResponse("Camera with this path already exists"));
-
             // Parse enum values from strings
             if (!Enum.TryParse<CameraType>(camera.Type, out var cameraType))
                 return BadRequest(ApiResponse<bool>.ErrorResponse($"Invalid camera type: {camera.Type}"));
@@ -167,9 +207,16 @@ public class ConfigurationController : ControllerBase
                 Password = camera.Password
             };
 
-            settings.CustomCameras.Add(customCamera);
-            _cameraConfig.ConfigStorage = settings;
-            var success = _cameraConfig.SaveConfig();
+            var success = _configManager.UpdateSection(
+                s => s.CameraSettings,
+                (appSettings, cameraSettings) =>
+                {
+                    if (!cameraSettings.CustomCameras.Any(c => c.Path == camera.Path))
+                    {
+                        cameraSettings.CustomCameras.Add(customCamera);
+                    }
+                }
+            );
 
             if (success)
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
@@ -202,20 +249,22 @@ public class ConfigurationController : ControllerBase
             if (string.IsNullOrWhiteSpace(cameraPath))
                 return BadRequest(ApiResponse<bool>.ErrorResponse("Camera path is required"));
 
-            var settings = _configuration.GetSection("CameraSettings").Get<CameraSettings>() ?? new CameraSettings();
-            var camera = settings.CustomCameras.FirstOrDefault(c => c.Path == cameraPath);
-
-            if (camera == null)
-                return NotFound(ApiResponse<bool>.ErrorResponse("Camera not found"));
-
-            settings.CustomCameras.Remove(camera);
-            _cameraConfig.ConfigStorage = settings;
-            var success = _cameraConfig.SaveConfig();
+            var success = _configManager.UpdateSection(
+                s => s.CameraSettings,
+                (appSettings, cameraSettings) =>
+                {
+                    var camera = cameraSettings.CustomCameras.FirstOrDefault(c => c.Path == cameraPath);
+                    if (camera != null)
+                    {
+                        cameraSettings.CustomCameras.Remove(camera);
+                    }
+                }
+            );
 
             if (success)
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
             else
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Failed to save camera configuration"));
+                return NotFound(ApiResponse<bool>.ErrorResponse("Camera not found or failed to save"));
         }
         catch (Exception ex)
         {
@@ -243,7 +292,7 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can view users");
 
-            var users = _userManager.GetUsers()?
+            var users = _configManager.GetSection(s => s.Users)?
                 .Select(u => new UserManagementDto
                 {
                     Login = u.Login,
@@ -286,10 +335,7 @@ public class ConfigurationController : ControllerBase
             if (validationErrors.Count > 0)
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
-            var users = _configuration.GetSection("Users").Get<List<User>>() ?? new List<User>();
-            var existingUser = users.FirstOrDefault(u => u.Login == userDto.Login);
-
-            var user = new User
+            var newUser = new User
             {
                 Login = userDto.Login,
                 Password = userDto.Password,
@@ -302,15 +348,18 @@ public class ConfigurationController : ControllerBase
                 DefaultCodec = userDto.DefaultCodec
             };
 
-            if (existingUser != null)
-            {
-                // Update existing user
-                users.Remove(existingUser);
-            }
-
-            users.Add(user);
-            _userConfig.ConfigStorage = users;
-            var success = _userConfig.SaveConfig();
+            var success = _configManager.UpdateSection(
+                s => s.Users,
+                (appSettings, usersList) =>
+                {
+                    var existingUser = usersList.FirstOrDefault(u => u.Login == userDto.Login);
+                    if (existingUser != null)
+                    {
+                        usersList.Remove(existingUser);
+                    }
+                    usersList.Add(newUser);
+                }
+            );
 
             if (success)
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
@@ -343,20 +392,22 @@ public class ConfigurationController : ControllerBase
             if (string.IsNullOrWhiteSpace(login))
                 return BadRequest(ApiResponse<bool>.ErrorResponse("Login is required"));
 
-            var users = _configuration.GetSection("Users").Get<List<User>>() ?? new List<User>();
-            var user = users.FirstOrDefault(u => u.Login == login);
-
-            if (user == null)
-                return NotFound(ApiResponse<bool>.ErrorResponse("User not found"));
-
-            users.Remove(user);
-            _userConfig.ConfigStorage = users;
-            var success = _userConfig.SaveConfig();
+            var success = _configManager.UpdateSection(
+                s => s.Users,
+                (appSettings, usersList) =>
+                {
+                    var user = usersList.FirstOrDefault(u => u.Login == login);
+                    if (user != null)
+                    {
+                        usersList.Remove(user);
+                    }
+                }
+            );
 
             if (success)
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
             else
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Failed to save user configuration"));
+                return NotFound(ApiResponse<bool>.ErrorResponse("User not found or failed to save"));
         }
         catch (Exception ex)
         {
@@ -384,12 +435,13 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can view system settings");
 
+            var appSettings = _configManager.GetSettings();
             var settings = new SystemSettingsDto
             {
-                ServerUrls = _configuration["Urls"] ?? string.Empty,
-                CookieExpireTimeMinutes = _configuration.GetValue<int>("CookieExpireTimeMinutes", 60),
-                AllowBasicAuthentication = _configuration.GetValue<bool>("AllowBasicAuthentication", true),
-                ExternalHostUrl = _configuration["ExternalHostUrl"] ?? string.Empty
+                ServerUrls = appSettings.Urls,
+                CookieExpireTimeMinutes = appSettings.CookieExpireTimeMinutes,
+                AllowBasicAuthentication = appSettings.AllowBasicAuthentication,
+                ExternalHostUrl = appSettings.ExternalHostUrl
             };
 
             return Ok(ApiResponse<SystemSettingsDto>.SuccessResponse(settings));
@@ -510,7 +562,7 @@ public class ConfigurationController : ControllerBase
 
                 if (updateDto.BruteForceDetectionSettings != null)
                 {
-                    var bruteForceSettings = new BruteForceDetectionSettings
+                    var bruteForceSettings = new Services.AntiBruteForce.BruteForceDetectionSettings
                     {
                         RetriesPerMinute = updateDto.BruteForceDetectionSettings.RetriesPerMinute,
                         RetriesPerHour = updateDto.BruteForceDetectionSettings.RetriesPerHour
@@ -520,7 +572,7 @@ public class ConfigurationController : ControllerBase
 
                 if (updateDto.MotionDetectionSettings != null)
                 {
-                    var motionDetectionSettings = new MotionDetectionSettings
+                    var motionDetectionSettings = new Services.MotionDetection.MotionDetectionSettings
                     {
                         StoragePath = updateDto.MotionDetectionSettings.StoragePath,
                         DefaultMotionDetectParameters = updateDto.MotionDetectionSettings.DefaultMotionDetectParameters,
@@ -531,7 +583,7 @@ public class ConfigurationController : ControllerBase
 
                 if (updateDto.VideoRecordingSettings != null)
                 {
-                    var videoRecordingSettings = new RecorderSettings
+                    var videoRecordingSettings = new Services.VideoRecording.RecorderSettings
                     {
                         StoragePath = updateDto.VideoRecordingSettings.StoragePath,
                         VideoFileLengthSeconds = updateDto.VideoRecordingSettings.VideoFileLengthSeconds,
@@ -564,6 +616,22 @@ public class ConfigurationController : ControllerBase
     #region Validation
 
     private List<string> ValidateCameraSettings(CameraSettings settings)
+    {
+        var errors = new List<string>();
+
+        if (settings.DiscoveryTimeOut < 100)
+            errors.Add("DiscoveryTimeOut must be at least 100ms");
+
+        if (settings.MaxFrameBuffer < 1)
+            errors.Add("MaxFrameBuffer must be at least 1");
+
+        if (settings.FrameTimeout < 1000)
+            errors.Add("FrameTimeout must be at least 1000ms");
+
+        return errors;
+    }
+
+    private List<string> ValidateCameraSettingsDto(CameraSettingsDto settings)
     {
         var errors = new List<string>();
 

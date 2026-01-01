@@ -118,6 +118,7 @@ public class Program
         builder.Services.AddMudServices();
 
         // Add services to the container.
+        builder.Services.AddSingleton<IServerConfigurationManager, ServerServerConfigurationManager>();
         builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
         builder.Services.AddTransient<IUserManager, UserManager>();
         builder.Services.AddSingleton<CameraHubService, CameraHubService>();
