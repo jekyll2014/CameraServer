@@ -10,6 +10,7 @@
 @inject IAuthenticationService _authenticationService
 @inject ICurrentUserState _currentUserState
 @inject ILogger<MotionDetectionPanel> Logger
+@inject IDialogService DialogService
 
 <MudPaper Class="pa-4">
     <MudStack Spacing="4">
@@ -268,39 +269,139 @@
                     <MudText Typo="Typo.subtitle1" Class="mb-2"><b>Detection Parameters</b></MudText>
                 </MudItem>
 
-                <MudItem xs="12" md="4">
-                    <MudSlider T="uint"
-                               @bind-Value="_changeLimit"
-                               Min="1"
-                               Max="100"
-                               Step="1"
-                               Color="Color.Primary"
-                               Variant="Variant.Filled">
-                        Sensitivity: @_changeLimit%
-                    </MudSlider>
+                <!-- Sensitivity Preset Selection -->
+                <MudItem xs="12">
+                    <MudText Typo="Typo.body2" Class="mb-3">Choose a sensitivity preset or customize advanced settings:</MudText>
+                    
+                    <MudRadioGroup @bind-Value="SensitivityPreset" T="string">
+                        <MudPaper Elevation="1" Class="pa-3 mb-2" Style="@(_sensitivityPreset == "low" ? "border: 2px solid var(--mud-palette-success);" : "border: 1px solid #ddd;")">
+                            <MudRadio Value="@("low")" Color="Color.Success">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle1"><b>🟢 Low Sensitivity</b></MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Only detect major movements (people, vehicles)
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        ✓ Best for outdoor cameras • ✓ Windy areas • ✓ Fewer false alarms
+                                    </MudText>
+                                </MudStack>
+                            </MudRadio>
+                        </MudPaper>
+                        
+                        <MudPaper Elevation="1" Class="pa-3 mb-2" Style="@(_sensitivityPreset == "medium" ? "border: 2px solid var(--mud-palette-primary);" : "border: 1px solid #ddd;")">
+                            <MudRadio Value="@("medium")" Color="Color.Primary">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle1"><b>🔵 Medium Sensitivity (Recommended)</b></MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Balanced detection for most scenarios
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        ✓ Indoor cameras • ✓ General purpose • ✓ Good balance
+                                    </MudText>
+                                </MudStack>
+                            </MudRadio>
+                        </MudPaper>
+                        
+                        <MudPaper Elevation="1" Class="pa-3 mb-2" Style="@(_sensitivityPreset == "high" ? "border: 2px solid var(--mud-palette-warning);" : "border: 1px solid #ddd;")">
+                            <MudRadio Value="@("high")" Color="Color.Warning">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle1"><b>🟡 High Sensitivity</b></MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Detect even small movements (pets, shadows)
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Warning">
+                                        ⚠️ May cause more false alarms • Best for controlled environments
+                                    </MudText>
+                                </MudStack>
+                            </MudRadio>
+                        </MudPaper>
+                        
+                        <MudPaper Elevation="1" Class="pa-3 mb-2" Style="@(_sensitivityPreset == "custom" ? "border: 2px solid var(--mud-palette-secondary);" : "border: 1px solid #ddd;")">
+                            <MudRadio Value="@("custom")" Color="Color.Secondary">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle1"><b>⚙️ Custom (Advanced)</b></MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        Fine-tune all detection parameters manually
+                                    </MudText>
+                                </MudStack>
+                            </MudRadio>
+                        </MudPaper>
+                    </MudRadioGroup>
                 </MudItem>
 
-                <MudItem xs="12" md="4">
-                    <MudSlider T="uint"
-                               @bind-Value="_noiseThreshold"
-                               Min="0"
-                               Max="255"
-                               Step="5"
-                               Color="Color.Primary"
-                               Variant="Variant.Filled">
-                        Noise Threshold: @_noiseThreshold
-                    </MudSlider>
-                </MudItem>
+                <!-- Advanced Settings (only shown for Custom preset) -->
+                @if (_sensitivityPreset == "custom")
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.subtitle2" Class="mb-3" Color="Color.Secondary">
+                            <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" /> Advanced Detection Settings
+                        </MudText>
+                    </MudItem>
 
-                <MudItem xs="12" md="4">
-                    <MudNumericField T="uint"
-                                     @bind-Value="_detectorDelay"
-                                     Label="Detector Delay (ms)"
-                                     Variant="Variant.Outlined"
-                                     Min="100"
-                                     Step="100"
-                                     HideSpinButtons="false" />
-                </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudSlider T="uint"
+                                       @bind-Value="_changeLimit"
+                                       Min="1"
+                                       Max="100"
+                                       Step="1"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       Style="flex: 1;">
+                                Sensitivity: @_changeLimit%
+                            </MudSlider>
+                            <HelpTooltip Title="Motion Sensitivity"
+                                         Content="Percentage of pixels that must change to trigger motion detection. Lower values = more sensitive."
+                                         Recommendation="10-20% for most cameras" />
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudSlider T="uint"
+                                       @bind-Value="_noiseThreshold"
+                                       Min="0"
+                                       Max="255"
+                                       Step="5"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       Style="flex: 1;">
+                                Noise Threshold: @_noiseThreshold
+                            </MudSlider>
+                            <HelpTooltip Title="Noise Threshold"
+                                         Content="Filters out random pixel changes caused by camera sensor noise. Higher values make the detector less sensitive to tiny changes."
+                                         Recommendation="30-80 for most cameras, higher for noisy sensors" />
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" md="4">
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudNumericField T="uint"
+                                             @bind-Value="_detectorDelay"
+                                             Label="Detector Delay (ms)"
+                                             Variant="Variant.Outlined"
+                                             Min="100"
+                                             Step="100"
+                                             HideSpinButtons="false"
+                                             Style="flex: 1;" />
+                            <HelpTooltip Title="Detector Delay"
+                                         Content="Time delay between motion detection checks in milliseconds. Lower values = faster detection but more CPU usage."
+                                         Recommendation="500-2000ms for balanced performance" />
+                        </MudStack>
+                    </MudItem>
+                }
+                else
+                {
+                    <!-- Show current preset values as readonly info -->
+                    <MudItem xs="12">
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                            <MudText Typo="Typo.body2">
+                                <b>Current Settings:</b> Sensitivity: @_changeLimit% • Noise Threshold: @_noiseThreshold • Delay: @_detectorDelay ms
+                            </MudText>
+                        </MudAlert>
+                    </MudItem>
+                }
 
                 <MudItem xs="12">
                     <MudText Typo="Typo.subtitle1" Class="mb-2"><b>Notification Settings</b></MudText>
@@ -333,10 +434,16 @@
                 </MudItem>
 
                 <MudItem xs="12" md="6">
-                    <MudTextField @bind-Value="_newDetector.Notifications[0].Destination"
-                                  Label="Destination"
-                                  Variant="Variant.Outlined"
-                                  HelperText="Email, phone number, or Telegram chat ID" />
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudTextField @bind-Value="_newDetector.Notifications[0].Destination"
+                                      Label="Destination"
+                                      Variant="Variant.Outlined"
+                                      HelperText="Email, phone number, or Telegram chat ID"
+                                      Style="flex: 1;" />
+                        <HelpTooltip Title="Notification Destination"
+                                     Content="Where to send motion alerts. For Telegram, use your chat ID (get it from @@userinfobot). For email, use your email address."
+                                     Recommendation="Set up Telegram for instant notifications" />
+                    </MudStack>
                 </MudItem>
 
                 <MudItem xs="12" md="6">
@@ -346,19 +453,30 @@
                 </MudItem>
 
                 <MudItem xs="12" md="6">
-                    <MudCheckBox @bind-Value="_newDetector.Notifications[0].SaveNotificationContent"
-                                 Label="Save Notification Content"
-                                 Color="Color.Primary" />
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudCheckBox @bind-Value="_newDetector.Notifications[0].SaveNotificationContent"
+                                     Label="Save Notification Content"
+                                     Color="Color.Primary" />
+                        <HelpTooltip Title="Save Content"
+                                     Content="When enabled, saves motion detection images/videos to disk in addition to sending notifications."
+                                     Recommendation="Enable to keep a record of all motion events" />
+                    </MudStack>
                 </MudItem>
 
                 <MudItem xs="12" md="6">
-                    <MudNumericField T="uint"
-                                     @bind-Value="_newDetector.Notifications[0].VideoLengthSec"
-                                     Label="Video Length (seconds)"
-                                     Variant="Variant.Outlined"
-                                     Min="1"
-                                     Max="300"
-                                     HideSpinButtons="false" />
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudNumericField T="uint"
+                                         @bind-Value="_newDetector.Notifications[0].VideoLengthSec"
+                                         Label="Video Length (seconds)"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         Max="300"
+                                         HideSpinButtons="false"
+                                         Style="flex: 1;" />
+                        <HelpTooltip Title="Video Length"
+                                     Content="Duration of video clip to record and send when motion is detected. Longer videos use more storage and bandwidth."
+                                     Recommendation="10-30 seconds is usually sufficient" />
+                    </MudStack>
                 </MudItem>
 
                 @if (_validationErrors.Count > 0)
@@ -423,8 +541,9 @@ private string? _errorMessage;
 private string? _successMessage;
 private List<string> _validationErrors = new();
 private uint _changeLimit = 10;
-private uint _noiseThreshold = 30;
+private uint _noiseThreshold = 50;
 private uint _detectorDelay = 1000;
+private string _sensitivityPreset = "medium"; // Default to medium sensitivity
 
 protected override async Task OnInitializedAsync()
     {
@@ -448,7 +567,7 @@ protected override async Task OnInitializedAsync()
             MotionDetectParameters = new MotionDetectorParametersDto
             {
                 ChangeLimit = 10,
-                NoiseThreshold = 30,
+                NoiseThreshold = 50,
                 DetectorDelayMs = 1000
             },
             User = _authenticationService?.UserInfo?.Login ?? string.Empty,
@@ -463,10 +582,56 @@ protected override async Task OnInitializedAsync()
             }
         };
         _selectedCameraId = -1;
-        _changeLimit = 10;
-        _noiseThreshold = 30;
-        _detectorDelay = 1000;
+        _sensitivityPreset = "medium";
+        ApplyPreset("medium");
         _validationErrors.Clear();
+    }
+
+    /// <summary>
+    /// Apply sensitivity preset values
+    /// </summary>
+    private void ApplyPreset(string preset)
+    {
+        switch (preset)
+        {
+            case "low":
+                _changeLimit = 5;
+                _noiseThreshold = 80;
+                _detectorDelay = 2000;
+                break;
+            case "medium":
+                _changeLimit = 10;
+                _noiseThreshold = 50;
+                _detectorDelay = 1000;
+                break;
+            case "high":
+                _changeLimit = 20;
+                _noiseThreshold = 30;
+                _detectorDelay = 500;
+                break;
+            case "custom":
+                // Don't change values - user will set them manually
+                break;
+        }
+        
+        StateHasChanged();
+    }
+
+    // Watch for preset changes
+    private string SensitivityPreset
+    {
+        get => _sensitivityPreset;
+        set
+        {
+            if (_sensitivityPreset != value)
+            {
+                _sensitivityPreset = value;
+                if (value != "custom")
+                {
+                    ApplyPreset(value);
+                }
+            }
+        }
     }
 
     private async Task LoadDetectors()
@@ -529,6 +694,18 @@ protected override async Task OnInitializedAsync()
 
     private async Task ClickedStop(MotionDetectionCameraTask task)
     {
+        var cameraName = _currentUserState.Cameras?.FirstOrDefault(n => n.Path == task.CameraId)?.Name ?? "Unknown";
+        
+        var confirmed = await DialogService.ShowMessageBox(
+            "Stop Motion Detector?",
+            $"Are you sure you want to stop motion detection on '{cameraName}'? " +
+            "Notifications will no longer be sent.",
+            yesText: "Stop Detector",
+            cancelText: "Cancel");
+
+        if (confirmed != true)
+            return;
+
         try
         {
             var response = await _http.GetAsync($"/MotionDetector/StopDetector?taskId={task.Id}");

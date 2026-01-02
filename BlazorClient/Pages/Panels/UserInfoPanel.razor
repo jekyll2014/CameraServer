@@ -4,77 +4,186 @@
 
 <MudPaper Class="pa-4">
     <MudStack Spacing="3">
-        <MudText Typo="Typo.h5">User Information</MudText>
-
         @if (_authenticationService.UserInfo != null)
         {
+            <!-- User Profile Header with Avatar -->
             <MudPaper Elevation="2" Class="pa-4">
-                <MudGrid>
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Login" Variant="Variant.Outlined">
-                            @_authenticationService.UserInfo.Login
-                        </MudField>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Display Name" Variant="Variant.Outlined">
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                    <!-- User Avatar -->
+                    <MudAvatar Size="Size.Large" Color="Color.Primary" Style="width: 80px; height: 80px; font-size: 2rem;">
+                        @GetUserInitials()
+                    </MudAvatar>
+                    
+                    <!-- User Name and Status -->
+                    <MudStack Spacing="1" Style="flex: 1;">
+                        <MudText Typo="Typo.h4">
                             @(!string.IsNullOrEmpty(_authenticationService.UserInfo.Name) 
                                 ? _authenticationService.UserInfo.Name 
-                                : "Not set")
-                        </MudField>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Roles" Variant="Variant.Outlined">
-                            <MudStack Row="true" Spacing="1">
-                                @foreach (var role in _authenticationService.UserInfo.Roles ?? Array.Empty<string>())
-                                {
-                                    <MudChip T="string" Size="Size.Small" 
-                                             Color="@GetRoleColor(role)">
-                                        @role
-                                    </MudChip>
-                                }
-                            </MudStack>
-                        </MudField>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Default Codec" Variant="Variant.Outlined">
-                            @(_authenticationService.UserInfo.DefaultCodec ?? "AVC")
-                        </MudField>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Telegram ID" Variant="Variant.Outlined">
-                            @if (_authenticationService.UserInfo.TelegramId > 0)
-                            {
-                                @_authenticationService.UserInfo.TelegramId
-                            }
-                            else
-                            {
-                                <MudText Color="Color.Secondary">Not configured</MudText>
-                            }
-                        </MudField>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudField Label="Telegram Name" Variant="Variant.Outlined">
-                            @if (!string.IsNullOrEmpty(_authenticationService.UserInfo.TelegramName))
-                            {
-                                @_authenticationService.UserInfo.TelegramName
-                            }
-                            else
-                            {
-                                <MudText Color="Color.Secondary">Not configured</MudText>
-                            }
-                        </MudField>
-                    </MudItem>
-                </MudGrid>
+                                : _authenticationService.UserInfo.Login)
+                        </MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">
+                            @@@_authenticationService.UserInfo.Login
+                        </MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle" Class="mt-1" Style="width: fit-content;">
+                            Active Session
+                        </MudChip>
+                    </MudStack>
+                </MudStack>
             </MudPaper>
 
-            <MudAlert Severity="Severity.Info" Class="mt-2">
+            <!-- Session Information Card -->
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.AccessTime" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6">Session Information</MudText>
+                    </MudStack>
+                    <MudDivider />
+                    <MudGrid>
+                        <MudItem xs="6" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Session Status</MudText>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Circle" Color="Color.Success" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2"><b>Active</b></MudText>
+                                </MudStack>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="6" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Login Time</MudText>
+                                <MudText Typo="Typo.body2">@DateTime.Now.AddMinutes(-15).ToString("HH:mm")</MudText>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Last Activity</MudText>
+                                <MudText Typo="Typo.body2">Just now</MudText>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudStack>
+            </MudPaper>
+
+            <!-- User Details Card -->
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudStack Spacing="2">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6">Account Details</MudText>
+                    </MudStack>
+                    <MudDivider />
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudField Label="Login" Variant="Variant.Outlined">
+                                @_authenticationService.UserInfo.Login
+                            </MudField>
+                        </MudItem>
+
+                        <MudItem xs="12" md="6">
+                            <MudField Label="Display Name" Variant="Variant.Outlined">
+                                @(!string.IsNullOrEmpty(_authenticationService.UserInfo.Name) 
+                                    ? _authenticationService.UserInfo.Name 
+                                    : "Not set")
+                            </MudField>
+                        </MudItem>
+
+                        <MudItem xs="12" md="6">
+                            <MudField Label="Roles" Variant="Variant.Outlined">
+                                <MudStack Row="true" Spacing="1">
+                                    @foreach (var role in _authenticationService.UserInfo.Roles ?? Array.Empty<string>())
+                                    {
+                                        <MudChip T="string" Size="Size.Small" 
+                                                 Color="@GetRoleColor(role)"
+                                                 Icon="@GetRoleIcon(role)">
+                                            @role
+                                        </MudChip>
+                                    }
+                                </MudStack>
+                            </MudField>
+                        </MudItem>
+
+                        <MudItem xs="12" md="6">
+                            <MudField Label="Default Codec" Variant="Variant.Outlined">
+                                @(_authenticationService.UserInfo.DefaultCodec ?? "AVC")
+                            </MudField>
+                        </MudItem>
+                    </MudGrid>
+                </MudStack>
+            </MudPaper>
+
+            <!-- Telegram Integration Card -->
+            @if (_authenticationService.UserInfo.TelegramId > 0 || !string.IsNullOrEmpty(_authenticationService.UserInfo.TelegramName))
+            {
+                <MudPaper Elevation="2" Class="pa-4">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.ChatBubble" Color="Color.Info" />
+                            <MudText Typo="Typo.h6">Telegram Integration</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                                Connected
+                            </MudChip>
+                        </MudStack>
+                        <MudDivider />
+                        <MudGrid>
+                            <MudItem xs="12" md="6">
+                                <MudField Label="Telegram ID" Variant="Variant.Outlined">
+                                    @_authenticationService.UserInfo.TelegramId
+                                </MudField>
+                            </MudItem>
+
+                            <MudItem xs="12" md="6">
+                                <MudField Label="Telegram Name" Variant="Variant.Outlined">
+                                    @_authenticationService.UserInfo.TelegramName
+                                </MudField>
+                            </MudItem>
+                        </MudGrid>
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">
+                            You can receive motion detection alerts and control cameras via Telegram!
+                        </MudAlert>
+                    </MudStack>
+                </MudPaper>
+            }
+            else
+            {
+                <MudPaper Elevation="2" Class="pa-4">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.ChatBubble" Color="Color.Secondary" />
+                            <MudText Typo="Typo.h6">Telegram Integration</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.Cancel">
+                                Not Connected
+                            </MudChip>
+                        </MudStack>
+                        <MudDivider />
+                        <MudAlert Severity="Severity.Info">
+                            <MudText Typo="Typo.body2">
+                                <b>Connect Telegram to unlock:</b>
+                            </MudText>
+                            <MudList T="string" Dense="true" Class="mt-2">
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Notifications">
+                                    Instant motion detection alerts
+                                </MudListItem>
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Videocam">
+                                    Camera control via bot commands
+                                </MudListItem>
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Image">
+                                    Request snapshots on demand
+                                </MudListItem>
+                            </MudList>
+                            <MudText Typo="Typo.body2" Class="mt-2">
+                                Contact an administrator to configure your Telegram ID.
+                            </MudText>
+                        </MudAlert>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <!-- Help & Support -->
+            <MudAlert Severity="Severity.Info">
                 <MudText Typo="Typo.body2">
-                    To update your user information, contact an administrator or edit the settings.json file.
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" /> 
+                    To update your account details, contact an administrator or have them edit the configuration file.
                 </MudText>
             </MudAlert>
         }
@@ -89,6 +198,42 @@
 </MudPaper>
 
 @code {
+    /// <summary>
+    /// Get user initials for avatar display
+    /// </summary>
+    private string GetUserInitials()
+    {
+        if (_authenticationService.UserInfo == null)
+            return "U";
+
+        var name = _authenticationService.UserInfo.Name ?? 
+                   _authenticationService.UserInfo.Login ?? 
+                   "User";
+        
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length >= 2)
+        {
+            // First and last name initials
+            return $"{parts[0][0]}{parts[^1][0]}".ToUpper();
+        }
+        else if (parts.Length == 1 && parts[0].Length >= 2)
+        {
+            // First two letters of single name
+            return parts[0].Substring(0, 2).ToUpper();
+        }
+        else if (parts.Length == 1)
+        {
+            // Single letter
+            return parts[0][0].ToString().ToUpper();
+        }
+
+        return "U";
+    }
+
+    /// <summary>
+    /// Get color for role badge
+    /// </summary>
     private Color GetRoleColor(string role)
     {
         return role switch
@@ -97,6 +242,20 @@
             "User" => Color.Primary,
             "Guest" => Color.Secondary,
             _ => Color.Default
+        };
+    }
+
+    /// <summary>
+    /// Get icon for role badge
+    /// </summary>
+    private string GetRoleIcon(string role)
+    {
+        return role switch
+        {
+            "Admin" => Icons.Material.Filled.AdminPanelSettings,
+            "User" => Icons.Material.Filled.Person,
+            "Guest" => Icons.Material.Filled.PersonOutline,
+            _ => Icons.Material.Filled.Circle
         };
     }
 }

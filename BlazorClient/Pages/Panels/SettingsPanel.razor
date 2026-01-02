@@ -18,9 +18,16 @@
     }
     else
     {
-        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabs Elevation="2" 
+                 Rounded="true" 
+                 ApplyEffectsToContainer="true" 
+                 PanelClass="pa-4"
+                 Class="settings-tabs"
+                 Centered="false"
+                 KeepPanelsAlive="false">
+            
             <!-- Camera Management Tab -->
-            <MudTabPanel Text="Custom Cameras" Icon="@Icons.Material.Filled.Videocam">
+            <MudTabPanel Text="Cameras" Icon="@Icons.Material.Filled.Videocam">
                 <MudStack Spacing="3">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Custom Camera Management</MudText>
@@ -186,7 +193,7 @@
             </MudTabPanel>
 
             <!-- User Management Tab -->
-            <MudTabPanel Text="User Management" Icon="@Icons.Material.Filled.People">
+            <MudTabPanel Text="Users" Icon="@Icons.Material.Filled.People">
                 <MudStack Spacing="3">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">User Management</MudText>
@@ -549,7 +556,7 @@
             </MudTabPanel>
 
             <!-- Motion Detection Settings Tab -->
-            <MudTabPanel Text="Motion Detection" Icon="@Icons.Material.Filled.VideoCameraFront">
+            <MudTabPanel Text="Motion" Icon="@Icons.Material.Filled.VideoCameraFront">
                 <MudStack Spacing="3">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Motion Detection Configuration</MudText>
@@ -690,7 +697,7 @@
             </MudTabPanel>
 
             <!-- Video Recording Settings Tab -->
-            <MudTabPanel Text="Video Recording" Icon="@Icons.Material.Filled.Videocam">
+            <MudTabPanel Text="Recording" Icon="@Icons.Material.Filled.Videocam">
                 <MudStack Spacing="3">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Video Recording Configuration</MudText>
@@ -778,7 +785,7 @@
             </MudTabPanel>
 
             <!-- System Settings Tab -->
-            <MudTabPanel Text="System Settings" Icon="@Icons.Material.Filled.Settings">
+            <MudTabPanel Text="System" Icon="@Icons.Material.Filled.Settings">
                 <MudStack Spacing="3">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">System Configuration</MudText>
@@ -1791,5 +1798,49 @@
         _authenticationService.OnLogOut -= OnLogout;
     }
 }
+
+<style>
+    /* Settings Panel Mobile-Responsive Tabs */
+    .settings-tabs {
+        width: 100%;
+    }
+
+    /* Mobile: Make tabs scrollable horizontally */
+    @@media (max-width: 960px) {
+        .settings-tabs ::deep .mud-tabs-toolbar {
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+
+        .settings-tabs ::deep .mud-tabs-toolbar-wrapper {
+            overflow-x: auto;
+        }
+
+        /* Ensure tabs don't wrap on mobile */
+        .settings-tabs ::deep .mud-tabs-toolbar-content {
+            flex-wrap: nowrap;
+        }
+
+        /* Make tab panels more compact on mobile */
+        .settings-tabs ::deep .mud-tab-panel {
+            padding: 8px !important;
+        }
+
+        /* Optimize button sizing for mobile */
+        .settings-tabs .mud-button-root {
+            min-width: fit-content;
+        }
+    }
+
+    /* Tablet and above: Better spacing */
+    @@media (min-width: 960px) {
+        .settings-tabs ::deep .mud-tabs-toolbar {
+            padding: 0 16px;
+        }
+    }
+</style>
+
 
 

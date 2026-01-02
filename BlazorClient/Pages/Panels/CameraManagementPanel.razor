@@ -59,9 +59,9 @@
             }
             else
             {
-                <MudStack Row="true" Spacing="4">
-                    <!-- Camera Grid -->
-                    <div style="@(_showVideoStream && _currentUserState.SelectedCamera != null ? "flex: 1;" : "width: 100%;")">
+                <!-- Mobile/Tablet: Stacked Layout -->
+                <div class="camera-layout">
+                    <div class="camera-grid-container">
                         <MudDataGrid T="CameraDto"
                                      Items="@((_currentUserState.Cameras?.OrderBy(n => n.Name) ?? Enumerable.Empty<CameraDto>()).ToList())"
                                      ReadOnly="true"
@@ -128,7 +128,7 @@
                     <!-- Video Stream Iframe -->
                     @if (_showVideoStream && _currentUserState.SelectedCamera != null)
                     {
-                        <MudPaper Elevation="3" Class="pa-3" Style="flex: 1; min-width: 400px;">
+                        <MudPaper Elevation="3" Class="pa-3 camera-video-container">
                             <MudStack Spacing="2">
                                 <MudStack Row="true" Justify="Justify.SpaceBetween">
                                     <MudText Typo="Typo.h6">@_currentUserState.SelectedCamera.Name</MudText>
@@ -164,7 +164,7 @@
                             </MudStack>
                         </MudPaper>
                     }
-                </MudStack>
+                </div>
             }
         </MudPaper>
 
@@ -625,4 +625,41 @@
         _authenticationService.OnLogOut -= OnLogout;
     }
 }
+
+<style>
+    /* Responsive camera layout */
+    .camera-layout {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .camera-grid-container {
+        flex: 1;
+        min-width: 0; /* Prevent flex item from overflowing */
+    }
+
+    .camera-video-container {
+        flex: 1;
+        min-width: 400px;
+    }
+
+    /* Mobile: Stack vertically, video takes full width */
+    @@media (max-width: 960px) {
+        .camera-layout {
+            flex-direction: column;
+        }
+
+        .camera-video-container {
+            min-width: 100%;
+            width: 100%;
+        }
+    }
+
+    /* Tablet (small): Reduce minimum width */
+    @@media (min-width: 600px) and (max-width: 960px) {
+        .camera-video-container {
+            min-width: 100%;
+        }
+    }
+</style>
 

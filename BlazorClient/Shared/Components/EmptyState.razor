@@ -1,0 +1,42 @@
+@* Empty state component for when there is no data to display *@
+
+<MudStack Spacing="3" AlignItems="AlignItems.Center" Class="pa-8">
+    <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Secondary" />
+    <MudText Typo="Typo.h6" Color="Color.Secondary">@Title</MudText>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+            @Description
+        </MudText>
+    }
+    @if (ActionButton != null)
+    {
+        @ActionButton
+    }
+</MudStack>
+
+@code {
+    /// <summary>
+    /// Icon to display (from MudBlazor Icons)
+    /// </summary>
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Filled.CloudOff;
+
+    /// <summary>
+    /// Main title text
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "No Data Available";
+
+    /// <summary>
+    /// Optional description text
+    /// </summary>
+    [Parameter]
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Optional action button render fragment
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ActionButton { get; set; }
+}

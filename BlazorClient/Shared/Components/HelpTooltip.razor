@@ -1,0 +1,91 @@
+@* Help tooltip component for providing contextual help on settings and fields *@
+
+<MudTooltip Delay="@Delay" Duration="@Duration" Placement="@Placement">
+    <ChildContent>
+        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" 
+                       Size="@IconSize" 
+                       Color="@IconColor"
+                       aria-label="@($"Help for {Title}")" />
+    </ChildContent>
+    <TooltipContent>
+        @if (!string.IsNullOrEmpty(Title))
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                <b>@Title</b>
+            </MudText>
+        }
+        @if (!string.IsNullOrEmpty(Content))
+        {
+            <MudText Typo="Typo.body2">
+                @Content
+            </MudText>
+        }
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+        @if (!string.IsNullOrEmpty(Recommendation))
+        {
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                ?? <b>Recommended:</b> @Recommendation
+            </MudText>
+        }
+    </TooltipContent>
+</MudTooltip>
+
+@code {
+    /// <summary>
+    /// Title of the help tooltip
+    /// </summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Main help content text
+    /// </summary>
+    [Parameter]
+    public string? Content { get; set; }
+
+    /// <summary>
+    /// Optional recommendation text
+    /// </summary>
+    [Parameter]
+    public string? Recommendation { get; set; }
+
+    /// <summary>
+    /// Custom content as RenderFragment
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Size of the help icon
+    /// </summary>
+    [Parameter]
+    public Size IconSize { get; set; } = Size.Small;
+
+    /// <summary>
+    /// Color of the help icon
+    /// </summary>
+    [Parameter]
+    public Color IconColor { get; set; } = Color.Info;
+
+    /// <summary>
+    /// Delay before showing tooltip (ms)
+    /// </summary>
+    [Parameter]
+    public int Delay { get; set; } = 500;
+
+    /// <summary>
+    /// How long tooltip stays visible (ms)
+    /// </summary>
+    [Parameter]
+    public int Duration { get; set; } = 3000;
+
+    /// <summary>
+    /// Tooltip placement
+    /// </summary>
+    [Parameter]
+    public Placement Placement { get; set; } = Placement.Right;
+}

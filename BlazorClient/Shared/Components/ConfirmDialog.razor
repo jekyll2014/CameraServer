@@ -1,0 +1,66 @@
+@* Utility component for showing confirmation dialogs *@
+@inject IDialogService DialogService
+
+@code {
+    /// <summary>
+    /// Shows a confirmation dialog with customizable options
+    /// </summary>
+    /// <param name="dialogService">The MudBlazor dialog service</param>
+    /// <param name="title">Dialog title</param>
+    /// <param name="message">Dialog message/content</param>
+    /// <param name="confirmText">Text for confirm button</param>
+    /// <param name="cancelText">Text for cancel button</param>
+    /// <param name="confirmColor">Color of the confirm button</param>
+    /// <returns>True if user confirmed, false otherwise</returns>
+    public static async Task<bool> Show(
+        IDialogService dialogService,
+        string title,
+        string message,
+        string confirmText = "Confirm",
+        string cancelText = "Cancel",
+        Color confirmColor = Color.Error)
+    {
+        var result = await dialogService.ShowMessageBox(
+            title,
+            message,
+            yesText: confirmText,
+            cancelText: cancelText);
+        
+        return result == true;
+    }
+
+    /// <summary>
+    /// Shows a destructive action confirmation dialog (red warning)
+    /// </summary>
+    public static async Task<bool> ShowDestructive(
+        IDialogService dialogService,
+        string title,
+        string message,
+        string actionName = "Delete")
+    {
+        return await Show(
+            dialogService,
+            title,
+            message,
+            confirmText: actionName,
+            cancelText: "Cancel",
+            confirmColor: Color.Error);
+    }
+
+    /// <summary>
+    /// Shows a warning confirmation dialog (orange warning)
+    /// </summary>
+    public static async Task<bool> ShowWarning(
+        IDialogService dialogService,
+        string title,
+        string message)
+    {
+        return await Show(
+            dialogService,
+            title,
+            message,
+            confirmText: "Continue",
+            cancelText: "Cancel",
+            confirmColor: Color.Warning);
+    }
+}

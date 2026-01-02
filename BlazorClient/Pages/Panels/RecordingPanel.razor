@@ -8,6 +8,7 @@
 @inject IAuthenticationService _authenticationService
 @inject ICurrentUserState _currentUserState
 @inject ILogger<RecordingPanel> Logger
+@inject IDialogService DialogService
 
 <MudPaper Class="pa-4">
     <MudStack Spacing="4">
@@ -175,6 +176,26 @@
         <MudPaper Elevation="2" Class="pa-3">
             <MudText Typo="Typo.h6" Class="mb-3">Start New Recording</MudText>
 
+            <!-- Storage Information Alert -->
+            <MudAlert Severity="@GetStorageSeverity()" Dense="true" Class="mb-3">
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" />
+                            <MudText Typo="Typo.body2">
+                                <b>Storage:</b> @GetFreeSpace() free of @GetTotalSpace()
+                            </MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            ~@EstimateRecordingTime() at current quality
+                        </MudText>
+                    </MudStack>
+                    <MudProgressLinear Value="@GetStoragePercentage()" 
+                                      Color="@GetStorageProgressColor()"
+                                      Size="Size.Small" />
+                </MudStack>
+            </MudAlert>
+
             <MudGrid>
                 <MudItem xs="12" md="6">
                     <MudSelect T="int"
@@ -214,25 +235,52 @@
                 </MudItem>
 
                 <MudItem xs="12" md="6">
-                    <MudSlider T="byte"
-                               @bind-Value="_newRecording.Quality"
-                               Min="1"
-                               Max="100"
-                               Step="5"
-                               Color="Color.Primary"
-                               Variant="Variant.Filled">
-                        Quality: @_newRecording.Quality%
-                    </MudSlider>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudSlider T="byte"
+                                   @bind-Value="_newRecording.Quality"
+                                   Min="1"
+                                   Max="100"
+                                   Step="5"
+                                   Color="Color.Primary"
+                                   Variant="Variant.Filled"
+                                   Style="flex: 1;">
+                            Quality: @_newRecording.Quality%
+                        </MudSlider>
+                        <HelpTooltip Title="Video Quality"
+                                     Content="JPEG compression quality for video frames. Higher quality = larger file size. 90-95% is usually excellent quality."
+                                     Recommendation="90% for good balance of quality and file size" />
+                    </MudStack>
                 </MudItem>
 
                 <MudItem xs="12" md="6">
                     <MudSelect T="string"
                                @bind-Value="_newRecording.Codec"
-                               Label="Codec"
+                               Label="Video Codec"
                                Variant="Variant.Outlined"
+                               HelperText="Affects compatibility and file size"
                                Dense="true">
-                        <MudSelectItem Value="@("AVC")">AVC (H.264) - Better Compatibility</MudSelectItem>
-                        <MudSelectItem Value="@("MP4V")">MP4V - Better Compression</MudSelectItem>
+                        <MudSelectItem Value="@("AVC")">
+                            <MudStack Spacing="0">
+                                <MudText><b>H.264 (AVC)</b></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    ✓ Best compatibility - Works on all devices
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    ⚖️ Balanced file size
+                                </MudText>
+                            </MudStack>
+                        </MudSelectItem>
+                        <MudSelectItem Value="@("MP4V")">
+                            <MudStack Spacing="0">
+                                <MudText><b>MPEG-4 (MP4V)</b></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    💾 Smaller file size - Better compression
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Warning">
+                                    ⚠️ May not work on older devices
+                                </MudText>
+                            </MudStack>
+                        </MudSelectItem>
                     </MudSelect>
                 </MudItem>
 
@@ -413,6 +461,16 @@
 
     private async Task StopRecording(RecordTaskDto task)
     {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Stop Recording?",
+            $"Are you sure you want to stop recording from '{task.CameraName}'? " +
+            "The current recording will be saved.",
+            yesText: "Stop Recording",
+            cancelText: "Cancel");
+
+        if (confirmed != true)
+            return;
+
         try
         {
             var response = await _http.GetAsync($"/Recorder/StopRecord?taskId={task.TaskId}");
@@ -518,5 +576,91 @@
         _authenticationService.OnLogIn -= OnLogin;
         _authenticationService.OnLogOut -= OnLogout;
     }
+
+    #region Storage Helpers
+
+    /// <summary>
+    /// Get free disk space (placeholder - would need API endpoint in production)
+    /// </summary>
+    private string GetFreeSpace()
+    {
+        // TODO: Implement API call to get actual disk space
+        // For now, return placeholder values
+        return "450 GB";
+    }
+
+    /// <summary>
+    /// Get total disk space (placeholder - would need API endpoint in production)
+    /// </summary>
+    private string GetTotalSpace()
+    {
+        // TODO: Implement API call to get actual disk space
+        return "1 TB";
+    }
+
+    /// <summary>
+    /// Get storage usage percentage
+    /// </summary>
+    private double GetStoragePercentage()
+    {
+        // TODO: Calculate from actual values
+        // Placeholder: 450 GB free of 1 TB = 55% used
+        return 55;
+    }
+
+    /// <summary>
+    /// Get estimated recording time based on current quality settings
+    /// </summary>
+    private string EstimateRecordingTime()
+    {
+        // TODO: Calculate based on:
+        // - Available space
+        // - Current quality setting
+        // - Average bitrate
+        // - Number of active recordings
+        
+        var percentage = GetStoragePercentage();
+        
+        if (percentage > 90)
+            return "~2 hours remaining";
+        else if (percentage > 80)
+            return "~10 hours remaining";
+        else if (percentage > 70)
+            return "~20 hours remaining";
+        else
+            return "~30+ hours remaining";
+    }
+
+    /// <summary>
+    /// Get severity level for storage alert
+    /// </summary>
+    private Severity GetStorageSeverity()
+    {
+        var percentage = GetStoragePercentage();
+        
+        if (percentage >= 90)
+            return Severity.Error;
+        else if (percentage >= 80)
+            return Severity.Warning;
+        else
+            return Severity.Info;
+    }
+
+    /// <summary>
+    /// Get color for storage progress bar
+    /// </summary>
+    private Color GetStorageProgressColor()
+    {
+        var percentage = GetStoragePercentage();
+        
+        if (percentage >= 90)
+            return Color.Error;
+        else if (percentage >= 80)
+            return Color.Warning;
+        else
+            return Color.Success;
+    }
+
+    #endregion
 }
 
