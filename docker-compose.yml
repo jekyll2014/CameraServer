@@ -22,7 +22,7 @@ services:
       - cameraserver_config:/app/config
       
       # Data directories
-      - cameraserver_videos:/app/Videos
+      - cameraserver_videos:/app/Records
       - cameraserver_motion:/app/MotionRecords
       - cameraserver_logs:/app/logs
       

@@ -30,7 +30,6 @@ namespace CameraServer.Server.Services.Telegram;
 public class TelegramService : IHostedService, IDisposable
 {
     private const string TelegramConfigSection = "Telegram";
-    private const string ExternalHostUriSection = "ExternalHostUrl";
     private const string TelegramStreamId = "telegram";
 
     private const string SnapShotCommand = "/image";
@@ -53,7 +52,6 @@ public class TelegramService : IHostedService, IDisposable
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TelegramService> _logger;
     public readonly TelegeramSettings _settings;
-    private readonly string _externalHostUrl;
     private CancellationTokenSource? _cts;
     private TelegramBotClient? _botClient;
     private bool _disposedValue;
@@ -69,7 +67,6 @@ public class TelegramService : IHostedService, IDisposable
         _userManager = userManager;
         _collection = collection;
         _serviceProvider = serviceProvider;
-        _externalHostUrl = configuration.GetValue(ExternalHostUriSection, string.Empty) ?? string.Empty;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -538,7 +535,7 @@ public class TelegramService : IHostedService, IDisposable
         }
         else if (tokens.Count == 2)
         {
-            if (string.IsNullOrEmpty(_externalHostUrl))
+            if (string.IsNullOrEmpty(_settings.ExternalHostUrl))
             {
                 await SendText(chatId, "Can't generate URL: external host is empty.", cancellationToken);
 
@@ -562,7 +559,7 @@ public class TelegramService : IHostedService, IDisposable
             }
 
             var linklabel = $"Url: {camera.CameraStream.Description.Name}";
-            var linkUrl = _externalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
+            var linkUrl = _settings.ExternalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
             var keyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl(linklabel, linkUrl));
             await SendMenu(
                  chatId,

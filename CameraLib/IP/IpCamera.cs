@@ -63,6 +63,7 @@ namespace CameraLib.IP
             var result = new List<CameraDescription>();
             var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
             var devices = await discovery.RunDiscovery();
+
             Console.WriteLine($"Found {devices.Length} cameras");
 
             if (devices.Length == 0)
@@ -104,7 +105,10 @@ namespace CameraLib.IP
                                     profile.VideoEncoderConfiguration.Resolution.Height,
                                     profile.VideoEncoderConfiguration.Encoding.ToString(),
                                     profile.VideoEncoderConfiguration.RateControl.FrameRateLimit)
-                            ]));
+                            ])
+                        {
+                            ServiceAddress = device.ServiceAddresses[0]
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -211,7 +215,10 @@ namespace CameraLib.IP
             CurrentFps = Description.FrameFormats.FirstOrDefault()?.Fps ?? 10;
             try
             {
-                GetPtzControllerAsync(path, discoveryTimeout);
+                if (!string.IsNullOrEmpty(Description.ServiceAddress))
+                    GetPtzControllerAsync(Description.ServiceAddress);
+                else
+                    GetPtzControllerAsync(path, discoveryTimeout);
             }
             catch (Exception ex)
             {
@@ -229,11 +236,14 @@ namespace CameraLib.IP
                 var h = await Dns.GetHostEntryAsync(cameraUri.Host);
                 string? host = null;
                 if (h.AddressList.Length > 0)
-                    host = h.AddressList[0].ToString();
                 {
+                    host = h.AddressList[0].ToString();
                     IPAddress.TryParse(host, out cameraIp);
                 }
             }
+
+            if (cameraIp == null)
+                return;
 
             var discovery = new DiscoveryController2(TimeSpan.FromMilliseconds(discoveryTimeout));
             var devices = await discovery.RunDiscovery();
@@ -246,36 +256,35 @@ namespace CameraLib.IP
                 if (uri.Host != cameraUri.Host && uri.Host != cameraIp?.ToString())
                     continue;
 
-                Console.WriteLine($"Detecting PTZ: {device.ServiceAddresses[0]}");
-                _onvifClient = new OnvifClient(new OnvifClientOptions
-                {
-                    Scheme = uri.Scheme,
-                    Host = uri.Host,
-                    Port = uri.Port
-                });
+                await GetPtzControllerAsync(device.ServiceAddresses[0]);
+            }
+        }
 
-                try
+        public async Task GetPtzControllerAsync(string serviceAddress)
+        {
+            var uri = new Uri(serviceAddress);
+            Console.WriteLine($"Detecting PTZ: {serviceAddress}");
+            _onvifClient ??= new OnvifClient(new OnvifClientOptions
+            {
+                Scheme = uri.Scheme,
+                Host = uri.Host,
+                Port = uri.Port
+            });
+
+            try
+            {
+                await _onvifClient.ConnectAsync();
+                if (_onvifClient.Capabilities.PTZ != null)
                 {
-                    await _onvifClient.ConnectAsync();
+                    _ptzClient = new PTZClient(_onvifClient);
                     var mediaClient = new MediaClient(_onvifClient);
                     var profilesResponse = await mediaClient.GetProfilesAsync();
-                    foreach (var profile in profilesResponse.Profiles)
-                    {
-                        if (_onvifClient.Capabilities.PTZ != null)
-                        {
-                            _ptzClient = new PTZClient(_onvifClient);
-                            _ptzProfile = profile;
-                            //_onvifClient.DeviceClient.Close();
-                            //_ptzClient.Close();
-
-                            return;
-                        }
-                    }
+                    _ptzProfile = profilesResponse.Profiles.FirstOrDefault();
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Can not connect to camera: {uri}\r\n{ex.Message}");
             }
         }
 

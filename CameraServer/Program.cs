@@ -32,9 +32,13 @@ public class Program
     public const string ExpireTimeSection = "CookieExpireTimeMinutes";
     public const string BasicAuthenticationSchemeName = "BasicAuthentication";
 
+    private static char PathSeparator = '\\';
+    private const string LogFolder = ".\\logs";
     private static Serilog.Core.Logger? _logger;
+
     public static void Main(string[] args)
     {
+        PathSeparator = OperatingSystem.IsWindows() ? '\\' : '/';
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 
         _logger = new LoggerConfiguration()
@@ -46,7 +50,7 @@ public class Program
                 .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Verbose)//WithProperty("EventId", 1001))
                 .WriteTo.File(
                     new CompactJsonFormatter(),
-                    "telegram_api.log.json",
+                    $"{LogFolder.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator)}{PathSeparator}telegram_api.log.json",
                     rollingInterval: RollingInterval.Day,
                     fileSizeLimitBytes: 10 * 1024 * 1024,
                     retainedFileCountLimit: 10,
@@ -58,7 +62,7 @@ public class Program
                                              && n.Level != LogEventLevel.Verbose)
                 .WriteTo.File(
                     new CompactJsonFormatter(),
-                    "CameraServer.log.json",
+                    $"{LogFolder.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator)}{PathSeparator}CameraServer.log.json",
                     rollingInterval: RollingInterval.Day,
                     fileSizeLimitBytes: 10 * 1024 * 1024,
                     retainedFileCountLimit: 10,
@@ -69,7 +73,7 @@ public class Program
                 .Filter.ByIncludingOnly(n => n.Level == LogEventLevel.Debug)
                 .WriteTo.File(
                     new CompactJsonFormatter(),
-                    path: "CameraServer_debug.log.json",
+                    path: $"{LogFolder.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator)}{PathSeparator}CameraServer_debug.log.json",
                     rollingInterval: RollingInterval.Day,
                     fileSizeLimitBytes: 10 * 1024 * 1024,
                     retainedFileCountLimit: 10,
@@ -118,11 +122,12 @@ public class Program
         builder.Services.AddMudServices();
 
         // Add services to the container.
-        builder.Services.AddSingleton<IServerConfigurationManager, ServerServerConfigurationManager>();
+        builder.Services.AddSingleton<IServerConfigurationManager, ServerConfigurationManager>();
+        builder.Services.AddSingleton<IApplicationConfigurationService, ApplicationConfigurationService>();
+
         builder.Services.AddSingleton<IBruteForceDetectionService, BruteForceDetectionDetectionService>();
         builder.Services.AddTransient<IUserManager, UserManager>();
         builder.Services.AddSingleton<CameraHubService, CameraHubService>();
-        builder.Services.AddSingleton<IRuntimeConfigurationService, RuntimeConfigurationService>();
         builder.Services.AddSingleton<VideoRecorderService>();
         builder.Services.AddHostedService<VideoRecorderService>(provider => provider.GetService<VideoRecorderService>());
         builder.Services.AddSingleton<TelegramService>();

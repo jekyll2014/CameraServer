@@ -28,7 +28,8 @@ public class MotionDetectionService : IHostedService, IDisposable
     private const string MotioDetectorTempConfig = "appsettings-motion.json";
     private const string MotionDetectionConfigSection = "MotionDetector";
     private const string MotionDetectionStreamId = "MotionDetector";
-    private const string TmpVideoStreamId = "MotionDetectorTmpVideo";
+    private const string TmpVideoStreamId = "Motion";
+    private static char PathSeparator = '\\';
 
     private readonly IUserManager _manager;
     private readonly CameraHubService _collection;
@@ -59,6 +60,8 @@ public class MotionDetectionService : IHostedService, IDisposable
         TelegramService telegramService,
         ILogger<MotionDetectionService> logger)
     {
+        PathSeparator = OperatingSystem.IsWindows() ? '\\' : '/';
+
         _logger = logger;
         _manager = manager;
         _collection = collection;
@@ -66,7 +69,8 @@ public class MotionDetectionService : IHostedService, IDisposable
         _telegramService = telegramService;
         Settings = configuration.GetSection(MotionDetectionConfigSection)?.Get<MotionDetectionSettings>()
                    ?? new MotionDetectionSettings();
-        Directory.CreateDirectory(Settings.StoragePath);
+
+        Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -590,8 +594,8 @@ public class MotionDetectionService : IHostedService, IDisposable
 
         if (notificationParams.Any(n => n.SaveNotificationContent))
         {
-            var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
-                           $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime:yyyy-MM-dd}_{currentTime:HH-mm-ss}.jpg")}";
+            var fileName = $"{Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator)}{PathSeparator}" +
+                           $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}-{currentTime:yyyy-MM-dd_HH-mm-ss}.jpg")}";
             try
             {
                 if (image != null)
@@ -634,6 +638,7 @@ public class MotionDetectionService : IHostedService, IDisposable
 
         var tmpRecordtaskId =
             $"{TmpVideoStreamId}-{destinationTotal}-{camera.CameraStream.Description.Path}";
+
         if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
             return;
 

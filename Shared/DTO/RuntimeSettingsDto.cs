@@ -70,6 +70,7 @@ public class RuntimeSettingsUpdateDto
     public BruteForceDetectionSettingsDto? BruteForceDetectionSettings { get; set; }
     public MotionDetectionRuntimeSettingsDto? MotionDetectionSettings { get; set; }
     public VideoRecordingRuntimeSettingsDto? VideoRecordingSettings { get; set; }
+    public CameraSettingsDto? CameraSettings { get; set; }
 }
 
 /// <summary>
@@ -77,11 +78,10 @@ public class RuntimeSettingsUpdateDto
 /// </summary>
 public class RuntimeSettingsDto
 {
-    public string ExternalHostUrl { get; set; } = string.Empty;
-    public int CookieExpireTimeMinutes { get; set; } = 60;
-    public bool AllowBasicAuthentication { get; set; } = true;
     public TelegramSettingsDto TelegramSettings { get; set; } = new();
     public BruteForceDetectionSettingsDto BruteForceDetectionSettings { get; set; } = new();
     public MotionDetectionRuntimeSettingsDto MotionDetectionSettings { get; set; } = new();
     public VideoRecordingRuntimeSettingsDto VideoRecordingSettings { get; set; } = new();
+    public CameraSettingsDto CameraSettings { get; set; } = new();
+    public List<UserManagementDto> Users { get; set; } = new();
 }

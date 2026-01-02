@@ -2,11 +2,101 @@
 
 @inject IAuthenticationService _authenticationService
 
-<MudPaper>
-    <MudText Typo="Typo.body1">User login: @_authenticationService.UserInfo?.Login</MudText>
-    <MudText Typo="Typo.body1">User name: @_authenticationService.UserInfo?.Name</MudText>
-    <MudText Typo="Typo.body1">User Telegram name: @_authenticationService.UserInfo?.TelegramName</MudText>
-    <MudText Typo="Typo.body1">User Telegram Id: @_authenticationService.UserInfo?.TelegramId</MudText>
-    <MudText Typo="Typo.body1">User default codec: @_authenticationService.UserInfo?.DefaultCodec</MudText>
-    <MudText Typo="Typo.body1">User roles: @string.Join(", ", _authenticationService.UserInfo?.Roles ?? [])</MudText>
+<MudPaper Class="pa-4">
+    <MudStack Spacing="3">
+        <MudText Typo="Typo.h5">User Information</MudText>
+
+        @if (_authenticationService.UserInfo != null)
+        {
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Login" Variant="Variant.Outlined">
+                            @_authenticationService.UserInfo.Login
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Display Name" Variant="Variant.Outlined">
+                            @(!string.IsNullOrEmpty(_authenticationService.UserInfo.Name) 
+                                ? _authenticationService.UserInfo.Name 
+                                : "Not set")
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Roles" Variant="Variant.Outlined">
+                            <MudStack Row="true" Spacing="1">
+                                @foreach (var role in _authenticationService.UserInfo.Roles ?? Array.Empty<string>())
+                                {
+                                    <MudChip T="string" Size="Size.Small" 
+                                             Color="@GetRoleColor(role)">
+                                        @role
+                                    </MudChip>
+                                }
+                            </MudStack>
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Default Codec" Variant="Variant.Outlined">
+                            @(_authenticationService.UserInfo.DefaultCodec ?? "AVC")
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Telegram ID" Variant="Variant.Outlined">
+                            @if (_authenticationService.UserInfo.TelegramId > 0)
+                            {
+                                @_authenticationService.UserInfo.TelegramId
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Secondary">Not configured</MudText>
+                            }
+                        </MudField>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudField Label="Telegram Name" Variant="Variant.Outlined">
+                            @if (!string.IsNullOrEmpty(_authenticationService.UserInfo.TelegramName))
+                            {
+                                @_authenticationService.UserInfo.TelegramName
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Secondary">Not configured</MudText>
+                            }
+                        </MudField>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudAlert Severity="Severity.Info" Class="mt-2">
+                <MudText Typo="Typo.body2">
+                    To update your user information, contact an administrator or edit the settings.json file.
+                </MudText>
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning">
+                <MudText Typo="Typo.h6">Not Authenticated</MudText>
+                <MudText>Please log in to view your user information.</MudText>
+            </MudAlert>
+        }
+    </MudStack>
 </MudPaper>
+
+@code {
+    private Color GetRoleColor(string role)
+    {
+        return role switch
+        {
+            "Admin" => Color.Error,
+            "User" => Color.Primary,
+            "Guest" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+}

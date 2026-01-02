@@ -13,5 +13,6 @@ public class UserCreateUpdateDto
     public long TelegramId { get; set; }
     public string TelegramName { get; set; } = string.Empty;
     public string DefaultCodec { get; set; } = "AVC";
+    public bool DefaultUser { get; set; } = false;
 }
 

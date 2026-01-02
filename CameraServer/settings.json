@@ -1,0 +1,84 @@
+{
+  "Users": [
+        {
+      "Login": "Admin",
+      "Password": "adminpass",
+      "TelegramId": 630930497,
+      "Roles": [ "Admin", "User", "Guest" ], // Admin, User, Guest
+      "DefaultCodec": "MP4V" // MP4V, AVC
+    },
+    {
+      "Login": "User",
+      "Password": "userpass",
+      "Roles": [ "User", "Guest" ]
+    },
+    {
+      "Login": "Guest",
+      "Password": "",
+      "Roles": [ "Guest" ]
+    }
+  ],
+  "BruteForceDetection": {
+    "RetriesPerMinute": 3,
+    "RetriesPerHour": 10
+  },
+  "Telegram": {
+    "Token": "",
+    "ReconnectTimeout": 30,
+    "DefaultVideoTime": 15,
+    "DefaultVideoQuality": 90,
+    "DefaultImageQuality": 100,
+    "ExternalHostUrl": ""
+  },
+  "CameraSettings": {
+    "AutoSearchIp": true,
+    "AutoSearchUsb": true,
+    "AutoSearchUsbFC": true,
+    "DefaultAllowedRoles": [],
+    "DiscoveryTimeOut": 1000,
+    "ForceCameraConnect": false,
+    "MaxFrameBuffer": 10,
+    "CustomCameras": [
+            {
+        "Type": "IP",
+        "Name": "Terrace camera",
+        "Path": "rtsp://192.168.102.135:554/user={0}_password={1}_channel=0_stream=1.sdp?real_stream",
+        "AuthenticationType": "Plain",
+        "Login": "admin",
+        "Password": "",
+        "AllowedRoles": [ "Admin", "User", "Guest" ]
+      },
+      {
+        "Type": "IP",
+        "Name": "Entrance camera",
+        "Path": "rtsp://192.168.102.136:554/user={0}_password={1}_channel=0_stream=1.sdp?real_stream",
+        "AuthenticationType": "Plain",
+        "Login": "admin",
+        "Password": "",
+        "AllowedRoles": [ "Admin", "User", "Guest" ]
+      }
+    ],
+    "FrameTimeout": 30000
+  },
+  "Recorder": {
+    "RecordCameras": [],
+    "StoragePath": ".\\Records",
+    "VideoFileLengthSeconds": 300,
+    "DefaultVideoQuality": 90
+  },
+  "MotionDetector": {
+    "StoragePath": "",
+    "MotionDetectionCameras": [],
+    "DefaultMotionDetectParameters": {
+      "Width": 640,
+      "Height": 480,
+      "DetectorDelayMs": 1000,
+      "NoiseThreshold": 70,
+      "ChangeLimit": 10.0,
+      "TextNotificationDelay": 10,
+      "ImageNotificationDelay": 10,
+      "VideoNotificationDelay": 1,
+      "KeepImageBuffer": 10
+    }
+  }
+}

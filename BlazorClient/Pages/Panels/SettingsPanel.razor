@@ -1,5 +1,4 @@
-﻿@using System.Net.Http.Json
-@using CameraServer.Client.Services
+﻿@using CameraServer.Client.Services
 @using CameraServer.Shared
 @using CameraServer.Shared.DTO
 
@@ -238,6 +237,7 @@
                                 <MudTh>Roles</MudTh>
                                 <MudTh>Telegram ID</MudTh>
                                 <MudTh>Codec</MudTh>
+                                <MudTh>Default User</MudTh>
                                 <MudTh>Actions</MudTh>
                             </HeaderContent>
                             <RowTemplate>
@@ -246,6 +246,18 @@
                                 <MudTd DataLabel="Roles">@string.Join(", ", context.Roles ?? new List<string>())</MudTd>
                                 <MudTd DataLabel="Telegram ID">@context.TelegramId</MudTd>
                                 <MudTd DataLabel="Codec">@context.DefaultCodec</MudTd>
+                                <MudTd DataLabel="Default User">
+                                    @if (context.DefaultUser)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                                            Default
+                                        </MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Color="Color.Default" />
+                                    }
+                                </MudTd>
                                 <MudTd DataLabel="Actions">
                                     <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@((e) => OpenEditUserDialog(context))" Size="Size.Small" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete" OnClick="@((e) => DeleteUser(context))" Size="Size.Small" Color="Color.Error" />
@@ -319,6 +331,31 @@
                                 </MudItem>
 
                                 <MudItem xs="12">
+                                    <MudDivider Class="my-2" />
+                                    <MudCheckBox T="bool" @bind-Checked="_userDefaultUser"
+                                                 Color="Color.Success">
+                                        <MudText Typo="Typo.body2">
+                                            <b>Mark as Default User</b>
+                                        </MudText>
+                                    </MudCheckBox>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-8">
+                                        Only one user can be marked as default. This user will be automatically used for:
+                                        <ul>
+                                            <li>Unknown username login attempts</li>
+                                            <li>Telegram users without a registered Telegram ID</li>
+                                        </ul>
+                                    </MudText>
+                                    @if (_userDefaultUser && _users.Any(u => u.DefaultUser && u.Login != _editingUser?.Login))
+                                    {
+                                        var currentDefault = _users.First(u => u.DefaultUser && u.Login != _editingUser?.Login);
+                                        <MudAlert Severity="Severity.Warning" Class="mt-2" Dense="true">
+                                            <b>Warning:</b> User '<b>@currentDefault.Login</b>' is currently set as the default user. 
+                                            Saving this will replace it.
+                                        </MudAlert>
+                                    }
+                                </MudItem>
+
+                                <MudItem xs="12">
                                     <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
                                         <MudButton Variant="Variant.Outlined"
                                                    Color="Color.Default"
@@ -344,7 +381,7 @@
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Telegram Configuration</MudText>
                         <MudStack Row="true" Spacing="2">
-                            <MudButton OnClick="@RefreshRuntimeSettings"
+                            <MudButton OnClick="@RefreshTelegramSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Refresh"
                                        Color="Color.Primary"
@@ -352,7 +389,7 @@
                                        Disabled="@_isRuntimeLoading">
                                 Refresh
                             </MudButton>
-                            <MudButton OnClick="@SaveRuntimeSettings"
+                            <MudButton OnClick="@SaveTelegramSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Save"
                                        Color="Color.Success"
@@ -443,7 +480,7 @@
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Brute Force Detection</MudText>
                         <MudStack Row="true" Spacing="2">
-                            <MudButton OnClick="@RefreshRuntimeSettings"
+                            <MudButton OnClick="@RefreshBruteForceSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Refresh"
                                        Color="Color.Primary"
@@ -451,7 +488,7 @@
                                        Disabled="@_isRuntimeLoading">
                                 Refresh
                             </MudButton>
-                            <MudButton OnClick="@SaveRuntimeSettings"
+                            <MudButton OnClick="@SaveBruteForceSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Save"
                                        Color="Color.Success"
@@ -517,7 +554,7 @@
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Motion Detection Configuration</MudText>
                         <MudStack Row="true" Spacing="2">
-                            <MudButton OnClick="@RefreshRuntimeSettings"
+                            <MudButton OnClick="@RefreshMotionDetectionSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Refresh"
                                        Color="Color.Primary"
@@ -525,7 +562,7 @@
                                        Disabled="@_isRuntimeLoading">
                                 Refresh
                             </MudButton>
-                            <MudButton OnClick="@SaveRuntimeSettings"
+                            <MudButton OnClick="@SaveMotionDetectionSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Save"
                                        Color="Color.Success"
@@ -658,7 +695,7 @@
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
                         <MudText Typo="Typo.h5">Video Recording Configuration</MudText>
                         <MudStack Row="true" Spacing="2">
-                            <MudButton OnClick="@RefreshRuntimeSettings"
+                            <MudButton OnClick="@RefreshVideoRecordingSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Refresh"
                                        Color="Color.Primary"
@@ -666,7 +703,7 @@
                                        Disabled="@_isRuntimeLoading">
                                 Refresh
                             </MudButton>
-                            <MudButton OnClick="@SaveRuntimeSettings"
+                            <MudButton OnClick="@SaveVideoRecordingSettings"
                                        Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.Save"
                                        Color="Color.Success"
@@ -911,6 +948,7 @@
     private bool _userRoleAdmin = false;
     private bool _userRoleUser = false;
     private bool _userRoleGuest = false;
+    private bool _userDefaultUser = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -920,7 +958,10 @@
         if (IsAdmin())
         {
             await RefreshSystemSettings();
-            await RefreshRuntimeSettings();
+            await RefreshTelegramSettings();
+            await RefreshBruteForceSettings();
+            await RefreshMotionDetectionSettings();
+            await RefreshVideoRecordingSettings();
             await RefreshCameras();
             await RefreshUsers();
             await RefreshRecordingCameras();
@@ -976,7 +1017,8 @@
 
     #region Runtime Settings
 
-    private async Task RefreshRuntimeSettings()
+    // Telegram Settings
+    private async Task RefreshTelegramSettings()
     {
         _isRuntimeLoading = true;
         _runtimeErrorMessage = null;
@@ -984,17 +1026,17 @@
 
         try
         {
-            var response = await _http.GetAsync("/Configuration/GetRuntimeSettings");
+            var response = await _http.GetAsync("/Configuration/GetTelegramSettings");
             if (response.IsSuccessStatusCode)
             {
-                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<RuntimeSettingsDto>>();
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<TelegramSettingsDto>>();
                 if (apiResponse?.Success ?? false)
                 {
-                    _runtimeSettings = apiResponse.Data ?? new RuntimeSettingsDto();
+                    _runtimeSettings.TelegramSettings = apiResponse.Data ?? new TelegramSettingsDto();
                 }
                 else
                 {
-                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load runtime settings";
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load Telegram settings";
                 }
             }
             else
@@ -1004,7 +1046,7 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error refreshing runtime settings");
+            Logger.LogError(ex, "Error refreshing Telegram settings");
             _runtimeErrorMessage = $"Error: {ex.Message}";
         }
         finally
@@ -1014,7 +1056,7 @@
         }
     }
 
-    private async Task SaveRuntimeSettings()
+    private async Task SaveTelegramSettings()
     {
         _isRuntimeLoading = true;
         _runtimeErrorMessage = null;
@@ -1023,30 +1065,50 @@
 
         try
         {
-            var updateDto = new RuntimeSettingsUpdateDto
-            {
-                ExternalHostUrl = _runtimeSettings.ExternalHostUrl,
-                CookieExpireTimeMinutes = _runtimeSettings.CookieExpireTimeMinutes,
-                AllowBasicAuthentication = _runtimeSettings.AllowBasicAuthentication,
-                TelegramSettings = _runtimeSettings.TelegramSettings,
-                BruteForceDetectionSettings = _runtimeSettings.BruteForceDetectionSettings,
-                MotionDetectionSettings = _runtimeSettings.MotionDetectionSettings,
-                VideoRecordingSettings = _runtimeSettings.VideoRecordingSettings
-            };
-
-            var response = await _http.PostAsJsonAsync("/Configuration/UpdateRuntimeSettings", updateDto);
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateTelegramSettings", _runtimeSettings.TelegramSettings);
             if (response.IsSuccessStatusCode)
             {
-                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _runtimeSuccessMessage = "Telegram settings saved successfully!";
+                await RefreshTelegramSettings();
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _runtimeErrorMessage = error?.ErrorMessage ?? $"Failed to save: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving Telegram settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Brute Force Detection Settings
+    private async Task RefreshBruteForceSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetBruteForceSettings");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<BruteForceDetectionSettingsDto>>();
                 if (apiResponse?.Success ?? false)
                 {
-                    _runtimeSuccessMessage = "Runtime settings saved successfully!";
-                    await RefreshRuntimeSettings();
-                    await RefreshRecordingCameras();
+                    _runtimeSettings.BruteForceDetectionSettings = apiResponse.Data ?? new BruteForceDetectionSettingsDto();
                 }
                 else
                 {
-                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to save settings";
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load security settings";
                 }
             }
             else
@@ -1056,7 +1118,185 @@
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error saving runtime settings");
+            Logger.LogError(ex, "Error refreshing security settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveBruteForceSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        _runtimeSuccessMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateBruteForceSettings", _runtimeSettings.BruteForceDetectionSettings);
+            if (response.IsSuccessStatusCode)
+            {
+                _runtimeSuccessMessage = "Security settings saved successfully!";
+                await RefreshBruteForceSettings();
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _runtimeErrorMessage = error?.ErrorMessage ?? $"Failed to save: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving security settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Motion Detection Settings
+    private async Task RefreshMotionDetectionSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetMotionDetectionSettings");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<MotionDetectionRuntimeSettingsDto>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _runtimeSettings.MotionDetectionSettings = apiResponse.Data ?? new MotionDetectionRuntimeSettingsDto();
+                }
+                else
+                {
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load motion detection settings";
+                }
+            }
+            else
+            {
+                _runtimeErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing motion detection settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveMotionDetectionSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        _runtimeSuccessMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateMotionDetectionSettings", _runtimeSettings.MotionDetectionSettings);
+            if (response.IsSuccessStatusCode)
+            {
+                _runtimeSuccessMessage = "Motion detection settings saved successfully!";
+                await RefreshMotionDetectionSettings();
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _runtimeErrorMessage = error?.ErrorMessage ?? $"Failed to save: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving motion detection settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Video Recording Settings
+    private async Task RefreshVideoRecordingSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.GetAsync("/Configuration/GetVideoRecordingSettings");
+            if (response.IsSuccessStatusCode)
+            {
+                var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<VideoRecordingRuntimeSettingsDto>>();
+                if (apiResponse?.Success ?? false)
+                {
+                    _runtimeSettings.VideoRecordingSettings = apiResponse.Data ?? new VideoRecordingRuntimeSettingsDto();
+                }
+                else
+                {
+                    _runtimeErrorMessage = apiResponse?.ErrorMessage ?? "Failed to load video recording settings";
+                }
+            }
+            else
+            {
+                _runtimeErrorMessage = $"Server error: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing video recording settings");
+            _runtimeErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isRuntimeLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveVideoRecordingSettings()
+    {
+        _isRuntimeLoading = true;
+        _runtimeErrorMessage = null;
+        _runtimeSuccessMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await _http.PostAsJsonAsync("/Configuration/UpdateVideoRecordingSettings", _runtimeSettings.VideoRecordingSettings);
+            if (response.IsSuccessStatusCode)
+            {
+                _runtimeSuccessMessage = "Video recording settings saved successfully!";
+                await RefreshVideoRecordingSettings();
+                await RefreshRecordingCameras();
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _runtimeErrorMessage = error?.ErrorMessage ?? $"Failed to save: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving video recording settings");
             _runtimeErrorMessage = $"Error: {ex.Message}";
         }
         finally
@@ -1185,6 +1425,7 @@
                 _cameraSettings.CustomCameras.Add(camera);
             }
 
+            // Update entire camera settings via dedicated endpoint
             var response = await _http.PostAsJsonAsync("/Configuration/UpdateCameraSettings", _cameraSettings);
             if (response.IsSuccessStatusCode)
             {
@@ -1195,7 +1436,8 @@
             }
             else
             {
-                _camerasErrorMessage = $"Failed to save camera: {response.StatusCode}";
+                var errorResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _camerasErrorMessage = errorResponse?.ErrorMessage ?? $"Failed to save camera: {response.StatusCode}";
             }
         }
         catch (Exception ex)
@@ -1219,6 +1461,8 @@
             try
             {
                 _cameraSettings.CustomCameras.Remove(camera);
+                
+                // Update via dedicated endpoint
                 var response = await _http.PostAsJsonAsync("/Configuration/UpdateCameraSettings", _cameraSettings);
                 if (response.IsSuccessStatusCode)
                 {
@@ -1228,7 +1472,8 @@
                 }
                 else
                 {
-                    _camerasErrorMessage = $"Failed to delete camera: {response.StatusCode}";
+                    var errorResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                    _camerasErrorMessage = errorResponse?.ErrorMessage ?? $"Failed to delete camera: {response.StatusCode}";
                 }
             }
             catch (Exception ex)
@@ -1287,12 +1532,14 @@
         { 
             Login = string.Empty,
             Roles = new List<string>(),
-            TelegramId = 0
+            TelegramId = 0,
+            DefaultUser = false
         };
         _editingUserPassword = string.Empty;
         _userRoleAdmin = false;
         _userRoleUser = false;
         _userRoleGuest = false;
+        _userDefaultUser = false;
         StateHasChanged();
     }
 
@@ -1305,12 +1552,14 @@
             Roles = new List<string>(user.Roles ?? new List<string>()),
             TelegramId = user.TelegramId,
             TelegramName = user.TelegramName,
-            DefaultCodec = user.DefaultCodec
+            DefaultCodec = user.DefaultCodec,
+            DefaultUser = user.DefaultUser
         };
         _editingUserPassword = string.Empty;
         _userRoleAdmin = _editingUser.Roles.Contains("Admin");
         _userRoleUser = _editingUser.Roles.Contains("User");
         _userRoleGuest = _editingUser.Roles.Contains("Guest");
+        _userDefaultUser = _editingUser.DefaultUser;
         StateHasChanged();
     }
 
@@ -1332,6 +1581,9 @@
         if (_userRoleUser) _editingUser.Roles.Add("User");
         if (_userRoleGuest) _editingUser.Roles.Add("Guest");
 
+        // Update DefaultUser from checkbox
+        _editingUser.DefaultUser = _userDefaultUser;
+
         // Create a DTO for saving
         var userDto = new UserCreateUpdateDto
         {
@@ -1341,7 +1593,8 @@
             Roles = _editingUser.Roles,
             TelegramId = _editingUser.TelegramId,
             TelegramName = _editingUser.TelegramName,
-            DefaultCodec = _editingUser.DefaultCodec
+            DefaultCodec = _editingUser.DefaultCodec,
+            DefaultUser = _editingUser.DefaultUser
         };
 
         await SaveUser(userDto);
@@ -1357,7 +1610,9 @@
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(user.Password) && string.IsNullOrEmpty(_editingUser?.Login))
+            var isNewUser = !_users.Any(u => u.Login == user.Login);
+            
+            if (string.IsNullOrWhiteSpace(user.Password) && isNewUser)
             {
                 _usersErrorMessage = "Password is required for new users";
                 return;
@@ -1369,6 +1624,7 @@
                 return;
             }
 
+            // Use dedicated SaveUser endpoint for individual user operations
             var response = await _http.PostAsJsonAsync("/Configuration/SaveUser", user);
             if (response.IsSuccessStatusCode)
             {
@@ -1380,7 +1636,8 @@
             }
             else
             {
-                _usersErrorMessage = $"Failed to save user: {response.StatusCode}";
+                var errorResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                _usersErrorMessage = errorResponse?.ErrorMessage ?? $"Failed to save user: {response.StatusCode}";
             }
         }
         catch (Exception ex)
@@ -1403,6 +1660,7 @@
         {
             try
             {
+                // Use dedicated DeleteUser endpoint
                 var response = await _http.DeleteAsync($"/Configuration/DeleteUser?login={user.Login}");
                 if (response.IsSuccessStatusCode)
                 {
@@ -1412,7 +1670,8 @@
                 }
                 else
                 {
-                    _usersErrorMessage = $"Failed to delete user: {response.StatusCode}";
+                    var errorResponse = await response.Content.ReadFromJsonAsync<ApiResponse<bool>>();
+                    _usersErrorMessage = errorResponse?.ErrorMessage ?? $"Failed to delete user: {response.StatusCode}";
                 }
             }
             catch (Exception ex)
@@ -1496,7 +1755,10 @@
             if (IsAdmin())
             {
                 await RefreshSystemSettings();
-                await RefreshRuntimeSettings();
+                await RefreshTelegramSettings();
+                await RefreshBruteForceSettings();
+                await RefreshMotionDetectionSettings();
+                await RefreshVideoRecordingSettings();
                 await RefreshCameras();
                 await RefreshUsers();
                 await RefreshRecordingCameras();

@@ -1,40 +1,126 @@
 ﻿@using CameraServer.Client.Services
 @using CameraServer.Shared
+@implements IDisposable
 
 @inject IAuthenticationService _authenticationService
 
-<MudStack Row="true">
-<MudTextField T="string" Disabled="@_authenticationService.IsAuthenticated"
-              id="login"
-              Label="Login:"
-              @bind-Value="_loginModel.UserName" />
-
-<MudTextField T="string" Disabled="@_authenticationService.IsAuthenticated"
-              id="password"
-              Label="Password:"
-              @bind-Value="_loginModel.Password" />
-
-<MudCheckBox T="bool" Disabled="@_authenticationService.IsAuthenticated"
-             Label="Stay logged in"
-             @bind-Checked="_loginModel.RememberLogin" />
+<MudPaper Elevation="2" Class="pa-4 mb-4">
     @if (!_authenticationService.IsAuthenticated)
     {
-        <MudButton OnClick="@LoginClicked"
-                   Variant="Variant.Filled">
-            Login
-        </MudButton>
+        <MudText Typo="Typo.h6" Class="mb-3">
+            <MudIcon Icon="@Icons.Material.Filled.Login" Class="mr-2" />
+            Sign In
+        </MudText>
+        
+        <MudForm @ref="_form" @bind-IsValid="@_isFormValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_loginModel.UserName"
+                              Label="Username"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Person"
+                              Required="true"
+                              RequiredError="Username is required"
+                              Immediate="true"
+                              FullWidth="true"
+                              Disabled="@_isLoading"
+                              aria-label="Username input field" />
+
+                <MudTextField @bind-Value="_loginModel.Password"
+                              Label="Password"
+                              Variant="Variant.Outlined"
+                              InputType="@_passwordInputType"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@_passwordVisibilityIcon"
+                              OnAdornmentClick="@TogglePasswordVisibility"
+                              AdornmentAriaLabel="Toggle password visibility"
+                              FullWidth="true"
+                              Disabled="@_isLoading"
+                              aria-label="Password input field" />
+
+                <MudCheckBox T="bool"
+                             @bind-Checked="_loginModel.RememberLogin"
+                             Label="Keep me signed in"
+                             Color="Color.Primary"
+                             Disabled="@_isLoading"
+                             Dense="true" />
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" 
+                              Dense="true" 
+                              CloseIconClicked="@(() => _errorMessage = string.Empty)"
+                              ShowCloseIcon="true">
+                        @_errorMessage
+                    </MudAlert>
+                }
+
+                <MudButton OnClick="@LoginClicked"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Disabled="@(!_isFormValid || _isLoading)"
+                           StartIcon="@Icons.Material.Filled.Login"
+                           aria-label="Sign in button">
+                    @if (_isLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>Signing in...</span>
+                    }
+                    else
+                    {
+                        <span>Sign In</span>
+                    }
+                </MudButton>
+            </MudStack>
+        </MudForm>
     }
     else
     {
-        <MudButton OnClick="@LogoutClicked"
-                   Variant="Variant.Filled">
-            Logout
-        </MudButton>
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="flex-wrap">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Color="Color.Primary" />
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.body1">
+                        <strong>@_authenticationService.UserInfo?.Login</strong>
+                    </MudText>
+                    @if (!string.IsNullOrEmpty(_authenticationService.UserInfo?.Name))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @_authenticationService.UserInfo.Name
+                        </MudText>
+                    }
+                </MudStack>
+            </MudStack>
+            
+            <MudButton OnClick="@LogoutClicked"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       Disabled="@_isLoading"
+                       StartIcon="@Icons.Material.Filled.Logout"
+                       aria-label="Sign out button">
+                @if (_isLoading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Signing out...</span>
+                }
+                else
+                {
+                    <span>Sign Out</span>
+                }
+            </MudButton>
+        </MudStack>
     }
-</MudStack>
+</MudPaper>
 
 @code {
     private LoginModel _loginModel = new LoginModel();
+    private bool _isLoading = false;
+    private bool _isFormValid = false;
+    private string _errorMessage = string.Empty;
+    private InputType _passwordInputType = InputType.Password;
+    private string _passwordVisibilityIcon = Icons.Material.Filled.VisibilityOff;
+    private MudForm? _form;
 
     protected override void OnInitialized()
     {
@@ -52,14 +138,78 @@
         }
     }
 
+    public void Dispose()
+    {
+        _authenticationService.OnLogIn -= OnLogin;
+        _authenticationService.OnLogOut -= OnLogout;
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        if (_passwordInputType == InputType.Password)
+        {
+            _passwordInputType = InputType.Text;
+            _passwordVisibilityIcon = Icons.Material.Filled.Visibility;
+        }
+        else
+        {
+            _passwordInputType = InputType.Password;
+            _passwordVisibilityIcon = Icons.Material.Filled.VisibilityOff;
+        }
+    }
+
     private async Task LoginClicked()
     {
-        await _authenticationService.Login(_loginModel);
+        if (_form != null)
+        {
+            await _form.Validate();
+            
+            if (!_form.IsValid)
+            {
+                return;
+            }
+        }
+
+        _isLoading = true;
+        _errorMessage = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            await _authenticationService.Login(_loginModel);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Login failed. Please check your credentials and try again.";
+            Console.WriteLine($"LoginComponent: Login exception: {ex}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 
     private async Task LogoutClicked()
     {
-        await _authenticationService.Logout();
+        _isLoading = true;
+        _errorMessage = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            await _authenticationService.Logout();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Logout failed. Please try again.";
+            Console.WriteLine($"LoginComponent: Logout exception: {ex}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 
     private async void OnLogin(UserInfoModel? userInfoModel)
@@ -71,6 +221,8 @@
             {
                 _loginModel.UserName = userInfoModel?.Login ?? string.Empty;
                 _loginModel.Password = string.Empty;
+                _isLoading = false;
+                _errorMessage = string.Empty;
                 StateHasChanged();
             });
         }
@@ -85,6 +237,9 @@
         Console.WriteLine("LoginComponent: OnLogout() invoked");
 
         _loginModel.Password = string.Empty;
+        _loginModel.UserName = string.Empty;
+        _isLoading = false;
+        _errorMessage = string.Empty;
         StateHasChanged();
     }
 }

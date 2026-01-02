@@ -11,6 +11,7 @@ using CameraServer.Shared.DTO;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -27,30 +28,380 @@ public class ConfigurationController : ControllerBase
 {
     private readonly IUserManager _userManager;
     private readonly CameraHubService _cameraHub;
-    private readonly IRuntimeConfigurationService _runtimeConfig;
-    private readonly IServerConfigurationManager _configManager;
+    private readonly IApplicationConfigurationService _applicationConfig;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ConfigurationController> _logger;
 
     public ConfigurationController(
         IUserManager userManager,
         CameraHubService cameraHub,
-        IRuntimeConfigurationService runtimeConfig,
-        IServerConfigurationManager configManager,
+        IApplicationConfigurationService applicationConfig,
+        IConfiguration configuration,
         ILogger<ConfigurationController> logger)
     {
         _userManager = userManager;
         _cameraHub = cameraHub;
-        _runtimeConfig = runtimeConfig;
-        _configManager = configManager;
+        _applicationConfig = applicationConfig;
+        _configuration = configuration;
         _logger = logger;
     }
 
-    #region Camera Configuration
+    #region System Configuration
+
+    [HttpGet("GetSystemSettings")]
+    [SwaggerOperation(
+        Summary = "Get system configuration settings",
+        Description = "Returns system-wide configuration settings (read-only, sourced from appsettings.json)",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<SystemSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetSystemSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can view system settings");
+
+            var settings = new SystemSettingsDto
+            {
+                ServerUrls = _configuration["Urls"] ?? "http://0.0.0.0:8080",
+                CookieExpireTimeMinutes = _applicationConfig.GetCookieExpireTimeMinutes(),
+                AllowBasicAuthentication = _applicationConfig.GetAllowBasicAuthentication(),
+                ExternalHostUrl = _applicationConfig.GetExternalHostUrl()
+            };
+
+            return Ok(ApiResponse<SystemSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving system settings");
+            return StatusCode(500, ApiResponse<SystemSettingsDto>.ErrorResponse($"Failed to retrieve system settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Telegram Settings
+
+    [HttpGet("GetTelegramSettings")]
+    [SwaggerOperation(
+        Summary = "Get Telegram bot settings",
+        Description = "Returns current Telegram configuration",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<TelegramSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetTelegramSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can access Telegram settings");
+
+            var telegramSettings = _applicationConfig.GetTelegramSettings();
+            var settings = new TelegramSettingsDto
+            {
+                Token = telegramSettings.Token,
+                ReconnectTimeout = telegramSettings.ReconnectTimeout,
+                DefaultVideoTime = telegramSettings.DefaultVideoTime,
+                DefaultVideoQuality = telegramSettings.DefaultVideoQuality,
+                DefaultImageQuality = telegramSettings.DefaultImageQuality
+            };
+
+            return Ok(ApiResponse<TelegramSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving Telegram settings");
+            return StatusCode(500, ApiResponse<TelegramSettingsDto>.ErrorResponse($"Failed to retrieve Telegram settings: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("UpdateTelegramSettings")]
+    [SwaggerOperation(
+        Summary = "Update Telegram bot settings",
+        Description = "Updates Telegram configuration without affecting other settings",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult UpdateTelegramSettings([FromBody] TelegramSettingsDto settings)
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can modify Telegram settings");
+
+            ArgumentNullException.ThrowIfNull(settings);
+
+            var telegramSettings = new TelegeramSettings
+            {
+                Token = settings.Token,
+                ReconnectTimeout = settings.ReconnectTimeout,
+                DefaultVideoTime = settings.DefaultVideoTime,
+                DefaultVideoQuality = settings.DefaultVideoQuality,
+                DefaultImageQuality = settings.DefaultImageQuality
+            };
+
+            _applicationConfig.UpdateTelegramSettings(telegramSettings);
+            _applicationConfig.SaveConfiguration();
+
+            _logger.LogInformation("Telegram settings updated");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating Telegram settings");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update Telegram settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Brute Force Detection Settings
+
+    [HttpGet("GetBruteForceSettings")]
+    [SwaggerOperation(
+        Summary = "Get brute force detection settings",
+        Description = "Returns current brute force detection configuration",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<BruteForceDetectionSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetBruteForceSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can access brute force detection settings");
+
+            var bruteForceSettings = _applicationConfig.GetBruteForceDetectionSettings();
+            var settings = new BruteForceDetectionSettingsDto
+            {
+                RetriesPerMinute = bruteForceSettings.RetriesPerMinute,
+                RetriesPerHour = bruteForceSettings.RetriesPerHour
+            };
+
+            return Ok(ApiResponse<BruteForceDetectionSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving brute force detection settings");
+            return StatusCode(500, ApiResponse<BruteForceDetectionSettingsDto>.ErrorResponse($"Failed to retrieve brute force detection settings: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("UpdateBruteForceSettings")]
+    [SwaggerOperation(
+        Summary = "Update brute force detection settings",
+        Description = "Updates brute force detection configuration without affecting other settings",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult UpdateBruteForceSettings([FromBody] BruteForceDetectionSettingsDto settings)
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can modify brute force detection settings");
+
+            ArgumentNullException.ThrowIfNull(settings);
+
+            var bruteForceSettings = new Services.AntiBruteForce.BruteForceDetectionSettings
+            {
+                RetriesPerMinute = settings.RetriesPerMinute,
+                RetriesPerHour = settings.RetriesPerHour
+            };
+
+            _applicationConfig.UpdateBruteForceDetectionSettings(bruteForceSettings);
+            _applicationConfig.SaveConfiguration();
+
+            _logger.LogInformation("Brute force detection settings updated");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating brute force detection settings");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update brute force detection settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Motion Detection Settings
+
+    [HttpGet("GetMotionDetectionSettings")]
+    [SwaggerOperation(
+        Summary = "Get motion detection settings",
+        Description = "Returns current motion detection configuration",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<MotionDetectionRuntimeSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetMotionDetectionSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can access motion detection settings");
+
+            var motionDetectionSettings = _applicationConfig.GetMotionDetectionSettings();
+            var settings = new MotionDetectionRuntimeSettingsDto
+            {
+                StoragePath = motionDetectionSettings.StoragePath,
+                DefaultMotionDetectParameters = motionDetectionSettings.DefaultMotionDetectParameters
+            };
+
+            return Ok(ApiResponse<MotionDetectionRuntimeSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving motion detection settings");
+            return StatusCode(500, ApiResponse<MotionDetectionRuntimeSettingsDto>.ErrorResponse($"Failed to retrieve motion detection settings: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("UpdateMotionDetectionSettings")]
+    [SwaggerOperation(
+        Summary = "Update motion detection settings",
+        Description = "Updates motion detection configuration without affecting other settings",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult UpdateMotionDetectionSettings([FromBody] MotionDetectionRuntimeSettingsDto settings)
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can modify motion detection settings");
+
+            ArgumentNullException.ThrowIfNull(settings);
+
+            var motionDetectionSettings = new Services.MotionDetection.MotionDetectionSettings
+            {
+                StoragePath = settings.StoragePath,
+                DefaultMotionDetectParameters = settings.DefaultMotionDetectParameters,
+                MotionDetectionCameras = new List<MotionDetectionCameraSettingDto>()
+            };
+
+            _applicationConfig.UpdateMotionDetectionSettings(motionDetectionSettings);
+            _applicationConfig.SaveConfiguration();
+
+            _logger.LogInformation("Motion detection settings updated");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating motion detection settings");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update motion detection settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Video Recording Settings
+
+    [HttpGet("GetVideoRecordingSettings")]
+    [SwaggerOperation(
+        Summary = "Get video recording settings",
+        Description = "Returns current video recording configuration",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<VideoRecordingRuntimeSettingsDto>))]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult GetVideoRecordingSettings()
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can access video recording settings");
+
+            var videoRecordingSettings = _applicationConfig.GetVideoRecordingSettings();
+            var settings = new VideoRecordingRuntimeSettingsDto
+            {
+                StoragePath = videoRecordingSettings.StoragePath,
+                VideoFileLengthSeconds = videoRecordingSettings.VideoFileLengthSeconds,
+                DefaultVideoQuality = videoRecordingSettings.DefaultVideoQuality
+            };
+
+            return Ok(ApiResponse<VideoRecordingRuntimeSettingsDto>.SuccessResponse(settings));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving video recording settings");
+            return StatusCode(500, ApiResponse<VideoRecordingRuntimeSettingsDto>.ErrorResponse($"Failed to retrieve video recording settings: {ex.Message}"));
+        }
+    }
+
+    [HttpPost("UpdateVideoRecordingSettings")]
+    [SwaggerOperation(
+        Summary = "Update video recording settings",
+        Description = "Updates video recording configuration without affecting other settings",
+        Tags = new[] { "Configuration" }
+    )]
+    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
+    public IActionResult UpdateVideoRecordingSettings([FromBody] VideoRecordingRuntimeSettingsDto settings)
+    {
+        try
+        {
+            if (!IsAdmin())
+                return Forbid("Only administrators can modify video recording settings");
+
+            ArgumentNullException.ThrowIfNull(settings);
+
+            var videoRecordingSettings = new RecorderSettings
+            {
+                StoragePath = settings.StoragePath,
+                VideoFileLengthSeconds = settings.VideoFileLengthSeconds,
+                DefaultVideoQuality = settings.DefaultVideoQuality,
+                RecordCameras = new List<RecordCameraSettingDto>()
+            };
+
+            _applicationConfig.UpdateVideoRecordingSettings(videoRecordingSettings);
+            _applicationConfig.SaveConfiguration();
+
+            _logger.LogInformation("Video recording settings updated");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating video recording settings");
+            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update video recording settings: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Camera Settings
 
     [HttpGet("GetCameraSettings")]
     [SwaggerOperation(
         Summary = "Get camera configuration settings",
-        Description = "Returns all camera-related configuration including auto-search settings and custom cameras",
+        Description = "Returns current camera configuration",
         Tags = new[] { "Configuration" }
     )]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<CameraSettingsDto>))]
@@ -62,18 +413,17 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can access camera settings");
 
-            var settings = _configManager.GetSection(s => s.CameraSettings);
-
-            var dto = new CameraSettingsDto
+            var cameraSettings = _applicationConfig.GetCameraSettings();
+            var settings = new CameraSettingsDto
             {
-                AutoSearchIp = settings.AutoSearchIp,
-                AutoSearchUsb = settings.AutoSearchUsb,
-                AutoSearchUsbFC = settings.AutoSearchUsbFC,
-                DefaultAllowedRoles = settings.DefaultAllowedRoles?.Select(r => r.ToString()).ToList() ?? new List<string>(),
-                DiscoveryTimeOut = settings.DiscoveryTimeOut,
-                ForceCameraConnect = settings.ForceCameraConnect,
-                MaxFrameBuffer = settings.MaxFrameBuffer,
-                CustomCameras = settings.CustomCameras?.Select(c => new CameraConfigDto
+                AutoSearchIp = cameraSettings.AutoSearchIp,
+                AutoSearchUsb = cameraSettings.AutoSearchUsb,
+                AutoSearchUsbFC = cameraSettings.AutoSearchUsbFC,
+                DefaultAllowedRoles = cameraSettings.DefaultAllowedRoles?.Select(r => r.ToString()).ToList() ?? new List<string>(),
+                DiscoveryTimeOut = cameraSettings.DiscoveryTimeOut,
+                ForceCameraConnect = cameraSettings.ForceCameraConnect,
+                MaxFrameBuffer = cameraSettings.MaxFrameBuffer,
+                CustomCameras = cameraSettings.CustomCameras?.Select(c => new CameraConfigDto
                 {
                     Type = c.Type.ToString(),
                     Name = c.Name,
@@ -83,10 +433,10 @@ public class ConfigurationController : ControllerBase
                     Login = c.Login,
                     Password = c.Password
                 }).ToList() ?? new List<CameraConfigDto>(),
-                FrameTimeout = settings.FrameTimeout
+                FrameTimeout = cameraSettings.FrameTimeout
             };
 
-            return Ok(ApiResponse<CameraSettingsDto>.SuccessResponse(dto));
+            return Ok(ApiResponse<CameraSettingsDto>.SuccessResponse(settings));
         }
         catch (Exception ex)
         {
@@ -98,11 +448,11 @@ public class ConfigurationController : ControllerBase
     [HttpPost("UpdateCameraSettings")]
     [SwaggerOperation(
         Summary = "Update camera configuration settings",
-        Description = "Updates camera-related configuration. Requires application restart to take effect.",
+        Description = "Updates camera settings. Changes require application restart to take effect.",
         Tags = new[] { "Configuration" }
     )]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
-    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid camera settings")]
     [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
     public IActionResult UpdateCameraSettings([FromBody] CameraSettingsDto settingsDto)
     {
@@ -113,50 +463,41 @@ public class ConfigurationController : ControllerBase
 
             ArgumentNullException.ThrowIfNull(settingsDto);
 
-            // Validate settings
             var validationErrors = ValidateCameraSettingsDto(settingsDto);
             if (validationErrors.Count > 0)
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
-            // Convert DTO to server model
-            var settings = new CameraSettings
+            var cameraSettings = new CameraSettings
             {
                 AutoSearchIp = settingsDto.AutoSearchIp,
                 AutoSearchUsb = settingsDto.AutoSearchUsb,
                 AutoSearchUsbFC = settingsDto.AutoSearchUsbFC,
-                DefaultAllowedRoles = settingsDto.DefaultAllowedRoles
-                    .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
-                    .ToList(),
+                DefaultAllowedRoles = settingsDto.DefaultAllowedRoles?.Select(r => Enum.Parse<Roles>(r)).ToList() ?? new List<Roles>(),
                 DiscoveryTimeOut = settingsDto.DiscoveryTimeOut,
                 ForceCameraConnect = settingsDto.ForceCameraConnect,
                 MaxFrameBuffer = settingsDto.MaxFrameBuffer,
-                CustomCameras = settingsDto.CustomCameras
-                    .Select(c => new CustomCameraDto
-                    {
-                        Type = Enum.TryParse<CameraType>(c.Type, out var cameraType) ? cameraType : CameraType.Unknown,
-                        Name = c.Name,
-                        Path = c.Path,
-                        AllowedRoles = c.AllowedRoles
-                            .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
-                            .ToList(),
-                        AuthenticationType = Enum.TryParse<AuthType>(c.AuthenticationType, out var authType) ? authType : AuthType.None,
-                        Login = c.Login,
-                        Password = c.Password
-                    })
-                    .ToList(),
-                FrameTimeout = settingsDto.FrameTimeout
+                FrameTimeout = settingsDto.FrameTimeout,
+                CustomCameras = settingsDto.CustomCameras?.Select(c => new CustomCameraDto
+                {
+                    Type = Enum.Parse<CameraType>(c.Type),
+                    Name = c.Name,
+                    Path = c.Path,
+                    AllowedRoles = c.AllowedRoles.Select(r => Enum.Parse<Roles>(r)).ToList(),
+                    AuthenticationType = Enum.Parse<AuthType>(c.AuthenticationType),
+                    Login = c.Login,
+                    Password = c.Password
+                }).ToList() ?? new List<CustomCameraDto>()
             };
 
-            // Update the configuration using the unified manager
-            var success = _configManager.UpdateSection(
-                s => s.CameraSettings,
-                (appSettings, _) => appSettings.CameraSettings = settings
-            );
+            _applicationConfig.UpdateCameraSettings(cameraSettings);
+            _applicationConfig.SaveConfiguration();
 
-            if (success)
-                return Ok(ApiResponse<bool>.SuccessResponse(true));
-            else
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Failed to save configuration"));
+            _logger.LogInformation("Camera settings updated");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
         }
         catch (Exception ex)
         {
@@ -165,122 +506,14 @@ public class ConfigurationController : ControllerBase
         }
     }
 
-    [HttpPost("AddCamera")]
-    [SwaggerOperation(
-        Summary = "Add a new camera configuration",
-        Description = "Adds a new custom camera to the configuration. Requires application restart to take effect.",
-        Tags = new[] { "Configuration" }
-    )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
-    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid camera configuration")]
-    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult AddCamera([FromBody] CameraConfigDto camera)
-    {
-        try
-        {
-            if (!IsAdmin())
-                return Forbid("Only administrators can add cameras");
-
-            ArgumentNullException.ThrowIfNull(camera);
-
-            var validationErrors = ValidateCameraConfig(camera);
-            if (validationErrors.Count > 0)
-                return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
-
-            // Parse enum values from strings
-            if (!Enum.TryParse<CameraType>(camera.Type, out var cameraType))
-                return BadRequest(ApiResponse<bool>.ErrorResponse($"Invalid camera type: {camera.Type}"));
-
-            if (!Enum.TryParse<AuthType>(camera.AuthenticationType, out var authType))
-                return BadRequest(ApiResponse<bool>.ErrorResponse($"Invalid authentication type: {camera.AuthenticationType}"));
-
-            var customCamera = new CustomCameraDto
-            {
-                Type = cameraType,
-                Name = camera.Name,
-                Path = camera.Path,
-                AllowedRoles = camera.AllowedRoles
-                    .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
-                    .ToList(),
-                AuthenticationType = authType,
-                Login = camera.Login,
-                Password = camera.Password
-            };
-
-            var success = _configManager.UpdateSection(
-                s => s.CameraSettings,
-                (appSettings, cameraSettings) =>
-                {
-                    if (!cameraSettings.CustomCameras.Any(c => c.Path == camera.Path))
-                    {
-                        cameraSettings.CustomCameras.Add(customCamera);
-                    }
-                }
-            );
-
-            if (success)
-                return Ok(ApiResponse<bool>.SuccessResponse(true));
-            else
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Failed to save camera configuration"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error adding camera");
-            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to add camera: {ex.Message}"));
-        }
-    }
-
-    [HttpDelete("RemoveCamera")]
-    [SwaggerOperation(
-        Summary = "Remove a camera configuration",
-        Description = "Removes a custom camera from the configuration by path. Requires application restart to take effect.",
-        Tags = new[] { "Configuration" }
-    )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
-    [SwaggerResponse((int)HttpStatusCode.NotFound, "Camera not found")]
-    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult RemoveCamera([FromQuery] string cameraPath)
-    {
-        try
-        {
-            if (!IsAdmin())
-                return Forbid("Only administrators can remove cameras");
-
-            if (string.IsNullOrWhiteSpace(cameraPath))
-                return BadRequest(ApiResponse<bool>.ErrorResponse("Camera path is required"));
-
-            var success = _configManager.UpdateSection(
-                s => s.CameraSettings,
-                (appSettings, cameraSettings) =>
-                {
-                    var camera = cameraSettings.CustomCameras.FirstOrDefault(c => c.Path == cameraPath);
-                    if (camera != null)
-                    {
-                        cameraSettings.CustomCameras.Remove(camera);
-                    }
-                }
-            );
-
-            if (success)
-                return Ok(ApiResponse<bool>.SuccessResponse(true));
-            else
-                return NotFound(ApiResponse<bool>.ErrorResponse("Camera not found or failed to save"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error removing camera");
-            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to remove camera: {ex.Message}"));
-        }
-    }
-
     #endregion
 
-    #region User Configuration
+    #region User Management
 
     [HttpGet("GetUsers")]
     [SwaggerOperation(
-        Summary = "Get all configured users",
-        Description = "Returns list of all users (passwords excluded)",
+        Summary = "Get all users",
+        Description = "Returns list of all configured users",
         Tags = new[] { "Configuration" }
     )]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<List<UserManagementDto>>))]
@@ -292,7 +525,7 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can view users");
 
-            var users = _configManager.GetSection(s => s.Users)?
+            var users = _applicationConfig.GetUsers()
                 .Select(u => new UserManagementDto
                 {
                     Login = u.Login,
@@ -300,9 +533,9 @@ public class ConfigurationController : ControllerBase
                     Roles = u.Roles.Select(r => r.ToString()).ToList(),
                     TelegramId = u.TelegramId,
                     TelegramName = u.TelegramName,
-                    DefaultCodec = u.DefaultCodec
-                })
-                .ToList() ?? new List<UserManagementDto>();
+                    DefaultCodec = u.DefaultCodec,
+                    DefaultUser = u.DefaultUser
+                }).ToList();
 
             return Ok(ApiResponse<List<UserManagementDto>>.SuccessResponse(users));
         }
@@ -316,7 +549,7 @@ public class ConfigurationController : ControllerBase
     [HttpPost("SaveUser")]
     [SwaggerOperation(
         Summary = "Create or update a user",
-        Description = "Creates a new user or updates an existing one. Requires application restart to take effect.",
+        Description = "Saves user to settings.json. Changes require application restart to take effect.",
         Tags = new[] { "Configuration" }
     )]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
@@ -335,36 +568,52 @@ public class ConfigurationController : ControllerBase
             if (validationErrors.Count > 0)
                 return BadRequest(ApiResponse<bool>.ValidationErrorResponse(validationErrors));
 
-            var newUser = new User
+            var user = new User
             {
                 Login = userDto.Login,
                 Password = userDto.Password,
                 Name = userDto.Name,
-                Roles = userDto.Roles
-                    .Select(r => Enum.TryParse<Roles>(r, out var role) ? role : Roles.Guest)
-                    .ToList(),
+                Roles = userDto.Roles.Select(r => Enum.Parse<Roles>(r)).ToList(),
                 TelegramId = userDto.TelegramId,
                 TelegramName = userDto.TelegramName,
-                DefaultCodec = userDto.DefaultCodec
+                DefaultCodec = userDto.DefaultCodec,
+                DefaultUser = userDto.DefaultUser
             };
 
-            var success = _configManager.UpdateSection(
-                s => s.Users,
-                (appSettings, usersList) =>
-                {
-                    var existingUser = usersList.FirstOrDefault(u => u.Login == userDto.Login);
-                    if (existingUser != null)
-                    {
-                        usersList.Remove(existingUser);
-                    }
-                    usersList.Add(newUser);
-                }
-            );
+            var existingUsers = _applicationConfig.GetUsers();
+            var existingUser = existingUsers.FirstOrDefault(u => u.Login == userDto.Login);
 
-            if (success)
+            if (existingUser != null)
+            {
+                // Update existing user
+                if (string.IsNullOrWhiteSpace(user.Password))
+                {
+                    user.Password = existingUser.Password;
+                }
+
+                _applicationConfig.UpdateUser(user);
+                _applicationConfig.SaveConfiguration();
+
+                _logger.LogInformation($"User '{user.Login}' updated");
                 return Ok(ApiResponse<bool>.SuccessResponse(true));
+            }
             else
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Failed to save user configuration"));
+            {
+                // Add new user
+                _applicationConfig.AddUser(user);
+                _applicationConfig.SaveConfiguration();
+
+                _logger.LogInformation($"User '{user.Login}' created");
+                return Ok(ApiResponse<bool>.SuccessResponse(true));
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<bool>.ErrorResponse(ex.Message));
         }
         catch (Exception ex)
         {
@@ -376,11 +625,11 @@ public class ConfigurationController : ControllerBase
     [HttpDelete("DeleteUser")]
     [SwaggerOperation(
         Summary = "Delete a user",
-        Description = "Removes a user from the configuration. Requires application restart to take effect.",
+        Description = "Deletes user from settings.json. Changes require application restart to take effect.",
         Tags = new[] { "Configuration" }
     )]
     [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
-    [SwaggerResponse((int)HttpStatusCode.NotFound, "User not found")]
+    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid user login")]
     [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
     public IActionResult DeleteUser([FromQuery] string login)
     {
@@ -390,24 +639,20 @@ public class ConfigurationController : ControllerBase
                 return Forbid("Only administrators can delete users");
 
             if (string.IsNullOrWhiteSpace(login))
-                return BadRequest(ApiResponse<bool>.ErrorResponse("Login is required"));
+                return BadRequest(ApiResponse<bool>.ErrorResponse("User login is required"));
 
-            var success = _configManager.UpdateSection(
-                s => s.Users,
-                (appSettings, usersList) =>
-                {
-                    var user = usersList.FirstOrDefault(u => u.Login == login);
-                    if (user != null)
-                    {
-                        usersList.Remove(user);
-                    }
-                }
-            );
+            if (HttpContext.User.Identity?.Name == login)
+                return BadRequest(ApiResponse<bool>.ErrorResponse("Cannot delete currently logged in user"));
 
-            if (success)
-                return Ok(ApiResponse<bool>.SuccessResponse(true));
-            else
-                return NotFound(ApiResponse<bool>.ErrorResponse("User not found or failed to save"));
+            _applicationConfig.DeleteUser(login);
+            _applicationConfig.SaveConfiguration();
+
+            _logger.LogInformation($"User '{login}' deleted");
+            return Ok(ApiResponse<bool>.SuccessResponse(true));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(ApiResponse<bool>.ErrorResponse(ex.Message));
         }
         catch (Exception ex)
         {
@@ -418,218 +663,7 @@ public class ConfigurationController : ControllerBase
 
     #endregion
 
-    #region System Configuration
-
-    [HttpGet("GetSystemSettings")]
-    [SwaggerOperation(
-        Summary = "Get system configuration settings",
-        Description = "Returns system-wide configuration settings",
-        Tags = new[] { "Configuration" }
-    )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<SystemSettingsDto>))]
-    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult GetSystemSettings()
-    {
-        try
-        {
-            if (!IsAdmin())
-                return Forbid("Only administrators can view system settings");
-
-            var appSettings = _configManager.GetSettings();
-            var settings = new SystemSettingsDto
-            {
-                ServerUrls = appSettings.Urls,
-                CookieExpireTimeMinutes = appSettings.CookieExpireTimeMinutes,
-                AllowBasicAuthentication = appSettings.AllowBasicAuthentication,
-                ExternalHostUrl = appSettings.ExternalHostUrl
-            };
-
-            return Ok(ApiResponse<SystemSettingsDto>.SuccessResponse(settings));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving system settings");
-            return StatusCode(500, ApiResponse<SystemSettingsDto>.ErrorResponse($"Failed to retrieve system settings: {ex.Message}"));
-        }
-    }
-
-    #endregion
-
-    #region Runtime Configuration
-
-    [HttpGet("GetRuntimeSettings")]
-    [SwaggerOperation(
-        Summary = "Get all runtime configuration settings",
-        Description = "Returns all settings that can be updated without server restart",
-        Tags = new[] { "Configuration" }
-    )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<RuntimeSettingsDto>))]
-    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult GetRuntimeSettings()
-    {
-        try
-        {
-            if (!IsAdmin())
-                return Forbid("Only administrators can access runtime settings");
-
-            var telegramSettings = _runtimeConfig.GetTelegramSettings();
-            var bruteForceSettings = _runtimeConfig.GetBruteForceDetectionSettings();
-            var motionDetectionSettings = _runtimeConfig.GetMotionDetectionSettings();
-            var videoRecordingSettings = _runtimeConfig.GetVideoRecordingSettings();
-
-            var settings = new RuntimeSettingsDto
-            {
-                ExternalHostUrl = _runtimeConfig.GetExternalHostUrl(),
-                CookieExpireTimeMinutes = _runtimeConfig.GetCookieExpireTimeMinutes(),
-                AllowBasicAuthentication = _runtimeConfig.GetAllowBasicAuthentication(),
-                TelegramSettings = new TelegramSettingsDto
-                {
-                    Token = telegramSettings.Token,
-                    ReconnectTimeout = telegramSettings.ReconnectTimeout,
-                    DefaultVideoTime = telegramSettings.DefaultVideoTime,
-                    DefaultVideoQuality = telegramSettings.DefaultVideoQuality,
-                    DefaultImageQuality = telegramSettings.DefaultImageQuality
-                },
-                BruteForceDetectionSettings = new BruteForceDetectionSettingsDto
-                {
-                    RetriesPerMinute = bruteForceSettings.RetriesPerMinute,
-                    RetriesPerHour = bruteForceSettings.RetriesPerHour
-                },
-                MotionDetectionSettings = new MotionDetectionRuntimeSettingsDto
-                {
-                    StoragePath = motionDetectionSettings.StoragePath,
-                    DefaultMotionDetectParameters = motionDetectionSettings.DefaultMotionDetectParameters
-                },
-                VideoRecordingSettings = new VideoRecordingRuntimeSettingsDto
-                {
-                    StoragePath = videoRecordingSettings.StoragePath,
-                    VideoFileLengthSeconds = videoRecordingSettings.VideoFileLengthSeconds,
-                    DefaultVideoQuality = videoRecordingSettings.DefaultVideoQuality
-                }
-            };
-
-            return Ok(ApiResponse<RuntimeSettingsDto>.SuccessResponse(settings));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving runtime settings");
-            return StatusCode(500, ApiResponse<RuntimeSettingsDto>.ErrorResponse($"Failed to retrieve runtime settings: {ex.Message}"));
-        }
-    }
-
-    [HttpPost("UpdateRuntimeSettings")]
-    [SwaggerOperation(
-        Summary = "Update runtime configuration settings",
-        Description = "Updates settings that take effect immediately without server restart",
-        Tags = new[] { "Configuration" }
-    )]
-    [SwaggerResponse((int)HttpStatusCode.OK, Type = typeof(ApiResponse<bool>))]
-    [SwaggerResponse((int)HttpStatusCode.BadRequest, "Invalid settings")]
-    [SwaggerResponse((int)HttpStatusCode.Forbidden, "User is not an administrator")]
-    public IActionResult UpdateRuntimeSettings([FromBody] RuntimeSettingsUpdateDto updateDto)
-    {
-        try
-        {
-            if (!IsAdmin())
-                return Forbid("Only administrators can modify runtime settings");
-
-            ArgumentNullException.ThrowIfNull(updateDto);
-
-            // Validate and update each setting
-            try
-            {
-                if (!string.IsNullOrEmpty(updateDto.ExternalHostUrl))
-                    _runtimeConfig.UpdateExternalHostUrl(updateDto.ExternalHostUrl);
-
-                if (updateDto.CookieExpireTimeMinutes.HasValue)
-                    _runtimeConfig.UpdateCookieExpireTimeMinutes(updateDto.CookieExpireTimeMinutes.Value);
-
-                if (updateDto.AllowBasicAuthentication.HasValue)
-                    _runtimeConfig.UpdateAllowBasicAuthentication(updateDto.AllowBasicAuthentication.Value);
-
-                if (updateDto.TelegramSettings != null)
-                {
-                    var telegramSettings = new TelegeramSettings
-                    {
-                        Token = updateDto.TelegramSettings.Token,
-                        ReconnectTimeout = updateDto.TelegramSettings.ReconnectTimeout,
-                        DefaultVideoTime = updateDto.TelegramSettings.DefaultVideoTime,
-                        DefaultVideoQuality = updateDto.TelegramSettings.DefaultVideoQuality,
-                        DefaultImageQuality = updateDto.TelegramSettings.DefaultImageQuality
-                    };
-                    _runtimeConfig.UpdateTelegramSettings(telegramSettings);
-                }
-
-                if (updateDto.BruteForceDetectionSettings != null)
-                {
-                    var bruteForceSettings = new Services.AntiBruteForce.BruteForceDetectionSettings
-                    {
-                        RetriesPerMinute = updateDto.BruteForceDetectionSettings.RetriesPerMinute,
-                        RetriesPerHour = updateDto.BruteForceDetectionSettings.RetriesPerHour
-                    };
-                    _runtimeConfig.UpdateBruteForceDetectionSettings(bruteForceSettings);
-                }
-
-                if (updateDto.MotionDetectionSettings != null)
-                {
-                    var motionDetectionSettings = new Services.MotionDetection.MotionDetectionSettings
-                    {
-                        StoragePath = updateDto.MotionDetectionSettings.StoragePath,
-                        DefaultMotionDetectParameters = updateDto.MotionDetectionSettings.DefaultMotionDetectParameters,
-                        MotionDetectionCameras = new List<MotionDetectionCameraSettingDto>()
-                    };
-                    _runtimeConfig.UpdateMotionDetectionSettings(motionDetectionSettings);
-                }
-
-                if (updateDto.VideoRecordingSettings != null)
-                {
-                    var videoRecordingSettings = new Services.VideoRecording.RecorderSettings
-                    {
-                        StoragePath = updateDto.VideoRecordingSettings.StoragePath,
-                        VideoFileLengthSeconds = updateDto.VideoRecordingSettings.VideoFileLengthSeconds,
-                        DefaultVideoQuality = updateDto.VideoRecordingSettings.DefaultVideoQuality,
-                        RecordCameras = new List<RecordCameraSettingDto>()
-                    };
-                    _runtimeConfig.UpdateVideoRecordingSettings(videoRecordingSettings);
-                }
-
-                // Persist changes
-                _runtimeConfig.PersistConfiguration();
-
-                _logger.LogInformation("Runtime settings updated and persisted");
-                return Ok(ApiResponse<bool>.SuccessResponse(true));
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ApiResponse<bool>.ErrorResponse($"Validation error: {ex.Message}"));
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating runtime settings");
-            return StatusCode(500, ApiResponse<bool>.ErrorResponse($"Failed to update runtime settings: {ex.Message}"));
-        }
-    }
-
-    #endregion
-
     #region Validation
-
-    private List<string> ValidateCameraSettings(CameraSettings settings)
-    {
-        var errors = new List<string>();
-
-        if (settings.DiscoveryTimeOut < 100)
-            errors.Add("DiscoveryTimeOut must be at least 100ms");
-
-        if (settings.MaxFrameBuffer < 1)
-            errors.Add("MaxFrameBuffer must be at least 1");
-
-        if (settings.FrameTimeout < 1000)
-            errors.Add("FrameTimeout must be at least 1000ms");
-
-        return errors;
-    }
 
     private List<string> ValidateCameraSettingsDto(CameraSettingsDto settings)
     {
@@ -647,25 +681,6 @@ public class ConfigurationController : ControllerBase
         return errors;
     }
 
-    private List<string> ValidateCameraConfig(CameraConfigDto camera)
-    {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(camera.Name))
-            errors.Add("Camera name is required");
-
-        if (string.IsNullOrWhiteSpace(camera.Path))
-            errors.Add("Camera path is required");
-
-        if (camera.AllowedRoles == null || camera.AllowedRoles.Count == 0)
-            errors.Add("At least one allowed role is required");
-
-        if (string.IsNullOrWhiteSpace(camera.Type) || camera.Type == "Unknown")
-            errors.Add("Valid camera type is required");
-
-        return errors;
-    }
-
     private List<string> ValidateUserDto(UserCreateUpdateDto user)
     {
         var errors = new List<string>();
@@ -673,11 +688,23 @@ public class ConfigurationController : ControllerBase
         if (string.IsNullOrWhiteSpace(user.Login))
             errors.Add("Login is required");
 
-        if (string.IsNullOrWhiteSpace(user.Password))
-            errors.Add("Password is required");
+        var existingUsers = _applicationConfig.GetUsers();
 
         if (user.Roles == null || user.Roles.Count == 0)
             errors.Add("At least one role is required");
+
+        // Validate DefaultUser constraint: only one user can be marked as default
+        if (user.DefaultUser)
+        {
+            var otherDefaultUsers = existingUsers
+                .Where(u => u.DefaultUser && u.Login != user.Login)
+                .ToList();
+
+            if (otherDefaultUsers.Any())
+            {
+                errors.Add($"Only one user can be marked as Default User. Currently '{otherDefaultUsers.First().Login}' is set as default.");
+            }
+        }
 
         return errors;
     }

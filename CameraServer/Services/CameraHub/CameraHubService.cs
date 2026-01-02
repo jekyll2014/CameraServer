@@ -337,6 +337,7 @@ public class CameraHubService : IDisposable
                     _logger.Log(LogLevel.Information, $"Adding IP-Camera: {c.Name} - [{c.Path}]");
                     var serverCamera = new ServerCamera(new IpCamera(c.Path, logger: _logger), _settings.DefaultAllowedRoles);
                     serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
+                    serverCamera.CameraStream.Description.ServiceAddress = c.ServiceAddress;
                     var tempId = _cameraRegistry.Count;
                     _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
                 }
@@ -408,7 +409,7 @@ public class CameraHubService : IDisposable
     /// <summary>
     /// Distributes frames to all Channel subscribers.
     /// Uses async for Channel delivery with timeout and error handling.
-    /// First subscriber gets the original frame (zero-copy), others get pooled clones.
+    /// All subscribers get cloned frames to prevent race conditions during disposal.
     /// </summary>
     private async void GetImageFromCameraStreamAsync(ICamera camera, Mat image)
     {
@@ -423,47 +424,56 @@ public class CameraHubService : IDisposable
         }
 
         var subscribers = cameraState.Subscribers.ToArray();
-        var firstCopy = true;
         var writeTasks = new List<Task>(subscribers.Length);
 
-        // Distribute to all Channel subscribers
-        foreach (var (item, channel) in subscribers)
+        try
         {
-            Mat frameToSend;
-
-            if (firstCopy)
+            // Clone frames for ALL subscribers to prevent race conditions
+            // Original frame is owned by the camera and will be disposed by it
+            foreach (var (item, channel) in subscribers)
             {
-                firstCopy = false;
-                frameToSend = image; // First subscriber gets original (zero-copy optimization)
-            }
-            else
-            {
-                // Clone for additional subscribers using pooled Mat
-                frameToSend = _matPoolManager.Rent(image.Width, image.Height, image.Type());
-                image.CopyTo(frameToSend);
+                // Clone for each subscriber using pooled Mat
+                var frameToSend = _matPoolManager.Rent(image.Width, image.Height, image.Type());
+
+                try
+                {
+                    image.CopyTo(frameToSend);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Original frame was disposed during iteration - return rented Mat and skip
+                    _matPoolManager.Return(frameToSend);
+                    _logger.LogWarning($"Original frame disposed during cloning for subscriber {item.QueueId}");
+                    continue;
+                }
+
+                // Write to channel asynchronously (fire and forget with error handling)
+                var writeTask = WriteToChannelAsync(channel, frameToSend, item);
+                writeTasks.Add(writeTask);
             }
 
-            // Write to channel asynchronously (fire and forget with error handling)
-            var writeTask = WriteToChannelAsync(channel, frameToSend, item, image);
-            writeTasks.Add(writeTask);
+            // Don't await here to avoid blocking the camera event
+            // Errors are handled in WriteToChannelAsync
+            if (writeTasks.Count > 0)
+                _ = Task.WhenAll(writeTasks);
+
+            // Log statistics periodically (every 30 seconds, only at second 0 or 30)
+            if (subscribers.Length > 0 && (DateTime.Now.Second == 0 || DateTime.Now.Second == 30))
+            {
+                _logger.LogDebug($"Frame distributed to {subscribers.Length} channel subscribers (Camera: {cameraState.Camera.CameraStream.Description.Name})");
+            }
         }
-
-        // Don't await here to avoid blocking the camera event
-        // Errors are handled in WriteToChannelAsync
-        if (writeTasks.Count > 0)
-            _ = Task.WhenAll(writeTasks);
-
-        // Log statistics periodically (every 30 seconds, only at second 0 or 30)
-        if (subscribers.Length > 0 && (DateTime.Now.Second == 0 || DateTime.Now.Second == 30))
+        finally
         {
-            _logger.LogDebug($"Frame distributed to {subscribers.Length} channel subscribers (Camera: {cameraState.Camera.CameraStream.Description.Name})");
+            // Dispose original frame - we own it
+            image?.Dispose();
         }
     }
 
     /// <summary>
     /// Writes a frame to a channel with timeout and error handling.
     /// </summary>
-    private async Task WriteToChannelAsync(Channel<Mat> channel, Mat frameToSend, CameraQueueItem cameraItem, Mat originalFrame)
+    private async Task WriteToChannelAsync(Channel<Mat> channel, Mat frameToSend, CameraQueueItem cameraItem)
     {
         try
         {
@@ -476,35 +486,27 @@ public class CameraHubService : IDisposable
             }
             else
             {
-                // Channel closed or timeout
-                if (frameToSend != originalFrame)
-                    ReturnOrDisposeMat(frameToSend);
-
+                // Channel closed or timeout - return frame to pool
+                ReturnOrDisposeMat(frameToSend);
                 _logger.LogWarning($"Channel {cameraItem.QueueId} write timeout or closed");
             }
         }
         catch (OperationCanceledException)
         {
             // Timeout - return frame to pool
-            if (frameToSend != originalFrame)
-                ReturnOrDisposeMat(frameToSend);
-
+            ReturnOrDisposeMat(frameToSend);
             _logger.LogDebug($"Channel {cameraItem.QueueId} write timeout");
         }
         catch (ChannelClosedException)
         {
             // Channel was completed - clean up
-            if (frameToSend != originalFrame)
-                ReturnOrDisposeMat(frameToSend);
-
+            ReturnOrDisposeMat(frameToSend);
             _logger.LogDebug($"Channel {cameraItem.QueueId} was closed");
         }
         catch (Exception ex)
         {
             _logger.LogError($"Error writing to channel {cameraItem.QueueId}: {ex.Message}");
-
-            if (frameToSend != originalFrame)
-                ReturnOrDisposeMat(frameToSend);
+            ReturnOrDisposeMat(frameToSend);
         }
     }
 

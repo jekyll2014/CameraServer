@@ -11,6 +11,19 @@
 
 <MudText Typo="Typo.h2">CameraServer app</MudText>
 
+<!--
+<ErrorBoundary>
+    <ChildContent>
+        <LoginPanel />
+    </ChildContent>
+    <ErrorContent Context="ex">        
+        @{
+            Console.WriteLine($"Auth UI error (safe to ignore): {ex.Message}");
+        }
+    </ErrorContent>
+</ErrorBoundary>
+-->
+
 <LoginPanel />
 
 @if (!_authenticationService.IsAuthenticated)

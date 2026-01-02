@@ -23,6 +23,7 @@ public class VideoRecorderService : IHostedService, IDisposable
     private const string RecorderConfigSection = "Recorder";
     private const string RecorderStreamId = "Recorder";
     private const string DefaultVideoFileExtension = "mp4";
+    private static char PathSeparator = '\\';
 
     private readonly IUserManager _manager;
     private readonly CameraHubService _collection;
@@ -43,11 +44,13 @@ public class VideoRecorderService : IHostedService, IDisposable
         CameraHubService collection,
         ILogger<VideoRecorderService> logger)
     {
+        PathSeparator = OperatingSystem.IsWindows() ? '\\' : '/';
+
         _logger = logger;
         _manager = manager;
         _collection = collection;
         Settings = configuration.GetSection(RecorderConfigSection)?.Get<RecorderSettings>() ?? new RecorderSettings();
-        Directory.CreateDirectory(Settings.StoragePath);
+        Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
 
         // Create Mat pool manager for video recording operations
         // Pool size based on expected concurrent recordings
@@ -253,7 +256,8 @@ public class VideoRecorderService : IHostedService, IDisposable
             while (!cameraCancellationToken.IsCancellationRequested && !stopTask)
             {
                 var currentTime = DateTime.Now;
-                var fileName = $"{Settings.StoragePath.TrimEnd('\\')}\\" +
+                var fileName = $"{Settings.StoragePath}" +
+                               $"{PathSeparator}" +
                                $"{VideoRecorder.SanitizeFileName($"{camera.CameraStream.Description.Name}" +
                                                                  $"-{newTask.FrameFormat.Width}x{newTask.FrameFormat.Height}" +
                                                                  $"-{currentTime:yyyy-MM-dd}" +
@@ -360,12 +364,13 @@ public class VideoRecorderService : IHostedService, IDisposable
             frameFormat);
 
         var fileName = VideoRecorder.SanitizeFileName(
-            $"{fileStoragePath.TrimEnd('\\')}\\" +
-            $"{filePrefix}-" +
-            $"Cam{camera.CameraStream.Description.Name}-" +
-            $"{streamId}-" +
-            $"{currentTime:yyyy-MM-dd}_" +
-            $"{currentTime:HH-mm-ss}.{DefaultVideoFileExtension}");
+            fileStoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator) +
+            PathSeparator +
+            $"{filePrefix}_" +
+            $"Cam{camera.CameraStream.Description.Name}_" +
+            $"{streamId}_" +
+            $"{currentTime:yyyy-MM-dd_HH-mm-ss}" +
+            $".{DefaultVideoFileExtension}");
 
         var frameCount = 0;
         try

@@ -12,6 +12,9 @@ namespace CameraLib
 
         public IEnumerable<FrameFormat> FrameFormats { get; set; }
 
+        public string ServiceAddress { get; set; }
+
+
         public CameraDescription(CameraType type, string path, string name = "", IEnumerable<FrameFormat>? frameFormats = null)
         {
             Type = type;
