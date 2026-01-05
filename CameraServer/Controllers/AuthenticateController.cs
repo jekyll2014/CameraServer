@@ -1,11 +1,11 @@
 ﻿using CameraServer.Server.Auth;
+using CameraServer.Server.Services.Configuration;
 using CameraServer.Shared;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -21,13 +21,13 @@ namespace CameraServer.Server.Controllers;
 public class AuthenticateController : ControllerBase
 {
     private const string LoginFailedMessage = "Invalid Credential";
-    private readonly IConfiguration _configuration;
+    private readonly IApplicationConfigurationService _configuration;
     private readonly IUserManager _manager;
     private readonly IHttpContextAccessor _accessor;
     private readonly ILogger<AuthenticateController> _logger;
 
     public AuthenticateController(
-        IConfiguration configuration,
+        IApplicationConfigurationService configuration,
         IUserManager manager,
         IHttpContextAccessor accessor,
         ILogger<AuthenticateController> logger)
@@ -60,7 +60,7 @@ public class AuthenticateController : ControllerBase
                 authClaims.Add(new Claim(ClaimTypes.Role, userRole.ToString()));
             }
 
-            var expireTime = _configuration.GetValue(Program.ExpireTimeSection, 60);
+            var expireTime = _configuration.GetServerSettings().CookieExpireTimeMinutes;
             var authProperties = new AuthenticationProperties
             {
                 AllowRefresh = true,

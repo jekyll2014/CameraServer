@@ -4,8 +4,8 @@ using CameraLib.IP;
 using CameraLib.MJPEG;
 
 using CameraServer.Server.Models;
+using CameraServer.Server.Services.Configuration;
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using OpenCvSharp;
@@ -62,10 +62,10 @@ public class CameraHubService : IDisposable
     // Channel-only architecture: Single unified camera registry
     private readonly ConcurrentDictionary<int, CameraState> _cameraRegistry = new();
 
-    public CameraHubService(IConfiguration configuration, ILogger<CameraHubService> logger)
+    public CameraHubService(IApplicationConfigurationService configuration, ILogger<CameraHubService> logger)
     {
         _logger = logger;
-        _settings = configuration.GetSection(CameraSettingsSection).Get<CameraSettings>() ?? new CameraSettings();
+        _settings = configuration.GetCameraSettings();
         _maxBuffer = _settings.MaxFrameBuffer;
 
         // Create Mat pool manager for frame cloning operations

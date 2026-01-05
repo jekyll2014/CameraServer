@@ -2,8 +2,6 @@
 using CameraServer.Server.Services.AntiBruteForce;
 using CameraServer.Server.Services.Configuration;
 
-using Microsoft.Extensions.Configuration;
-
 using System.Net;
 using System.Security.Authentication;
 
@@ -12,17 +10,13 @@ namespace CameraServer.Server.Auth;
 public class UserManager : IUserManager
 {
     private const string TooManyAttemptsMessage = "Too many login attempts!";
-    private const string UsersConfigSection = "Users";
-    private const string DefaultUserConfigSection = "DefaultUser";
-    private readonly IConfiguration _configuration;
+    private readonly IApplicationConfigurationService _configuration;
     private readonly IBruteForceDetectionService? _antiBruteForceService;
-    private readonly IApplicationConfigurationService _applicationConfigurationService;
 
-    public UserManager(IConfiguration configuration, IBruteForceDetectionService? antiBruteForceService, IApplicationConfigurationService applicationConfigurationService)
+    public UserManager(IApplicationConfigurationService configuration, IBruteForceDetectionService? antiBruteForceService)
     {
         _configuration = configuration;
         _antiBruteForceService = antiBruteForceService;
-        _applicationConfigurationService = applicationConfigurationService;
     }
 
     // ToDo: Shall I block repetitive logins for anonymous/unknown user?
@@ -36,7 +30,7 @@ public class UserManager : IUserManager
         if (user == null)
         {
             if (!(users?.Any(n => n.Login == name) ?? false))
-                user = _applicationConfigurationService.GetDefaultUser();
+                user = _configuration.GetDefaultUser();
             else
                 _antiBruteForceService?.AddFailedAttempt(name, ipAddress);
         }
@@ -50,7 +44,7 @@ public class UserManager : IUserManager
     {
         User? user;
         if (string.IsNullOrEmpty(name))
-            user = _applicationConfigurationService.GetDefaultUser();
+            user = _configuration.GetDefaultUser();
         else
             user = GetUsers()?.FirstOrDefault(n => n.Login == name);
 
@@ -70,7 +64,7 @@ public class UserManager : IUserManager
         User? user;
         if (telegramId <= 0)
         {
-            user = _applicationConfigurationService.GetDefaultUser();
+            user = _configuration.GetDefaultUser();
 
             if (user != null)
                 user.TelegramId = telegramId;
@@ -91,7 +85,7 @@ public class UserManager : IUserManager
 
     public IEnumerable<User>? GetUsers()
     {
-        return _applicationConfigurationService.GetUsers();
+        return _configuration.GetUsers();
     }
 
     public bool HasAdminRole(ICameraUser webUser)

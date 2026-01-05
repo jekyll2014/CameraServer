@@ -2,7 +2,6 @@ using CameraLib;
 
 using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
-using CameraServer.Server.Services.CameraHub;
 using CameraServer.Server.Services.Configuration;
 using CameraServer.Server.Services.Telegram;
 using CameraServer.Server.Services.VideoRecording;
@@ -11,7 +10,6 @@ using CameraServer.Shared.DTO;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Swashbuckle.AspNetCore.Annotations;
@@ -27,22 +25,16 @@ namespace CameraServer.Server.Controllers;
 public class ConfigurationController : ControllerBase
 {
     private readonly IUserManager _userManager;
-    private readonly CameraHubService _cameraHub;
     private readonly IApplicationConfigurationService _applicationConfig;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<ConfigurationController> _logger;
 
     public ConfigurationController(
         IUserManager userManager,
-        CameraHubService cameraHub,
         IApplicationConfigurationService applicationConfig,
-        IConfiguration configuration,
         ILogger<ConfigurationController> logger)
     {
         _userManager = userManager;
-        _cameraHub = cameraHub;
         _applicationConfig = applicationConfig;
-        _configuration = configuration;
         _logger = logger;
     }
 
@@ -63,13 +55,7 @@ public class ConfigurationController : ControllerBase
             if (!IsAdmin())
                 return Forbid("Only administrators can view system settings");
 
-            var settings = new SystemSettingsDto
-            {
-                ServerUrls = _configuration["Urls"] ?? "http://0.0.0.0:8080",
-                CookieExpireTimeMinutes = _applicationConfig.GetCookieExpireTimeMinutes(),
-                AllowBasicAuthentication = _applicationConfig.GetAllowBasicAuthentication(),
-                ExternalHostUrl = _applicationConfig.GetExternalHostUrl()
-            };
+            var settings = _applicationConfig.GetServerSettings();
 
             return Ok(ApiResponse<SystemSettingsDto>.SuccessResponse(settings));
         }

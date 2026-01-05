@@ -4,12 +4,12 @@ using CameraServer.Server.Auth;
 using CameraServer.Server.Controllers;
 using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.Configuration;
 using CameraServer.Server.Services.MotionDetection;
 using CameraServer.Server.Services.VideoRecording;
 using CameraServer.Shared.DTO;
 using CameraServer.Shared.Enum;
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -52,18 +52,20 @@ public class TelegramService : IHostedService, IDisposable
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<TelegramService> _logger;
     public readonly TelegeramSettings _settings;
+    private readonly string _externalHostUrl;
     private CancellationTokenSource? _cts;
     private TelegramBotClient? _botClient;
     private bool _disposedValue;
 
-    public TelegramService(IConfiguration configuration,
+    public TelegramService(IApplicationConfigurationService configuration,
         IUserManager userManager,
         CameraHubService collection,
         IServiceProvider serviceProvider,
         ILogger<TelegramService> logger)
     {
         _logger = logger;
-        _settings = configuration.GetSection(TelegramConfigSection)?.Get<TelegeramSettings>() ?? new TelegeramSettings();
+        _settings = configuration.GetTelegramSettings();
+        _externalHostUrl = configuration.GetServerSettings().ExternalHostUrl;
         _userManager = userManager;
         _collection = collection;
         _serviceProvider = serviceProvider;
@@ -535,7 +537,7 @@ public class TelegramService : IHostedService, IDisposable
         }
         else if (tokens.Count == 2)
         {
-            if (string.IsNullOrEmpty(_settings.ExternalHostUrl))
+            if (string.IsNullOrEmpty(_externalHostUrl))
             {
                 await SendText(chatId, "Can't generate URL: external host is empty.", cancellationToken);
 
@@ -559,7 +561,7 @@ public class TelegramService : IHostedService, IDisposable
             }
 
             var linklabel = $"Url: {camera.CameraStream.Description.Name}";
-            var linkUrl = _settings.ExternalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
+            var linkUrl = _externalHostUrl.Trim('/') + CameraController.GenerateCameraUrl(n);
             var keyboard = new InlineKeyboardMarkup(InlineKeyboardButton.WithUrl(linklabel, linkUrl));
             await SendMenu(
                  chatId,

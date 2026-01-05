@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using CameraServer.Server.Services.Configuration;
+
 using Microsoft.Extensions.Logging;
 
 using System.Collections.Concurrent;
@@ -8,18 +9,17 @@ namespace CameraServer.Server.Services.AntiBruteForce
 {
     public class BruteForceDetectionDetectionService : IBruteForceDetectionService, IDisposable//, IHostedService
     {
-        private const string AntiBruteForceConfigSection = "BruteForceDetection";
         private readonly ILogger<BruteForceDetectionDetectionService> _logger;
         private readonly BruteForceDetectionSettings _detectionSettings;
         private readonly ConcurrentDictionary<string, List<(IPAddress, DateTime)>> _userAuthRetries = new ConcurrentDictionary<string, List<(IPAddress, DateTime)>>();
         private bool _disposedValue;
 
         public BruteForceDetectionDetectionService(
-            IConfiguration configuration,
+            IApplicationConfigurationService configuration,
             ILogger<BruteForceDetectionDetectionService> logger)
         {
             _logger = logger;
-            _detectionSettings = configuration.GetSection(AntiBruteForceConfigSection)?.Get<BruteForceDetectionSettings>() ?? new BruteForceDetectionSettings();
+            _detectionSettings = configuration.GetBruteForceDetectionSettings();
         }
 
         public void AddFailedAttempt(string login, IPAddress host)

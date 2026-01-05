@@ -1,12 +1,12 @@
 ﻿using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.Configuration;
 using CameraServer.Server.Services.Telegram;
 using CameraServer.Server.Services.VideoRecording;
 using CameraServer.Shared.DTO;
 using CameraServer.Shared.Enum;
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -53,7 +53,7 @@ public class MotionDetectionService : IHostedService, IDisposable
 
     private bool _disposedValue;
 
-    public MotionDetectionService(IConfiguration configuration,
+    public MotionDetectionService(IApplicationConfigurationService configuration,
         IUserManager manager,
         CameraHubService collection,
         VideoRecorderService videoRecorderService,
@@ -67,8 +67,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         _collection = collection;
         _videoRecorderService = videoRecorderService;
         _telegramService = telegramService;
-        Settings = configuration.GetSection(MotionDetectionConfigSection)?.Get<MotionDetectionSettings>()
-                   ?? new MotionDetectionSettings();
+        Settings = configuration.GetMotionDetectionSettings();
 
         Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
     }

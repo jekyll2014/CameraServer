@@ -63,17 +63,7 @@ public interface IApplicationConfigurationService
     /// <summary>
     /// Gets the external host URL.
     /// </summary>
-    string GetExternalHostUrl();
-
-    /// <summary>
-    /// Gets cookie expiration time in minutes.
-    /// </summary>
-    int GetCookieExpireTimeMinutes();
-
-    /// <summary>
-    /// Gets whether basic authentication is allowed.
-    /// </summary>
-    bool GetAllowBasicAuthentication();
+    SystemSettingsDto GetServerSettings();
 
     /// <summary>
     /// Gets all users from settings.json.
@@ -135,11 +125,6 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
     private readonly ILogger<ApplicationConfigurationService> _logger;
     private readonly IConfiguration _serverConfiguration;
     private readonly Config<AppSettings> _settingsConfig;
-
-    // Runtime settings cache
-    private string _externalHostUrl = string.Empty;
-    private int _cookieExpireTimeMinutes = 60;
-    private bool _allowBasicAuthentication = true;
 
     public event EventHandler<ConfigurationChangedEventArgs>? ConfigurationChanged;
 
@@ -371,19 +356,9 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
 
     #region System Settings
 
-    public string GetExternalHostUrl()
+    public SystemSettingsDto GetServerSettings()
     {
-        return _externalHostUrl;
-    }
-
-    public int GetCookieExpireTimeMinutes()
-    {
-        return _cookieExpireTimeMinutes;
-    }
-
-    public bool GetAllowBasicAuthentication()
-    {
-        return _allowBasicAuthentication;
+        return LoadConfigurationFromSystem();
     }
 
     #endregion
@@ -505,20 +480,25 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
 
     #region Private Methods
 
-    private void LoadConfigurationFromSystem()
+    private SystemSettingsDto LoadConfigurationFromSystem()
     {
         try
         {
             // System settings (runtime modifiable) - not stored in settings.json structure
-            _externalHostUrl = _serverConfiguration.GetValue<string>("ExternalHostUrl", string.Empty);
-            _cookieExpireTimeMinutes = _serverConfiguration.GetValue<int>("CookieExpireTimeMinutes", 60);
-            _allowBasicAuthentication = _serverConfiguration.GetValue<bool>("AllowBasicAuthentication", true);
-
-            _logger.LogInformation($"Application configuration loaded from {ConfigFileName}");
+            return new SystemSettingsDto
+            {
+                ServerUrls = _serverConfiguration.GetValue<string>("Server:Urls") ?? "",
+                ExternalHostUrl = _serverConfiguration.GetValue<string>("Server:ExternalHostUrl") ?? "",
+                CookieExpireTimeMinutes = _serverConfiguration.GetValue<int?>("Server:CookieExpireTimeMinutes") ?? 60,
+                AllowBasicAuthentication = _serverConfiguration.GetValue<bool>("Server:AllowBasicAuthentication"),
+                AllowedHosts = _serverConfiguration.GetValue<string>("Server:AllowedHosts") ?? "",
+                ValidAudience = _serverConfiguration.GetValue<string>("Server:ValidAudience") ?? ""
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Failed to load configuration from {ConfigFileName}, using defaults");
+            _logger.LogError(ex, $"Failed to load configuration from system, using defaults");
+            return new SystemSettingsDto();
         }
     }
 

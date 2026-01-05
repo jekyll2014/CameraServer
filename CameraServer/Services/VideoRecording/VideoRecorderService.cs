@@ -3,8 +3,8 @@
 using CameraServer.Server.Auth;
 using CameraServer.Server.Models;
 using CameraServer.Server.Services.CameraHub;
+using CameraServer.Server.Services.Configuration;
 
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -39,7 +39,7 @@ public class VideoRecorderService : IHostedService, IDisposable
     private bool _disposedValue;
 
     public VideoRecorderService(
-        IConfiguration configuration,
+        IApplicationConfigurationService configuration,
         IUserManager manager,
         CameraHubService collection,
         ILogger<VideoRecorderService> logger)
@@ -49,7 +49,7 @@ public class VideoRecorderService : IHostedService, IDisposable
         _logger = logger;
         _manager = manager;
         _collection = collection;
-        Settings = configuration.GetSection(RecorderConfigSection)?.Get<RecorderSettings>() ?? new RecorderSettings();
+        Settings = configuration.GetVideoRecordingSettings();
         Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
 
         // Create Mat pool manager for video recording operations

@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Authentication;
+﻿using CameraServer.Server.Services.Configuration;
+
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,13 +16,13 @@ namespace CameraServer.Server.Auth.BasicAuth;
 public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     private const string LoginFailedMessage = "Invalid Credential";
-    private readonly IConfiguration _configuration;
+    private readonly IApplicationConfigurationService _configuration;
     private readonly IUserManager _manager;
     private readonly IHttpContextAccessor _accessor;
 
     public BasicAuthenticationHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
-        IConfiguration configuration,
+        IApplicationConfigurationService configuration,
         ILoggerFactory logger,
         UrlEncoder encoder,
         IUserManager manager,
@@ -35,11 +36,11 @@ public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSc
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var realm = _configuration["ValidAudience"] ?? Request.Host.ToString();
+        var config = _configuration.GetServerSettings();
+        var realm = config.ValidAudience ?? Request.Host.ToString();
         Response.Headers.Append("WWW-Authenticate", $"Basic realm=\"{realm}\"");
-        var allowBasicAuthentication = _configuration.GetSection("AllowBasicAuthentication").Get<bool>();
 
-        if (!allowBasicAuthentication)
+        if (!config.AllowBasicAuthentication)
             return AuthenticateResult.NoResult();
 
         if (Request.HttpContext.User.Identity?.IsAuthenticated ?? false)
