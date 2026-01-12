@@ -29,7 +29,6 @@ namespace CameraServer.Server.Services.Telegram;
 
 public class TelegramService : IHostedService, IDisposable
 {
-    private const string TelegramConfigSection = "Telegram";
     private const string TelegramStreamId = "telegram";
 
     private const string SnapShotCommand = "/image";

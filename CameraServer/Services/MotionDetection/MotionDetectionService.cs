@@ -26,7 +26,6 @@ namespace CameraServer.Server.Services.MotionDetection;
 public class MotionDetectionService : IHostedService, IDisposable
 {
     private const string MotioDetectorTempConfig = "appsettings-motion.json";
-    private const string MotionDetectionConfigSection = "MotionDetector";
     private const string MotionDetectionStreamId = "MotionDetector";
     private const string TmpVideoStreamId = "Motion";
     private static char PathSeparator = '\\';
@@ -69,7 +68,8 @@ public class MotionDetectionService : IHostedService, IDisposable
         _telegramService = telegramService;
         Settings = configuration.GetMotionDetectionSettings();
 
-        Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
+        if (!string.IsNullOrWhiteSpace(Settings.StoragePath))
+            Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -133,7 +133,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             "CameraId={CameraId}, User={User}, " +
             "FrameFormat={FrameFormatWidth}x{FrameFormatHeight} {FrameFormatFormat}, " +
             "MotionDetectParams: Width={ParamWidth}, Height={ParamHeight}, " +
-            "DelayMs={DelayMs}, NoiseThreshold={NoiseThreshold}, ChangeLimit={ChangeLimit}%",
+            "DelayMs={DelayMs}, DetectMethod={DetectMethod}, ChangeLimit={ChangeLimit}%",
             detectTask.CameraId,
             detectTask.User,
             detectTask.FrameFormat?.Width ?? 0,
@@ -142,7 +142,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             detectTask.MotionDetectParameters?.Width ?? 0,
             detectTask.MotionDetectParameters?.Height ?? 0,
             detectTask.MotionDetectParameters?.DetectorDelayMs ?? 0,
-            detectTask.MotionDetectParameters?.NoiseThreshold ?? 0,
+            detectTask.MotionDetectParameters?.DetectMethod ?? DetectionMethod.Knn,
             detectTask.MotionDetectParameters?.ChangeLimit ?? 0);
 
         // Ensure we don't share the default parameters instance between tasks.
@@ -152,10 +152,10 @@ public class MotionDetectionService : IHostedService, IDisposable
             var def = Settings.DefaultMotionDetectParameters;
             detectTask.MotionDetectParameters = new MotionDetectorParametersDto
             {
+                DetectMethod = def.DetectMethod,
                 Width = def.Width,
                 Height = def.Height,
                 DetectorDelayMs = def.DetectorDelayMs,
-                NoiseThreshold = def.NoiseThreshold,
                 ChangeLimit = def.ChangeLimit,
                 TextNotificationDelay = def.TextNotificationDelay,
                 ImageNotificationDelay = def.ImageNotificationDelay,
@@ -178,19 +178,16 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (detectTask.MotionDetectParameters.DetectorDelayMs <= 0)
             detectTask.MotionDetectParameters.DetectorDelayMs = Settings.DefaultMotionDetectParameters.DetectorDelayMs;
 
-        if (detectTask.MotionDetectParameters.NoiseThreshold <= 0)
-            detectTask.MotionDetectParameters.NoiseThreshold = Settings.DefaultMotionDetectParameters.NoiseThreshold;
-
         if (detectTask.MotionDetectParameters.ChangeLimit <= 0)
             detectTask.MotionDetectParameters.ChangeLimit = Settings.DefaultMotionDetectParameters.ChangeLimit;
 
         _logger.LogInformation("Motion detector parameters after normalization: " +
             "Width={FinalWidth}, Height={FinalHeight}, " +
-            "DelayMs={FinalDelayMs}, NoiseThreshold={FinalNoiseThreshold}, ChangeLimit={FinalChangeLimit}%",
+            "DelayMs={FinalDelayMs}, DetectMethod={FinalDetectMethod}, ChangeLimit={FinalChangeLimit}%",
             detectTask.MotionDetectParameters.Width,
             detectTask.MotionDetectParameters.Height,
             detectTask.MotionDetectParameters.DetectorDelayMs,
-            detectTask.MotionDetectParameters.NoiseThreshold,
+            detectTask.MotionDetectParameters.DetectMethod,
             detectTask.MotionDetectParameters.ChangeLimit);
 
         ServerCamera camera;

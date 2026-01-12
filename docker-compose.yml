@@ -25,6 +25,8 @@ services:
       - cameraserver_videos:/app/Records
       - cameraserver_motion:/app/MotionRecords
       - cameraserver_logs:/app/logs
+      - ${APPDATA}/Microsoft/UserSecrets/:/root/.microsoft/usersecrets
+      - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https/
       
       # Optional: Camera USB devices (uncomment if using USB cameras)
       - /dev/bus/usb:/dev/bus/usb:rw

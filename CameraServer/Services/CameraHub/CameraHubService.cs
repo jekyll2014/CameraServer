@@ -38,7 +38,6 @@ internal sealed class CameraState
 
 public class CameraHubService : IDisposable
 {
-    private const string CameraSettingsSection = "CameraSettings";
     private readonly ILogger<CameraHubService> _logger;
     private readonly CameraSettings _settings;
     private readonly int _maxBuffer;

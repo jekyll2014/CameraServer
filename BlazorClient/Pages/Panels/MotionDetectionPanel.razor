@@ -173,8 +173,8 @@
                     </MudItem>
 
                     <MudItem xs="12" md="6">
-                        <MudField Label="Noise Threshold" Variant="Variant.Outlined">
-                            @_currentUserState.SelectedDetector.MotionDetectParameters?.NoiseThreshold
+                        <MudField Label="Detection Method" Variant="Variant.Outlined">
+                            @_currentUserState.SelectedDetector.MotionDetectParameters?.DetectMethod
                         </MudField>
                     </MudItem>
 
@@ -359,19 +359,20 @@
 
                     <MudItem xs="12" md="4">
                         <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                            <MudSlider T="uint"
-                                       @bind-Value="_noiseThreshold"
-                                       Min="0"
-                                       Max="255"
-                                       Step="5"
-                                       Color="Color.Primary"
-                                       Variant="Variant.Filled"
+                            <MudSelect T="DetectionMethod"
+                                       @bind-Value="_detectMethod"
+                                       Label="Detection Method"
+                                       Variant="Variant.Outlined"
+                                       Dense="true"
                                        Style="flex: 1;">
-                                Noise Threshold: @_noiseThreshold
-                            </MudSlider>
-                            <HelpTooltip Title="Noise Threshold"
-                                         Content="Filters out random pixel changes caused by camera sensor noise. Higher values make the detector less sensitive to tiny changes."
-                                         Recommendation="30-80 for most cameras, higher for noisy sensors" />
+                                @foreach (var method in Enum.GetValues<DetectionMethod>())
+                                {
+                                    <MudSelectItem Value="@method">@method</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <HelpTooltip Title="Detection Method"
+                                         Content="Algorithm used for motion detection. KNN is recommended for most scenarios. MOG2 is good for outdoor scenes with shadows."
+                                         Recommendation="KNN for general use, MOG2 for complex backgrounds" />
                         </MudStack>
                     </MudItem>
 
@@ -397,7 +398,7 @@
                     <MudItem xs="12">
                         <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
                             <MudText Typo="Typo.body2">
-                                <b>Current Settings:</b> Sensitivity: @_changeLimit% • Noise Threshold: @_noiseThreshold • Delay: @_detectorDelay ms
+                                <b>Current Settings:</b> Sensitivity: @_changeLimit% • Method: @_detectMethod • Delay: @_detectorDelay ms
                             </MudText>
                         </MudAlert>
                     </MudItem>
@@ -541,7 +542,7 @@ private string? _errorMessage;
 private string? _successMessage;
 private List<string> _validationErrors = new();
 private uint _changeLimit = 10;
-private uint _noiseThreshold = 50;
+private DetectionMethod _detectMethod = DetectionMethod.Knn;
 private uint _detectorDelay = 1000;
 private string _sensitivityPreset = "medium"; // Default to medium sensitivity
 
@@ -566,8 +567,8 @@ protected override async Task OnInitializedAsync()
             FrameFormat = new FrameFormatDto(),
             MotionDetectParameters = new MotionDetectorParametersDto
             {
+                DetectMethod = DetectionMethod.Knn,
                 ChangeLimit = 10,
-                NoiseThreshold = 50,
                 DetectorDelayMs = 1000
             },
             User = _authenticationService?.UserInfo?.Login ?? string.Empty,
@@ -596,17 +597,17 @@ protected override async Task OnInitializedAsync()
         {
             case "low":
                 _changeLimit = 5;
-                _noiseThreshold = 80;
+                _detectMethod = DetectionMethod.Knn;
                 _detectorDelay = 2000;
                 break;
             case "medium":
                 _changeLimit = 10;
-                _noiseThreshold = 50;
+                _detectMethod = DetectionMethod.Knn;
                 _detectorDelay = 1000;
                 break;
             case "high":
                 _changeLimit = 20;
-                _noiseThreshold = 30;
+                _detectMethod = DetectionMethod.Mog2;
                 _detectorDelay = 500;
                 break;
             case "custom":
@@ -775,7 +776,7 @@ protected override async Task OnInitializedAsync()
                 $"&yResolution={height}" +
                 $"&format={format}" +
                 $"&changeLimit={_changeLimit}" +
-                $"&noiseThreshold={_noiseThreshold}" +
+                $"&detectMethod={_detectMethod}" +
                 $"&detectorDelayMs={_detectorDelay}" +
                 $"&transport={_newDetector.Notifications[0].Transport}" +
                 $"&destination={Uri.EscapeDataString(_newDetector.Notifications[0].Destination)}" +

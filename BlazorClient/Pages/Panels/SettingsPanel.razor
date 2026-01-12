@@ -1,6 +1,7 @@
 ﻿@using CameraServer.Client.Services
 @using CameraServer.Shared
 @using CameraServer.Shared.DTO
+@using CameraServer.Shared.Enum
 
 @inject HttpClient _http
 @inject IAuthenticationService _authenticationService
@@ -640,12 +641,16 @@
                                 </MudItem>
 
                                 <MudItem xs="12" md="6">
-                                    <MudNumericField @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.NoiseThreshold"
-                                                     Label="Noise Threshold (0-255)"
-                                                     Variant="Variant.Outlined"
-                                                     Min="0" Max="255"
-                                                     Disabled="@_isRuntimeLoading"
-                                                     T="byte" />
+                                    <MudSelect T="DetectionMethod"
+                                               @bind-Value="_runtimeSettings.MotionDetectionSettings.DefaultMotionDetectParameters.DetectMethod"
+                                               Label="Detection Method"
+                                               Variant="Variant.Outlined"
+                                               Disabled="@_isRuntimeLoading">
+                                        @foreach (var method in Enum.GetValues<DetectionMethod>())
+                                        {
+                                            <MudSelectItem Value="@method">@method</MudSelectItem>
+                                        }
+                                    </MudSelect>
                                 </MudItem>
 
                                 <MudItem xs="12" md="6">

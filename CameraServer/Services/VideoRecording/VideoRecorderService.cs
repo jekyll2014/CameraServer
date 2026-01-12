@@ -20,7 +20,6 @@ namespace CameraServer.Server.Services.VideoRecording;
 public class VideoRecorderService : IHostedService, IDisposable
 {
     private const string VideoRecorderTempConfig = "appsettings-recorder.json";
-    private const string RecorderConfigSection = "Recorder";
     private const string RecorderStreamId = "Recorder";
     private const string DefaultVideoFileExtension = "mp4";
     private static char PathSeparator = '\\';
@@ -50,7 +49,9 @@ public class VideoRecorderService : IHostedService, IDisposable
         _manager = manager;
         _collection = collection;
         Settings = configuration.GetVideoRecordingSettings();
-        Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
+        // Ensure storage path exists
+        if (!string.IsNullOrWhiteSpace(Settings.StoragePath))
+            Directory.CreateDirectory(Settings.StoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator));
 
         // Create Mat pool manager for video recording operations
         // Pool size based on expected concurrent recordings

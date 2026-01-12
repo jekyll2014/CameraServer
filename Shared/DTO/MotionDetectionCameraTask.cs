@@ -32,10 +32,10 @@ public class MotionDetectionCameraTask : MotionDetectionCameraSettingDto
             var p = dto.MotionDetectParameters;
             MotionDetectParameters = new MotionDetectorParametersDto
             {
+                DetectMethod = p.DetectMethod,
                 Width = p.Width,
                 Height = p.Height,
                 DetectorDelayMs = p.DetectorDelayMs,
-                NoiseThreshold = p.NoiseThreshold,
                 ChangeLimit = p.ChangeLimit,
                 TextNotificationDelay = p.TextNotificationDelay,
                 ImageNotificationDelay = p.ImageNotificationDelay,

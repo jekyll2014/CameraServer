@@ -246,7 +246,7 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
                 Width = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.Width,
                 Height = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.Height,
                 DetectorDelayMs = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.DetectorDelayMs,
-                NoiseThreshold = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.NoiseThreshold,
+                DetectMethod = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.DetectMethod,
                 ChangeLimit = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.ChangeLimit,
                 TextNotificationDelay = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.TextNotificationDelay,
                 ImageNotificationDelay = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.ImageNotificationDelay,
@@ -291,7 +291,7 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
         {
             _logger.LogInformation($"Motion detection parameters updated: {settings.DefaultMotionDetectParameters.Width}x{settings.DefaultMotionDetectParameters.Height}, " +
                 $"delay={settings.DefaultMotionDetectParameters.DetectorDelayMs}ms, " +
-                $"threshold={settings.DefaultMotionDetectParameters.NoiseThreshold}, " +
+                $"detectMethod={settings.DefaultMotionDetectParameters.DetectMethod}, " +
                 $"changeLimit={settings.DefaultMotionDetectParameters.ChangeLimit}%");
             OnConfigurationChanged(nameof(MotionDetectionSettings.DefaultMotionDetectParameters),
                 _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters,
@@ -487,12 +487,12 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
             // System settings (runtime modifiable) - not stored in settings.json structure
             return new SystemSettingsDto
             {
-                ServerUrls = _serverConfiguration.GetValue<string>("Server:Urls") ?? "",
-                ExternalHostUrl = _serverConfiguration.GetValue<string>("Server:ExternalHostUrl") ?? "",
-                CookieExpireTimeMinutes = _serverConfiguration.GetValue<int?>("Server:CookieExpireTimeMinutes") ?? 60,
-                AllowBasicAuthentication = _serverConfiguration.GetValue<bool>("Server:AllowBasicAuthentication"),
-                AllowedHosts = _serverConfiguration.GetValue<string>("Server:AllowedHosts") ?? "",
-                ValidAudience = _serverConfiguration.GetValue<string>("Server:ValidAudience") ?? ""
+                ServerUrls = _serverConfiguration.GetValue<string>("Urls") ?? "",
+                ExternalHostUrl = _serverConfiguration.GetValue<string>("ExternalHostUrl") ?? "",
+                CookieExpireTimeMinutes = _serverConfiguration.GetValue<int?>("CookieExpireTimeMinutes") ?? 60,
+                AllowBasicAuthentication = _serverConfiguration.GetValue<bool>("AllowBasicAuthentication"),
+                AllowedHosts = _serverConfiguration.GetValue<string>("AllowedHosts") ?? "",
+                ValidAudience = _serverConfiguration.GetValue<string>("ValidAudience") ?? ""
             };
         }
         catch (Exception ex)

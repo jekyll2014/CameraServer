@@ -86,7 +86,7 @@ public class Program
 
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
+        //builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
 
         var serverUrls = builder.WebHost.GetSetting("Urls") ?? "http://0.0.0.0:8080";
         try
