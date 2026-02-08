@@ -353,7 +353,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                 {
                     lastImagesQueue.Enqueue(image);
 
-                    if (motionDetector.DetectMovement(image))
+                    if (motionDetector.DetectMovement(image, out var contour))
                     {
                         _logger.LogInformation("Motion detected!!!");
 
@@ -364,14 +364,14 @@ public class MotionDetectionService : IHostedService, IDisposable
                             camera,
                             userDto,
                             buffer,
+                            contour,
                             cameraCancellationToken);
 
                         foreach (var img in buffer)
                             _collection.ReturnOrDisposeMat(img);
                     }
 
-                    if (ImageProcessedEvent != null)
-                        ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
+                    ImageProcessedEvent?.Invoke(motionDetectTask, motionDetector.ProcessedFrame?.Clone());
 
                     // Maintain buffer size
                     while (lastImagesQueue.Count >= maxBufferCount)
@@ -384,7 +384,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                     if (stopTask || !_detectorTasks.ContainsKey(motionDetectTask))
                         break;
 
-                    stopTask = !_detectorTasks.Any(n => n.Key.Id == motionDetectTask.Id);
+                    stopTask = _detectorTasks.All(n => n.Key.Id != motionDetectTask.Id);
                 }
 
                 _logger.LogInformation($"Motion detector stopped (task: {motionDetectTask.Id})");
@@ -421,6 +421,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         ServerCamera camera,
         UserDto user,
         List<Mat?> bufferedImages,
+        Point[]? contour,
         CancellationToken cameraCancellationToken)
     {
         ArgumentNullException.ThrowIfNull(notificationParams);
@@ -444,7 +445,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                 image?.Dispose();
             }, TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
@@ -462,6 +462,12 @@ public class MotionDetectionService : IHostedService, IDisposable
             {
                 try
                 {
+                    using (var image = bufferedImages.Last()?.Clone())
+                    {
+                        Cv2.DrawContours(image, new[] { contour }, 0, Scalar.OrangeRed, 2);
+                        await SendMovementImageMulti(camera, image, videoNotifications);
+                    }
+
                     await SendMovementVideoMulti(camera,
                         videoNotifications,
                         user.DefaultCodec,
@@ -500,7 +506,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         Task.WaitAll([.. tasks], cameraCancellationToken);
     }
 
-    private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
+    private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams, bool force = false)
     {
         ArgumentNullException.ThrowIfNull(notificationParams);
 
@@ -516,7 +522,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             var dest = notificationParam.Destination;
             if (_notificationsTextLast.TryGetValue(dest, out var lastNotificationTime))
             {
-                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.TextNotificationDelay)
+                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.TextNotificationDelay && !force)
                     continue;
 
                 _notificationsTextLast[dest] = currentTime;
@@ -546,7 +552,8 @@ public class MotionDetectionService : IHostedService, IDisposable
     private async Task SendMovementImageMulti(
         IServerCamera camera,
         Mat? image,
-        NotificationParametersDto[] notificationParams)
+        NotificationParametersDto[] notificationParams,
+        bool force = false)
     {
         ArgumentNullException.ThrowIfNull(camera);
         ArgumentNullException.ThrowIfNull(notificationParams);
@@ -563,7 +570,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             var dest = notificationParam.Destination;
             if (_notificationsImageLast.TryGetValue(dest, out var lastNotificationTime))
             {
-                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.ImageNotificationDelay)
+                if (currentTime.Subtract(lastNotificationTime).TotalSeconds < Settings.DefaultMotionDetectParameters.ImageNotificationDelay && !force)
                     continue;
 
                 _notificationsImageLast[dest] = currentTime;
@@ -613,7 +620,8 @@ public class MotionDetectionService : IHostedService, IDisposable
         IReadOnlyCollection<NotificationParametersDto> notificationParams,
         string codec,
         List<Mat?>? bufferedImages,
-        byte quality)
+        byte quality,
+        bool force = false)
     {
         ArgumentNullException.ThrowIfNull(camera);
         ArgumentNullException.ThrowIfNull(notificationParams);
@@ -667,7 +675,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                         continue;
 
                     var dest = notificationParam.Destination;
-                    if (_notificationsVideoLast.TryGetValue(dest, out var lastNotificationTime))
+                    if (_notificationsVideoLast.TryGetValue(dest, out var lastNotificationTime) && !force)
                     {
                         if (currentTime.Subtract(lastNotificationTime).TotalSeconds <
                             Settings.DefaultMotionDetectParameters.VideoNotificationDelay)
@@ -726,6 +734,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             throw new ArgumentException("User cannot be null or empty", nameof(user));
 
         var task = _detectorTasks.FirstOrDefault(n => n.Key.CameraId == cameraPath && n.Key.User == user);
+
         return task.Key?.Id ?? Guid.Empty;
     }
 

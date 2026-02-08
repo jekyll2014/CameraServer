@@ -46,8 +46,9 @@ public class MotionDetector : IDisposable
         _logger?.LogInformation("MotionDetector initialized");
     }
 
-    public bool DetectMovement(Mat? frame)
+    public bool DetectMovement(Mat? frame, out Point[]? contour)
     {
+        contour = null;
         if (frame == null)
             return false;
 
@@ -80,6 +81,7 @@ public class MotionDetector : IDisposable
                 var pixelCount = Cv2.ContourArea(c);
                 if ((double)pixelCount / (_backgroundFrame.Width * _backgroundFrame.Height) * 100.0d >= _changeLimit)
                 {
+                    contour = c.ToArray();
                     result = true;
                     break;
                 }
