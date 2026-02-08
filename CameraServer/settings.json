@@ -34,7 +34,7 @@
     "AutoSearchIp": true,
     "AutoSearchUsb": true,
     "AutoSearchUsbFC": true,
-    "DefaultAllowedRoles": [],
+    "DefaultAllowedRoles": ["Admin"],
     "DiscoveryTimeOut": 1000,
     "ForceCameraConnect": false,
     "MaxFrameBuffer": 10,
@@ -67,13 +67,13 @@
     "DefaultVideoQuality": 90
   },
   "MotionDetector": {
-    "StoragePath": "",
+    "StoragePath": ".\\MotionRecords",
     "MotionDetectionCameras": [],
     "DefaultMotionDetectParameters": {
       "Width": 640,
       "Height": 480,
       "DetectorDelayMs": 1000,
-      "NoiseThreshold": 70,
+      "DetectMethod": "Knn",
       "ChangeLimit": 10.0,
       "TextNotificationDelay": 10,
       "ImageNotificationDelay": 10,

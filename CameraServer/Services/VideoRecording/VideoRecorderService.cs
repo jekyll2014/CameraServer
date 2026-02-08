@@ -364,14 +364,14 @@ public class VideoRecorderService : IHostedService, IDisposable
             streamId,
             frameFormat);
 
-        var fileName = VideoRecorder.SanitizeFileName(
-            fileStoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator) +
-            PathSeparator +
-            $"{filePrefix}_" +
-            $"Cam{camera.CameraStream.Description.Name}_" +
-            $"{streamId}_" +
-            $"{currentTime:yyyy-MM-dd_HH-mm-ss}" +
-            $".{DefaultVideoFileExtension}");
+        var fileName = fileStoragePath.Replace('\\', PathSeparator).Replace('/', PathSeparator).TrimEnd(PathSeparator) +
+                       PathSeparator +
+                       VideoRecorder.SanitizeFileName(
+                           $"{filePrefix}_" +
+                           $"Cam{camera.CameraStream.Description.Name}_" +
+                           $"{streamId}_" +
+                           $"{currentTime:yyyy-MM-dd_HH-mm-ss}" +
+                           $".{DefaultVideoFileExtension}");
 
         var frameCount = 0;
         try
