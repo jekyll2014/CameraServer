@@ -46,9 +46,9 @@ public class MotionDetector : IDisposable
         _logger?.LogInformation("MotionDetector initialized");
     }
 
-    public bool DetectMovement(Mat? frame, out Point[]? contour)
+    public bool DetectMovement(Mat? frame, out Mat? contourFrame)
     {
-        contour = null;
+        contourFrame = null;
         if (frame == null)
             return false;
 
@@ -76,15 +76,27 @@ public class MotionDetector : IDisposable
                 ContourApproximationModes.ApproxSimple);
 
             // Check if motion detected
+            var foundContours = new List<Point[]>();
             foreach (var c in contours)
             {
                 var pixelCount = Cv2.ContourArea(c);
                 if ((double)pixelCount / (_backgroundFrame.Width * _backgroundFrame.Height) * 100.0d >= _changeLimit)
                 {
-                    contour = c.ToArray();
+                    foundContours.Add(c);
                     result = true;
-                    break;
                 }
+            }
+
+            if (result && foundContours.Any())
+            {
+                if (contourFrame == null && _resizedFrame != null)
+                {
+                    contourFrame = new Mat();
+                    _resizedFrame.CopyTo(contourFrame);
+                }
+
+                if (contourFrame != null && foundContours.Any())
+                    Cv2.DrawContours(contourFrame, foundContours, -1, Scalar.OrangeRed, 2);
             }
 
             _nextFrameProcessTime = currentTime.AddMilliseconds(_detectorDelayMs);

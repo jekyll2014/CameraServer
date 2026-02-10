@@ -319,7 +319,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             MotionDetectionStreamId + motionDetectTask.Id,
             motionDetectTask.FrameFormat);
 
-        var lastImagesQueue = new ConcurrentQueue<Mat?>();
+        var lastImagesQueue = new Queue<Mat?>();
         ChannelReader<Mat>? channelReader = null;
 
         try
@@ -353,18 +353,18 @@ public class MotionDetectionService : IHostedService, IDisposable
                 {
                     lastImagesQueue.Enqueue(image);
 
-                    if (motionDetector.DetectMovement(image, out var contour))
+                    if (motionDetector.DetectMovement(image, out var contourImage))
                     {
                         _logger.LogInformation("Motion detected!!!");
 
                         var buffer = lastImagesQueue.ToList();
-                        lastImagesQueue = new ConcurrentQueue<Mat?>();
+                        lastImagesQueue = new Queue<Mat?>();
 
                         SendNotifications(motionDetectTask.Notifications,
                             camera,
                             userDto,
                             buffer,
-                            contour,
+                            contourImage,
                             cameraCancellationToken);
 
                         foreach (var img in buffer)
@@ -421,7 +421,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         ServerCamera camera,
         UserDto user,
         List<Mat?> bufferedImages,
-        Point[]? contour,
+        Mat? contourImage,
         CancellationToken cameraCancellationToken)
     {
         ArgumentNullException.ThrowIfNull(notificationParams);
@@ -462,17 +462,17 @@ public class MotionDetectionService : IHostedService, IDisposable
             {
                 try
                 {
-                    using (var image = bufferedImages.Last()?.Clone())
-                    {
-                        Cv2.DrawContours(image, new[] { contour }, 0, Scalar.OrangeRed, 2);
-                        await SendMovementImageMulti(camera, image, videoNotifications);
-                    }
-
                     await SendMovementVideoMulti(camera,
                         videoNotifications,
                         user.DefaultCodec,
                         bufferedImages,
                         _telegramService._settings.DefaultVideoQuality);
+
+                    if (contourImage != null)
+                    {
+                        await SendMovementImageMulti(camera, contourImage, videoNotifications);
+                        contourImage.Dispose();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -480,7 +480,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                 }
             }, TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
@@ -498,7 +497,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                     await SendMovementTextMulti(textNotifications),
                     TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
