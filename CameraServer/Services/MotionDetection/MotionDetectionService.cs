@@ -133,7 +133,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             "CameraId={CameraId}, User={User}, " +
             "FrameFormat={FrameFormatWidth}x{FrameFormatHeight} {FrameFormatFormat}, " +
             "MotionDetectParams: Width={ParamWidth}, Height={ParamHeight}, " +
-            "DelayMs={DelayMs}, DetectMethod={DetectMethod}, ChangeLimit={ChangeLimit}%",
+            "DelayMs={DelayMs}, NoiseThreshold={NoiseThreshold}, ChangeLimit={ChangeLimit}%",
             detectTask.CameraId,
             detectTask.User,
             detectTask.FrameFormat?.Width ?? 0,
@@ -142,7 +142,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             detectTask.MotionDetectParameters?.Width ?? 0,
             detectTask.MotionDetectParameters?.Height ?? 0,
             detectTask.MotionDetectParameters?.DetectorDelayMs ?? 0,
-            detectTask.MotionDetectParameters?.DetectMethod ?? DetectionMethod.Knn,
+            detectTask.MotionDetectParameters?.NoiseThreshold ?? 0,
             detectTask.MotionDetectParameters?.ChangeLimit ?? 0);
 
         // Ensure we don't share the default parameters instance between tasks.
@@ -152,10 +152,10 @@ public class MotionDetectionService : IHostedService, IDisposable
             var def = Settings.DefaultMotionDetectParameters;
             detectTask.MotionDetectParameters = new MotionDetectorParametersDto
             {
-                DetectMethod = def.DetectMethod,
                 Width = def.Width,
                 Height = def.Height,
                 DetectorDelayMs = def.DetectorDelayMs,
+                NoiseThreshold = def.NoiseThreshold,
                 ChangeLimit = def.ChangeLimit,
                 TextNotificationDelay = def.TextNotificationDelay,
                 ImageNotificationDelay = def.ImageNotificationDelay,
@@ -178,16 +178,19 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (detectTask.MotionDetectParameters.DetectorDelayMs <= 0)
             detectTask.MotionDetectParameters.DetectorDelayMs = Settings.DefaultMotionDetectParameters.DetectorDelayMs;
 
+        if (detectTask.MotionDetectParameters.NoiseThreshold <= 0)
+            detectTask.MotionDetectParameters.NoiseThreshold = Settings.DefaultMotionDetectParameters.NoiseThreshold;
+
         if (detectTask.MotionDetectParameters.ChangeLimit <= 0)
             detectTask.MotionDetectParameters.ChangeLimit = Settings.DefaultMotionDetectParameters.ChangeLimit;
 
         _logger.LogInformation("Motion detector parameters after normalization: " +
             "Width={FinalWidth}, Height={FinalHeight}, " +
-            "DelayMs={FinalDelayMs}, DetectMethod={FinalDetectMethod}, ChangeLimit={FinalChangeLimit}%",
+            "DelayMs={FinalDelayMs}, NoiseThreshold={FinalNoiseThreshold}, ChangeLimit={FinalChangeLimit}%",
             detectTask.MotionDetectParameters.Width,
             detectTask.MotionDetectParameters.Height,
             detectTask.MotionDetectParameters.DetectorDelayMs,
-            detectTask.MotionDetectParameters.DetectMethod,
+            detectTask.MotionDetectParameters.NoiseThreshold,
             detectTask.MotionDetectParameters.ChangeLimit);
 
         ServerCamera camera;
@@ -319,7 +322,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             MotionDetectionStreamId + motionDetectTask.Id,
             motionDetectTask.FrameFormat);
 
-        var lastImagesQueue = new ConcurrentQueue<Mat?>();
+        var lastImagesQueue = new Queue<Mat?>();
         ChannelReader<Mat>? channelReader = null;
 
         try
@@ -351,23 +354,29 @@ public class MotionDetectionService : IHostedService, IDisposable
                 // Event-driven frame processing - NO POLLING! ✅
                 await foreach (var image in channelReader.ReadAllAsync(cameraCancellationToken))
                 {
-                    lastImagesQueue.Enqueue(image);
+                    // CRITICAL: Clone the frame immediately to prevent pool contamination
+                    // The 'image' from the channel is a pooled Mat that will be reused by CameraHubService
+                    // If we don't clone it NOW, it could be overwritten by another camera's frame
+                    var clonedImage = image?.Clone();
 
-                    if (motionDetector.DetectMovement(image))
+                    // Return the pooled Mat immediately to prevent holding it
+                    _collection.ReturnOrDisposeMat(image);
+
+                    if (clonedImage != null)
+                        lastImagesQueue.Enqueue(clonedImage);
+
+                    if (motionDetector.DetectMovement(clonedImage, out var contourImage))
                     {
                         _logger.LogInformation("Motion detected!!!");
 
                         var buffer = lastImagesQueue.ToList();
-                        lastImagesQueue = new ConcurrentQueue<Mat?>();
-
+                        lastImagesQueue = new Queue<Mat?>();
                         SendNotifications(motionDetectTask.Notifications,
                             camera,
                             userDto,
                             buffer,
+                            contourImage,
                             cameraCancellationToken);
-
-                        foreach (var img in buffer)
-                            _collection.ReturnOrDisposeMat(img);
                     }
 
                     if (ImageProcessedEvent != null)
@@ -377,14 +386,14 @@ public class MotionDetectionService : IHostedService, IDisposable
                     while (lastImagesQueue.Count >= maxBufferCount)
                     {
                         if (lastImagesQueue.TryDequeue(out var oldImage))
-                            _collection.ReturnOrDisposeMat(oldImage);
+                            oldImage?.Dispose();
                     }
 
                     // Check if task should stop
                     if (stopTask || !_detectorTasks.ContainsKey(motionDetectTask))
                         break;
 
-                    stopTask = !_detectorTasks.Any(n => n.Key.Id == motionDetectTask.Id);
+                    stopTask = _detectorTasks.All(n => n.Key.Id != motionDetectTask.Id);
                 }
 
                 _logger.LogInformation($"Motion detector stopped (task: {motionDetectTask.Id})");
@@ -409,7 +418,7 @@ public class MotionDetectionService : IHostedService, IDisposable
 
             // Return any buffered frames to pool
             while (lastImagesQueue.TryDequeue(out var oldImage))
-                _collection.ReturnOrDisposeMat(oldImage);
+                oldImage?.Dispose();
 
             _detectorTasks.TryRemove(motionDetectTask, out _);
 
@@ -421,6 +430,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         ServerCamera camera,
         UserDto user,
         List<Mat?> bufferedImages,
+        Mat? contourImage,
         CancellationToken cameraCancellationToken)
     {
         ArgumentNullException.ThrowIfNull(notificationParams);
@@ -444,7 +454,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                 image?.Dispose();
             }, TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
@@ -458,6 +467,11 @@ public class MotionDetectionService : IHostedService, IDisposable
         {
             _logger.Log(LogLevel.Information, $"Sending motion notification[video]");
 
+            // Clone buffered images immediately (before starting async task)
+            // This ensures frames remain valid during async video recording
+            var clonedBufferImages = bufferedImages.Select(img => img?.Clone()).ToList();
+            var clonedContourImage = contourImage?.Clone();
+
             var t = new Task(async () =>
             {
                 try
@@ -465,16 +479,25 @@ public class MotionDetectionService : IHostedService, IDisposable
                     await SendMovementVideoMulti(camera,
                         videoNotifications,
                         user.DefaultCodec,
-                        bufferedImages,
+                        clonedBufferImages,
                         _telegramService._settings.DefaultVideoQuality);
+
+                    if (clonedContourImage != null)
+                        await SendMovementImageMulti(camera, clonedContourImage, videoNotifications);
                 }
                 catch (Exception ex)
                 {
                     _logger?.LogError($"Can't send motion video: {ex}");
                 }
+                finally
+                {
+                    // Dispose the clones owned by this task
+                    foreach (var img in clonedBufferImages)
+                        img?.Dispose();
+                    clonedContourImage?.Dispose();
+                }
             }, TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
@@ -492,12 +515,17 @@ public class MotionDetectionService : IHostedService, IDisposable
                     await SendMovementTextMulti(textNotifications),
                     TaskCreationOptions.LongRunning);
 
-            //t.ConfigureAwait(false);
             t.Start();
             tasks.Add(t);
         }
 
         Task.WaitAll([.. tasks], cameraCancellationToken);
+
+        // Now that all tasks have completed (and cloned what they need), dispose the originals
+        foreach (var img in bufferedImages)
+            img?.Dispose();
+
+        contourImage?.Dispose();
     }
 
     private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
@@ -638,13 +666,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         if (_videoRecordingTasks.TryGetValue(tmpRecordtaskId, out var _))
             return;
 
-        // Clone buffered images to avoid using disposed frames in the async task.
-        // The original bufferedImages list will be disposed by the motion detector,
-        // but we need the frames to remain valid during async video recording.
-        var clonedImages = bufferedImages != null && bufferedImages.Count > 0
-            ? new List<Mat?>(bufferedImages.Select(img => img?.Clone()))
-            : new List<Mat?>();
-
+        // Images are already cloned by the caller, use them directly
         var t = new Task(async () =>
         {
             var currentTime = DateTime.Now;
@@ -659,7 +681,7 @@ public class MotionDetectionService : IHostedService, IDisposable
                     null,
                     quality,
                     codec,
-                    clonedImages);
+                    bufferedImages?.ToList()); // Use the already-cloned images
 
                 foreach (var notificationParam in notificationParams)
                 {
@@ -702,12 +724,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                 await _telegramService.SendText(destinationTotal, $"Can't record video: {ex}",
                     CancellationToken.None);
             }
-            finally
-            {
-                // Clean up cloned images
-                foreach (var img in clonedImages)
-                    img?.Dispose();
-            }
 
             _videoRecordingTasks.TryRemove(tmpRecordtaskId, out _);
         }, TaskCreationOptions.LongRunning);
@@ -726,6 +742,7 @@ public class MotionDetectionService : IHostedService, IDisposable
             throw new ArgumentException("User cannot be null or empty", nameof(user));
 
         var task = _detectorTasks.FirstOrDefault(n => n.Key.CameraId == cameraPath && n.Key.User == user);
+
         return task.Key?.Id ?? Guid.Empty;
     }
 
@@ -736,8 +753,6 @@ public class MotionDetectionService : IHostedService, IDisposable
             if (disposing)
             {
                 _logger.Log(LogLevel.Information, "Disposing MotionDetectionService");
-                /*foreach (var k in _detectorTasks.Select(n => n.Key).ToArray())
-                    Stop(k);*/
             }
 
             _disposedValue = true;

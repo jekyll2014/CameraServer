@@ -20,20 +20,36 @@ namespace CameraServer.Server.Services.CameraHub;
 /// <summary>
 /// Represents the state of a single camera including its Channel-based subscribers.
 /// This is an internal implementation detail of CameraHubService.
+/// Each camera has its own Mat pool to prevent cross-contamination.
 /// </summary>
-internal sealed class CameraState
+internal sealed class CameraState : IDisposable
 {
     public ServerCamera Camera { get; init; }
     public ConcurrentDictionary<CameraQueueItem, Channel<Mat>> Subscribers { get; init; }
+    public MatPoolManager MatPool { get; }
+    private bool _disposedValue;
 
-    public CameraState(ServerCamera camera)
+    public CameraState(ServerCamera camera, ILogger logger)
     {
         Camera = camera ?? throw new ArgumentNullException(nameof(camera));
         Subscribers = new ConcurrentDictionary<CameraQueueItem, Channel<Mat>>();
+        
+        // Each camera gets its own Mat pool for complete isolation
+        // Pool size of 50 is enough for typical scenarios (multiple subscribers + buffering)
+        MatPool = new MatPoolManager(maxPoolSize: 50, logger);
     }
 
     public int SubscriberCount => Subscribers.Count;
     public bool HasSubscribers => Subscribers.Count > 0;
+
+    public void Dispose()
+    {
+        if (!_disposedValue)
+        {
+            MatPool?.Dispose();
+            _disposedValue = true;
+        }
+    }
 }
 
 public class CameraHubService : IDisposable
@@ -41,7 +57,6 @@ public class CameraHubService : IDisposable
     private readonly ILogger<CameraHubService> _logger;
     private readonly CameraSettings _settings;
     private readonly int _maxBuffer;
-    private readonly MatPoolManager _matPoolManager;
     private bool _disposedValue;
 
     // Semaphore for camera refresh locking (ensure only one refresh at a time)
@@ -59,6 +74,7 @@ public class CameraHubService : IDisposable
     public bool IsRefreshing => _isRefreshing;
 
     // Channel-only architecture: Single unified camera registry
+    // Each camera now has its own Mat pool for complete isolation
     private readonly ConcurrentDictionary<int, CameraState> _cameraRegistry = new();
 
     public CameraHubService(IApplicationConfigurationService configuration, ILogger<CameraHubService> logger)
@@ -67,11 +83,8 @@ public class CameraHubService : IDisposable
         _settings = configuration.GetCameraSettings();
         _maxBuffer = _settings.MaxFrameBuffer;
 
-        // Create Mat pool manager for frame cloning operations
-        _matPoolManager = new MatPoolManager(maxPoolSize: 100, logger);
-
         _logger.LogInformation(
-            "CameraHubService initialized with Channel-only architecture, Mat pooling enabled, max pool size: 100");
+            "CameraHubService initialized with per-camera Mat pooling (complete isolation between cameras)");
 
         RefreshCameraCollection(CancellationToken.None);
     }
@@ -286,7 +299,7 @@ public class CameraHubService : IDisposable
                     serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                     // Use a temporary ID that will be reassigned later
                     var tempId = _cameraRegistry.Count;
-                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera, _logger));
                 }
             }
 
@@ -305,7 +318,7 @@ public class CameraHubService : IDisposable
                     var serverCamera = new ServerCamera(new UsbCameraFc(c.Path), _settings.DefaultAllowedRoles);
                     serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                     var tempId = _cameraRegistry.Count;
-                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera, _logger));
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -315,7 +328,12 @@ public class CameraHubService : IDisposable
                                  .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
                 {
                     if (!cameraState.HasSubscribers)
-                        _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
+                    {
+                        if (_cameraRegistry.TryRemove(cameraState.Camera.Id, out var removedState))
+                        {
+                            removedState?.Dispose(); // Dispose the camera's Mat pool
+                        }
+                    }
                 }
             }
 
@@ -338,7 +356,7 @@ public class CameraHubService : IDisposable
                     serverCamera.CameraStream.FrameTimeout = _settings.FrameTimeout;
                     serverCamera.CameraStream.Description.ServiceAddress = c.ServiceAddress;
                     var tempId = _cameraRegistry.Count;
-                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera));
+                    _cameraRegistry.TryAdd(tempId, new CameraState(serverCamera, _logger));
                 }
 
                 // remove cameras not found by search (to not lose connection if any clients are connected)
@@ -348,7 +366,12 @@ public class CameraHubService : IDisposable
                                  .Exists(c => c.Path == cs.Camera.CameraStream.Description.Path)))
                 {
                     if (!cameraState.HasSubscribers)
-                        _cameraRegistry.TryRemove(cameraState.Camera.Id, out _);
+                    {
+                        if (_cameraRegistry.TryRemove(cameraState.Camera.Id, out var removedState))
+                        {
+                            removedState?.Dispose(); // Dispose the camera's Mat pool
+                        }
+                    }
                 }
             }
 
@@ -429,10 +452,11 @@ public class CameraHubService : IDisposable
         {
             // Clone frames for ALL subscribers to prevent race conditions
             // Original frame is owned by the camera and will be disposed by it
+            // Use THIS camera's Mat pool for complete isolation from other cameras
             foreach (var (item, channel) in subscribers)
             {
-                // Clone for each subscriber using pooled Mat
-                var frameToSend = _matPoolManager.Rent(image.Width, image.Height, image.Type());
+                // Clone for each subscriber using THIS camera's pooled Mat
+                var frameToSend = cameraState.MatPool.Rent(image.Width, image.Height, image.Type());
 
                 try
                 {
@@ -441,13 +465,13 @@ public class CameraHubService : IDisposable
                 catch (ObjectDisposedException)
                 {
                     // Original frame was disposed during iteration - return rented Mat and skip
-                    _matPoolManager.Return(frameToSend);
+                    cameraState.MatPool.Return(frameToSend);
                     _logger.LogWarning($"Original frame disposed during cloning for subscriber {item.QueueId}");
                     continue;
                 }
 
                 // Write to channel asynchronously (fire and forget with error handling)
-                var writeTask = WriteToChannelAsync(channel, frameToSend, item);
+                var writeTask = WriteToChannelAsync(channel, frameToSend, item, cameraState);
                 writeTasks.Add(writeTask);
             }
 
@@ -471,8 +495,9 @@ public class CameraHubService : IDisposable
 
     /// <summary>
     /// Writes a frame to a channel with timeout and error handling.
+    /// Returns the Mat to the camera's specific pool on failure.
     /// </summary>
-    private async Task WriteToChannelAsync(Channel<Mat> channel, Mat frameToSend, CameraQueueItem cameraItem)
+    private async Task WriteToChannelAsync(Channel<Mat> channel, Mat frameToSend, CameraQueueItem cameraItem, CameraState cameraState)
     {
         try
         {
@@ -485,43 +510,46 @@ public class CameraHubService : IDisposable
             }
             else
             {
-                // Channel closed or timeout - return frame to pool
-                ReturnOrDisposeMat(frameToSend);
+                // Channel closed or timeout - return frame to THIS camera's pool
+                cameraState.MatPool.Return(frameToSend);
                 _logger.LogWarning($"Channel {cameraItem.QueueId} write timeout or closed");
             }
         }
         catch (OperationCanceledException)
         {
-            // Timeout - return frame to pool
-            ReturnOrDisposeMat(frameToSend);
+            // Timeout - return frame to THIS camera's pool
+            cameraState.MatPool.Return(frameToSend);
             _logger.LogDebug($"Channel {cameraItem.QueueId} write timeout");
         }
         catch (ChannelClosedException)
         {
-            // Channel was completed - clean up
-            ReturnOrDisposeMat(frameToSend);
+            // Channel was completed - return to THIS camera's pool
+            cameraState.MatPool.Return(frameToSend);
             _logger.LogDebug($"Channel {cameraItem.QueueId} was closed");
         }
         catch (Exception ex)
         {
             _logger.LogError($"Error writing to channel {cameraItem.QueueId}: {ex.Message}");
-            ReturnOrDisposeMat(frameToSend);
+            cameraState.MatPool.Return(frameToSend);
         }
     }
 
     #endregion
 
     /// <summary>
-    /// Returns a Mat to the pool if it belongs to our pool, otherwise disposes it.
+    /// Returns a Mat to the appropriate camera's pool, or disposes it if not pooled.
     /// This method should be called by consumers when they're done with a Mat from CameraHubService.
+    /// With per-camera pools, this simply disposes the Mat since consumers own their clones.
     /// </summary>
     public void ReturnOrDisposeMat(Mat? mat)
     {
         if (mat == null || mat.IsDisposed)
             return;
 
-        // Try to return to pool first; if pool doesn't accept it, dispose
-        _matPoolManager.Return(mat);
+        // With per-camera pools, consumers receive clones that they own.
+        // We can't reliably return clones to pools, so we dispose them.
+        // The camera pools only manage their own internally-rented Mats.
+        mat.Dispose();
     }
 
     protected virtual void Dispose(bool disposing)
@@ -530,23 +558,31 @@ public class CameraHubService : IDisposable
         {
             if (disposing)
             {
-                _logger.LogInformation("CameraHubService pooling statistics:");
-                _matPoolManager?.LogStatistics();
+                _logger.LogInformation("CameraHubService disposing - logging per-camera pool statistics:");
 
-                // Complete all channels to signal consumers
+                // Complete all channels and dispose camera states (including their Mat pools)
                 var totalChannels = 0;
                 foreach (var cameraState in _cameraRegistry.Values)
                 {
+                    // Log this camera's pool statistics
+                    _logger.LogInformation($"Camera '{cameraState.Camera.CameraStream.Description.Name}' pool statistics:");
+                    cameraState.MatPool?.LogStatistics();
+
+                    // Complete all channels for this camera
                     foreach (var channel in cameraState.Subscribers.Values)
                     {
                         channel.Writer.Complete();
                         totalChannels++;
                     }
+
+                    // Dispose the camera state (including its Mat pool)
+                    cameraState?.Dispose();
                 }
 
                 _logger.LogInformation($"Completed {totalChannels} channels across {_cameraRegistry.Count} cameras");
 
-                _matPoolManager?.Dispose();
+                // Clear the registry
+                _cameraRegistry.Clear();
 
                 // Dispose semaphore
                 _refreshLock?.Dispose();

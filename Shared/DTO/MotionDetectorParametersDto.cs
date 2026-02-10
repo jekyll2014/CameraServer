@@ -4,10 +4,11 @@ namespace CameraServer.Shared.DTO;
 
 public class MotionDetectorParametersDto
 {
-    public DetectionMethod DetectMethod { get; set; } = DetectionMethod.Knn;
     public int Width { get; set; } = 640;
     public int Height { get; set; } = 480;
     public uint DetectorDelayMs { get; set; } = 500;
+    // noise threshold, 0-255, 0 - no noise, 255 - full noise
+    public byte NoiseThreshold { get; set; } = 70;
 
     //percent of the total image area
     public double ChangeLimit { get; set; } = 10.0;
@@ -21,10 +22,10 @@ public class MotionDetectorParametersDto
         var result = false;
         if (obj is MotionDetectorParametersDto setting)
         {
-            if (setting.DetectMethod == DetectMethod
-                && setting.Width == Width
+            if (setting.Width == Width
                 && setting.Height == Height
                 && setting.DetectorDelayMs == DetectorDelayMs
+                && setting.NoiseThreshold == NoiseThreshold
                 && setting.ChangeLimit == ChangeLimit
                 && setting.TextNotificationDelay == TextNotificationDelay
                 && setting.ImageNotificationDelay == ImageNotificationDelay
@@ -38,6 +39,6 @@ public class MotionDetectorParametersDto
 
     public override int GetHashCode()
     {
-        return $"{DetectMethod}{Width}{Height}{DetectorDelayMs}{ChangeLimit}{TextNotificationDelay}{ImageNotificationDelay}{VideoNotificationDelay}{KeepImageBuffer}".GetHashCode();
+        return $"{Width}{Height}{DetectorDelayMs}{NoiseThreshold}{ChangeLimit}{TextNotificationDelay}{ImageNotificationDelay}{VideoNotificationDelay}{KeepImageBuffer}".GetHashCode();
     }
 }

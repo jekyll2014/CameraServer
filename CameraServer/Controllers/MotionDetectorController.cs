@@ -62,7 +62,7 @@ public class MotionDetectorController : ControllerBase
         int? yResolution,
         string? format,
         uint? changeLimit,
-        DetectionMethod? detectMethod,
+        byte? noiseThreshold,
         uint? detectorDelayMs,
         NotificationTransport transport,
         string destination,
@@ -80,7 +80,7 @@ public class MotionDetectorController : ControllerBase
             xResolution,
             yResolution,
             format, changeLimit,
-            detectMethod,
+            noiseThreshold,
             detectorDelayMs,
             transport,
             destination,
@@ -97,7 +97,7 @@ public class MotionDetectorController : ControllerBase
         int? yResolution,
         string? format,
         uint? changeLimit,
-        DetectionMethod? detectMethod,
+        byte? noiseThreshold,
         uint? detectorDelayMs,
         NotificationTransport transport,
         string destination,
@@ -110,7 +110,7 @@ public class MotionDetectorController : ControllerBase
             xResolution,
             yResolution,
             format, changeLimit,
-            detectMethod,
+            noiseThreshold,
             detectorDelayMs,
             transport,
             destination,
@@ -146,7 +146,7 @@ public class MotionDetectorController : ControllerBase
         int? height,
         string? format,
         uint? changeLimit,
-        DetectionMethod? detectMethod,
+        byte? noiseThreshold,
         uint? detectorDelayMs,
         NotificationTransport transport,
         string destination,
@@ -185,7 +185,7 @@ public class MotionDetectorController : ControllerBase
                 return BadRequest("Notification destination cannot be empty");
 
             // Log incoming parameters from UI for debugging
-            LogIncomingParameters(width, height, format, changeLimit, detectMethod, detectorDelayMs, destination, message);
+            LogIncomingParameters(width, height, format, changeLimit, noiseThreshold, detectorDelayMs, destination, message);
 
             var motionTask = new MotionDetectionCameraSettingDto()
             {
@@ -194,9 +194,9 @@ public class MotionDetectorController : ControllerBase
                 FrameFormat = new FrameFormatDto { Width = width ?? 0, Height = height ?? 0, Format = format ?? string.Empty },
                 MotionDetectParameters = new MotionDetectorParametersDto()
                 {
-                    DetectMethod = detectMethod ?? DetectionMethod.Knn,
                     Width = width ?? 0,
                     Height = height ?? 0,
+                    NoiseThreshold = noiseThreshold ?? 0,
                     ChangeLimit = changeLimit ?? 0,
                     DetectorDelayMs = detectorDelayMs ?? 0
                 },
@@ -217,14 +217,14 @@ public class MotionDetectorController : ControllerBase
             _logger.LogInformation(
                 "Starting motion detector - Camera: {CameraPath}, User: {User}, " +
                 "FrameFormat: {Width}x{Height} {Format}, " +
-                "DetectorParams: DelayMs={DelayMs}, DetectMethod={DetectMethod}, ChangeLimit={ChangeLimit}%",
+                "DetectorParams: DelayMs={DelayMs}, NoiseThreshold={NoiseThreshold}, ChangeLimit={ChangeLimit}%",
                 motionTask.CameraId,
                 motionTask.User,
                 motionTask.FrameFormat.Width,
                 motionTask.FrameFormat.Height,
                 motionTask.FrameFormat.Format,
                 motionTask.MotionDetectParameters.DetectorDelayMs,
-                motionTask.MotionDetectParameters.DetectMethod,
+                motionTask.MotionDetectParameters.NoiseThreshold,
                 motionTask.MotionDetectParameters.ChangeLimit);
 
             var taskId = _motionDetector.Start(motionTask);
@@ -247,15 +247,15 @@ public class MotionDetectorController : ControllerBase
     }
 
     private void LogIncomingParameters(int? width, int? height, string? format, uint? changeLimit,
-        DetectionMethod? detectMethod, uint? detectorDelayMs, string? destination, string? message)
+        byte? noiseThreshold, uint? detectorDelayMs, string? destination, string? message)
     {
         var sb = new StringBuilder();
         sb.AppendLine("=== Incoming Motion Detector Parameters from UI ===");
         sb.AppendLine($"  Width: {(width.HasValue ? width.Value : "null (will use default)")}");
         sb.AppendLine($"  Height: {(height.HasValue ? height.Value : "null (will use default)")}");
         sb.AppendLine($"  Format: {(string.IsNullOrEmpty(format) ? "null/empty (will use default)" : format)}");
+        sb.AppendLine($"  NoiseThreshold: {(noiseThreshold.HasValue ? noiseThreshold.Value : "null (will use default)")}");
         sb.AppendLine($"  ChangeLimit: {(changeLimit.HasValue ? changeLimit.Value + "%" : "null (will use default)")}");
-        sb.AppendLine($"  DetectMethod: {(detectMethod.HasValue ? detectMethod.Value.ToString() : "null (will use default)")} ");
         sb.AppendLine($"  DetectorDelayMs: {(detectorDelayMs.HasValue ? detectorDelayMs.Value + "ms" : "null (will use default)")}");
         sb.AppendLine($"  Destination: {(string.IsNullOrEmpty(destination) ? "EMPTY" : destination)}");
         sb.AppendLine($"  Message: {(string.IsNullOrEmpty(message) ? "null/empty" : message)}");

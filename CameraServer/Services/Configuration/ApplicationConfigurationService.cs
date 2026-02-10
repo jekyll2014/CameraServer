@@ -246,7 +246,7 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
                 Width = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.Width,
                 Height = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.Height,
                 DetectorDelayMs = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.DetectorDelayMs,
-                DetectMethod = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.DetectMethod,
+                NoiseThreshold = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.NoiseThreshold,
                 ChangeLimit = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.ChangeLimit,
                 TextNotificationDelay = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.TextNotificationDelay,
                 ImageNotificationDelay = _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters.ImageNotificationDelay,
@@ -291,7 +291,7 @@ public class ApplicationConfigurationService : IApplicationConfigurationService
         {
             _logger.LogInformation($"Motion detection parameters updated: {settings.DefaultMotionDetectParameters.Width}x{settings.DefaultMotionDetectParameters.Height}, " +
                 $"delay={settings.DefaultMotionDetectParameters.DetectorDelayMs}ms, " +
-                $"detectMethod={settings.DefaultMotionDetectParameters.DetectMethod}, " +
+                $"threshold={settings.DefaultMotionDetectParameters.NoiseThreshold}, " +
                 $"changeLimit={settings.DefaultMotionDetectParameters.ChangeLimit}%");
             OnConfigurationChanged(nameof(MotionDetectionSettings.DefaultMotionDetectParameters),
                 _settingsConfig.ConfigStorage.MotionDetector.DefaultMotionDetectParameters,
