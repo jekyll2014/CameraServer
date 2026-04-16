@@ -10,6 +10,8 @@ using CameraServer.Server.Services.VideoRecording;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -87,6 +89,33 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         //builder.Configuration.SetBasePath(Directory.GetCurrentDirectory());
+
+        // Configure HTTPS from PEM/KEY files if present.
+        // NOTE: Any ConfigureKestrel Listen* call overrides the "Urls" setting,
+        // so we must bind HTTP explicitly in the same block.
+        var certPath = builder.Configuration["Kestrel:Https:CertPath"];
+        var keyPath = builder.Configuration["Kestrel:Https:KeyPath"];
+        var httpsPort = builder.Configuration.GetValue<int>("Kestrel:Https:Port", 8443);
+        var httpPort = builder.Configuration.GetValue<int>("Kestrel:Http:Port", 8080);
+
+        if (!string.IsNullOrWhiteSpace(certPath) && !string.IsNullOrWhiteSpace(keyPath)
+            && File.Exists(certPath) && File.Exists(keyPath))
+        {
+            builder.Services.Configure<KestrelServerOptions>(options =>
+            {
+                options.ListenAnyIP(httpPort);
+                options.ListenAnyIP(httpsPort, listenOptions =>
+                {
+                    listenOptions.UseHttps(
+                        System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPemFile(certPath, keyPath));
+                });
+            });
+            _logger?.Information("HTTPS configured on port {Port} using {Cert}", httpsPort, certPath);
+        }
+        else
+        {
+            _logger?.Warning("HTTPS certificate files not found or not configured. Running HTTP only.");
+        }
 
         var serverUrls = builder.WebHost.GetSetting("Urls") ?? "http://0.0.0.0:8080";
         try

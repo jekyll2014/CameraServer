@@ -2,9 +2,7 @@
 
 CameraServer helps keep your home cameras in one bag. You can see snapshots and video remotely for any of your USB or ONVIF cameras available to the server.
 
-This is a Windows stand-alone software. It only needs .NET 8 runtime to be installed (https://dotnet.microsoft.com/en-us/download/dotnet/8.0).
-
-Just unpack, adjust the configuration and run.
+Runs on **Windows** and **Linux** (including Docker).
 
 ## Features:
  - USB cameras autodetect
@@ -12,11 +10,14 @@ Just unpack, adjust the configuration and run.
  - MJPEG camera source support (plain and basic authentication)
  - Role-based authorisation (Admin, User, Guest) and camera access control for both Web and Telegram access
  - Basic authorisation option to enable integrating the streams into 3rd party systems
- - full control via the REST API
+ - Full control via the REST API (Swagger UI available in Development mode)
  - Web-based UI to access video streams
  - Telegram bot integration to see camera snapshots and video clips
  - Video streams record
  - Motion detection with notifications to Telegram
+ - **HTTPS support** using PEM/KEY certificate files (no PFX conversion required)
+ - **Docker support** — multi-stage Dockerfile included
+ - **Cross-platform** — runs on Windows and Linux
  - Flexible configuration parameters via appsettings.json file
 
 ## Configuration:
@@ -251,8 +252,89 @@ The parameters are self-explanatory except for:
 
 "SaveNotificationContent": false - you can save the notifications (pictures, video or text) in the file system.
 
+## Docker
+
+A multi-stage `Dockerfile` is included. The image is based on `mcr.microsoft.com/dotnet/aspnet:8.0` and builds OpenCV from source.
+
+```bash
+# Build and start
+docker compose up --build -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+Default port mapping: `8080` → HTTP, `8443` → HTTPS.
+
+Recommended volume mounts in `docker-compose.yml`:
+
+| Host path | Container path | Purpose |
+|---|---|---|
+| `./config` | `/app/config` | Runtime settings & TLS certificates |
+| `./Videos` | `/app/Videos` | Recorded video files |
+| `./MotionRecords` | `/app/MotionRecords` | Motion detection snapshots |
+| `./logs` | `/app/logs` | Application log files |
+
+> **Linux path note:** use forward slashes in `StoragePath` values, e.g. `"./Videos"` instead of `.\\Videos`.
+
+---
+
+## HTTPS
+
+HTTPS activates automatically when both certificate files exist on disk. If they are missing the server falls back to HTTP-only and logs a warning — it never crashes.
+
+### 1. Generate a self-signed certificate (testing / local)
+
+```bash
+openssl req -x509 -newkey rsa:4096 \
+  -keyout server.key \
+  -out   server.pem \
+  -days  365 -nodes \
+  -subj  "/CN=localhost"
+```
+
+### 2. Place the files
+
+Copy `server.pem` and `server.key` into the config directory that is mounted into the container:
+
+```
+./config/server.pem
+./config/server.key
+```
+
+### 3. Configure paths
+
+In `appsettings.json`:
+
+```json
+"Kestrel": {
+  "Http":  { "Port": 8080 },
+  "Https": {
+    "Port":     8443,
+    "CertPath": "/app/config/server.pem",
+    "KeyPath":  "/app/config/server.key"
+  }
+}
+```
+
+Or override via environment variables (use `__` as the section separator):
+
+```yaml
+# docker-compose.yml
+environment:
+  - Kestrel__Https__CertPath=/app/config/mycert.pem
+  - Kestrel__Https__KeyPath=/app/config/mycert.key
+  - Kestrel__Https__Port=8443
+  - Kestrel__Http__Port=8080
+```
+
+When HTTPS is active, both HTTP (`Kestrel:Http:Port`) and HTTPS (`Kestrel:Https:Port`) listeners are started. The top-level `Urls` setting is used only when no certificate is configured.
+
+---
+
 ## Planned features:
-- Serilog logging
-- Web-based configuration interface
 - Save media on movement detection
-- save metadata along with video record
+- Save metadata along with video record

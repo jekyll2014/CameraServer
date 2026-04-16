@@ -342,24 +342,28 @@ public class MotionDetectionService : IHostedService, IDisposable
             channelReader = reader;
 
             // Start motion detection
-            var stopTask = false;
             motionDetectTask.MotionDetectParameters ??= new MotionDetectorParametersDto();
 
             using (var motionDetector = new MotionDetector(motionDetectTask.MotionDetectParameters, _logger))
             {
                 var maxBufferCount = Settings.DefaultMotionDetectParameters.KeepImageBuffer;
 
-                _logger.LogInformation($"Motion detector started with Channel-based delivery (task: {motionDetectTask.Id})");
+                _logger.LogInformation($"Motion detector started with sequential processing (task: {motionDetectTask.Id})");
 
-                // Event-driven frame processing - NO POLLING! ✅
-                await foreach (var image in channelReader.ReadAllAsync(cameraCancellationToken))
+                // Sequential frame processing - simple and safe
+                while (!cameraCancellationToken.IsCancellationRequested && _detectorTasks.ContainsKey(motionDetectTask))
                 {
-                    // CRITICAL: Clone the frame immediately to prevent pool contamination
-                    // The 'image' from the channel is a pooled Mat that will be reused by CameraHubService
-                    // If we don't clone it NOW, it could be overwritten by another camera's frame
+                    // Wait for next frame from channel
+                    if (!await channelReader.WaitToReadAsync(cameraCancellationToken))
+                        break;
+
+                    if (!channelReader.TryRead(out var image))
+                        continue;
+
+                    // Clone the frame immediately to prevent pool contamination
                     var clonedImage = image?.Clone();
 
-                    // Return the pooled Mat immediately to prevent holding it
+                    // Return the pooled Mat immediately
                     _collection.ReturnOrDisposeMat(image);
 
                     if (clonedImage != null)
@@ -371,12 +375,14 @@ public class MotionDetectionService : IHostedService, IDisposable
 
                         var buffer = lastImagesQueue.ToList();
                         lastImagesQueue = new Queue<Mat?>();
-                        SendNotifications(motionDetectTask.Notifications,
-                            camera,
-                            userDto,
-                            buffer,
-                            contourImage,
-                            cameraCancellationToken);
+
+                        // Process notifications sequentially - no concurrency issues
+                        SendNotificationsAsync(motionDetectTask.Notifications,
+                           camera,
+                           userDto,
+                           buffer,
+                           contourImage,
+                           cameraCancellationToken);
                     }
 
                     if (ImageProcessedEvent != null)
@@ -388,12 +394,6 @@ public class MotionDetectionService : IHostedService, IDisposable
                         if (lastImagesQueue.TryDequeue(out var oldImage))
                             oldImage?.Dispose();
                     }
-
-                    // Check if task should stop
-                    if (stopTask || !_detectorTasks.ContainsKey(motionDetectTask))
-                        break;
-
-                    stopTask = _detectorTasks.All(n => n.Key.Id != motionDetectTask.Id);
                 }
 
                 _logger.LogInformation($"Motion detector stopped (task: {motionDetectTask.Id})");
@@ -426,7 +426,7 @@ public class MotionDetectionService : IHostedService, IDisposable
         }
     }
 
-    private void SendNotifications(IReadOnlyCollection<NotificationParametersDto> notificationParams,
+    private void SendNotificationsAsync(IReadOnlyCollection<NotificationParametersDto> notificationParams,
         ServerCamera camera,
         UserDto user,
         List<Mat?> bufferedImages,
@@ -438,94 +438,109 @@ public class MotionDetectionService : IHostedService, IDisposable
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(bufferedImages);
 
-        var tasks = new List<Task>();
-        var imageNotifications = notificationParams
-            .Where(n => n.Transport == NotificationTransport.Telegram
-                        && n.MessageType == MessageType.Image)
-            .ToArray();
-
-        if (imageNotifications.Length != 0)
+        // Use semaphore to ensure only one notification process runs at a time
+        // This prevents race conditions when multiple motion detections occur rapidly
+        try
         {
-            _logger.Log(LogLevel.Information, $"Sending motion notification[image]");
-            var t = new Task(async () =>
-            {
-                var image = bufferedImages.Last()?.Clone();
-                await SendMovementImageMulti(camera, image, imageNotifications);
-                image?.Dispose();
-            }, TaskCreationOptions.LongRunning);
-
-            t.Start();
-            tasks.Add(t);
-        }
-
-        var videoNotifications = notificationParams
+            var tasks = new List<Task>();
+            var imageNotifications = notificationParams
                 .Where(n => n.Transport == NotificationTransport.Telegram
-                            && n.MessageType == MessageType.Video)
+                            && n.MessageType == MessageType.Image)
                 .ToArray();
 
-        if (videoNotifications.Length != 0)
-        {
-            _logger.Log(LogLevel.Information, $"Sending motion notification[video]");
-
-            // Clone buffered images immediately (before starting async task)
-            // This ensures frames remain valid during async video recording
-            var clonedBufferImages = bufferedImages.Select(img => img?.Clone()).ToList();
-            var clonedContourImage = contourImage?.Clone();
-
-            var t = new Task(async () =>
+            if (imageNotifications.Length != 0)
             {
-                try
-                {
-                    await SendMovementVideoMulti(camera,
-                        videoNotifications,
-                        user.DefaultCodec,
-                        clonedBufferImages,
-                        _telegramService._settings.DefaultVideoQuality);
+                _logger.Log(LogLevel.Information, $"Sending motion notification[image]");
 
-                    if (clonedContourImage != null)
-                        await SendMovementImageMulti(camera, clonedContourImage, videoNotifications);
-                }
-                catch (Exception ex)
+                // Clone image BEFORE starting async task to prevent use-after-dispose
+                var image = bufferedImages.Last()?.Clone();
+                var t = Task.Run(async () =>
                 {
-                    _logger?.LogError($"Can't send motion video: {ex}");
-                }
-                finally
-                {
-                    // Dispose the clones owned by this task
-                    foreach (var img in clonedBufferImages)
-                        img?.Dispose();
-                    clonedContourImage?.Dispose();
-                }
-            }, TaskCreationOptions.LongRunning);
+                    try
+                    {
+                        await SendMovementImageMulti(camera, image, imageNotifications);
+                    }
+                    finally
+                    {
+                        image?.Dispose();
+                    }
+                }, cameraCancellationToken);
 
-            t.Start();
-            tasks.Add(t);
+                tasks.Add(t);
+            }
+
+            var videoNotifications = notificationParams
+                    .Where(n => n.Transport == NotificationTransport.Telegram
+                                && n.MessageType == MessageType.Video)
+                    .ToArray();
+
+            if (videoNotifications.Length != 0)
+            {
+                _logger.Log(LogLevel.Information, $"Sending motion notification[video]");
+
+                // Clone buffered images immediately (before starting async task)
+                // This ensures frames remain valid during async video recording
+                var clonedBufferImages = bufferedImages.Select(img => img?.Clone()).ToList();
+                var clonedContourImage = contourImage?.Clone();
+
+                var t = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await SendMovementVideoMulti(camera,
+                            videoNotifications,
+                            user.DefaultCodec,
+                            clonedBufferImages,
+                            _telegramService._settings.DefaultVideoQuality);
+
+                        if (clonedContourImage != null)
+                            await SendMovementImageMulti(camera, clonedContourImage, videoNotifications);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError($"Can't send motion video: {ex}");
+                    }
+                    finally
+                    {
+                        // Dispose the clones owned by this task
+                        foreach (var img in clonedBufferImages)
+                            img?.Dispose();
+
+                        clonedContourImage?.Dispose();
+                    }
+                }, cameraCancellationToken);
+
+                tasks.Add(t);
+            }
+
+            var textNotifications = notificationParams
+                .Where(n => n.Transport == NotificationTransport.Telegram
+                            && n.MessageType == MessageType.Text)
+                .ToArray();
+
+            if (textNotifications.Length != 0)
+            {
+                _logger.Log(LogLevel.Information, $"Sending motion notification[text]");
+
+                var t = Task.Run(async () =>
+                        await SendMovementTextMulti(textNotifications),
+                        cameraCancellationToken);
+
+                tasks.Add(t);
+            }
+
+            // Wait for all notification tasks to complete before processing next frame
+            Task.WhenAll(tasks).GetAwaiter().GetResult();
         }
-
-        var textNotifications = notificationParams
-            .Where(n => n.Transport == NotificationTransport.Telegram
-                        && n.MessageType == MessageType.Text)
-            .ToArray();
-
-        if (textNotifications.Length != 0)
+        finally
         {
-            _logger.Log(LogLevel.Information, $"Sending motion notification[text]");
 
-            var t = new Task(async () =>
-                    await SendMovementTextMulti(textNotifications),
-                    TaskCreationOptions.LongRunning);
+            // Now that all tasks have completed, dispose the originals
+            foreach (var img in bufferedImages)
+                img?.Dispose();
 
-            t.Start();
-            tasks.Add(t);
+            contourImage?.Dispose();
         }
-
-        Task.WaitAll([.. tasks], cameraCancellationToken);
-
-        // Now that all tasks have completed (and cloned what they need), dispose the originals
-        foreach (var img in bufferedImages)
-            img?.Dispose();
-
-        contourImage?.Dispose();
     }
 
     private async Task SendMovementTextMulti(IReadOnlyCollection<NotificationParametersDto> notificationParams)
